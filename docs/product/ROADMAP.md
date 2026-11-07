@@ -4,7 +4,7 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 ## Phase 0: Foundation
 
-**Status: in review.**
+**Status: complete.** Merged on 2026-11-07. All acceptance criteria were met, including a full manual acceptance run.
 
 **Objective:** turn the working prototype into a professionally maintained product foundation.
 
