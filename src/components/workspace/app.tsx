@@ -12,7 +12,7 @@ import { Explorer } from "./explorer";
 import { Inspector } from "./inspector";
 import { StartScreen } from "./start-screen";
 import { TopBar } from "./top-bar";
-import { WorkspaceCanvas } from "./workspace-canvas";
+import { CanvasArea } from "./canvas-area";
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
@@ -100,7 +100,7 @@ export function App() {
         <div className="grid h-full grid-cols-[256px_minmax(0,1fr)_288px] grid-rows-[auto_minmax(0,1fr)]">
           <TopBar />
           <Explorer />
-          <WorkspaceCanvas />
+          <CanvasArea />
           <Inspector />
         </div>
       ) : (

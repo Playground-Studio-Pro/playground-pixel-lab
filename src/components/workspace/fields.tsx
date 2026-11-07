@@ -116,8 +116,13 @@ export function SelectField({
   onChange,
   className,
   disabled,
+  ariaLabel,
+  triggerClassName,
 }: {
   label?: string;
+  /** Names the field when there's no visible label. */
+  ariaLabel?: string;
+  triggerClassName?: string;
   value: string;
   items: readonly { value: string; label: string }[];
   onChange(value: string): void;
@@ -134,7 +139,7 @@ export function SelectField({
         disabled={disabled}
         onValueChange={(v) => v !== null && onChange(v as string)}
       >
-        <SelectTrigger size="sm" aria-labelledby={label ? id : undefined} className="w-full min-w-0 rounded text-[13px]">
+        <SelectTrigger size="sm" aria-labelledby={label ? id : undefined} aria-label={label ? undefined : ariaLabel} className={cn("w-full min-w-0 rounded text-[13px]", triggerClassName)}>
           <SelectValue className="truncate" />
         </SelectTrigger>
         <SelectContent>

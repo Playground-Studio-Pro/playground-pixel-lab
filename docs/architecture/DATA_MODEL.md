@@ -69,6 +69,8 @@ IndexedDB database `playground-pixel-lab`, version 1, with object stores `projec
 | Autosave | 400 ms after the last edit, one save at a time. ⌘S saves at once |
 | Unreadable records | Skipped in the list, never deleted |
 
+Motion Lab settings and playback state are never stored, in the project or elsewhere.
+
 ## File format
 
 Project files (`.pixellab.json`):

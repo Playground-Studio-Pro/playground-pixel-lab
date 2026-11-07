@@ -9,6 +9,7 @@ import { buildManifest } from "@/exports/manifest";
 import { masterScene } from "@/exports/scene";
 import { renderSvg } from "@/exports/svg";
 import { serializeProject } from "@/persistence/schema";
+import { motionLabProject } from "../../tests/helpers";
 
 /** Times the pure engines and writes the stress fixtures used in the browser. See docs/development/PERFORMANCE.md. */
 const OUT = process.env.PERF_OUT ?? ".perf";
@@ -44,6 +45,7 @@ it("measures engines and writes fixtures", () => {
     large: grid("perf-large", 10, 10, 4, 5),
     n500: grid("perf-500", 25, 20, 2, 2),
     limit: grid("perf-limit", 1, 1, 128, 64),
+    motion: motionLabProject().project,
   };
   mkdirSync(OUT, { recursive: true });
   const header = "fixture | screens | cabinets | master | resolve ms | validate ms | scene+SVG ms | manifest ms";

@@ -8,11 +8,12 @@ import type { Id } from "@/domain/model";
 import { formatMm } from "@/domain/units";
 import { boundingBox, overlaps } from "@/engines/geometry";
 import { snapPosition, type SnapGuide } from "@/engines/snap";
-import { screenToWorld, zoomAt, type Viewport } from "@/engines/viewport";
+import { screenToWorld, type Viewport } from "@/engines/viewport";
 import { moveInCurrentView } from "@/state/actions";
-import { selectedScreenIds, useApp, zoomLimits } from "@/state/store";
+import { selectedScreenIds, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { buildViewModel, type ViewItem } from "@/state/view-model";
+import { useCanvasViewport } from "./use-canvas-viewport";
 
 const SIGNAL = "#3EC1E3";
 const ERROR = "#F0695E";
@@ -151,20 +152,7 @@ export function WorkspaceCanvas() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      useApp.getState().setCanvasSize(Math.floor(entry.contentRect.width), Math.floor(entry.contentRect.height));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Each view keeps its own zoom and pan. Fit the first time a view is shown.
-  useEffect(() => {
-    if (!viewport && size.width > 0) useApp.getState().fit();
-  }, [viewport, size.width, view]);
+  useCanvasViewport(containerRef);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -187,29 +175,6 @@ export function WorkspaceCanvas() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, []);
-
-  // Wheel is attached natively: React's listener is passive and can't stop the page zooming.
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const app = useApp.getState();
-      const vp = app.viewports[app.view];
-      if (!vp) return;
-      if (e.ctrlKey || e.metaKey) {
-        const rect = el.getBoundingClientRect();
-        app.setViewport(
-          app.view,
-          zoomAt(vp, Math.exp(-e.deltaY * 0.01), e.clientX - rect.left, e.clientY - rect.top, zoomLimits.MIN_ZOOM[app.view], zoomLimits.MAX_ZOOM[app.view]),
-        );
-      } else {
-        app.setViewport(app.view, { ...vp, offsetX: vp.offsetX - e.deltaX, offsetY: vp.offsetY - e.deltaY });
-      }
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
   const local = (e: { clientX: number; clientY: number }) => {
@@ -383,7 +348,7 @@ export function WorkspaceCanvas() {
       : `Selection ${selectionBox.width} × ${selectionBox.height} px at ${selectionBox.x + (drag?.dx ?? 0)}, ${selectionBox.y + (drag?.dy ?? 0)}`);
 
   return (
-    <main className="relative flex min-h-0 min-w-0 flex-col bg-stage" aria-label="Interactive canvas">
+    <main className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-stage" aria-label="Interactive canvas">
       <div ref={containerRef} className="relative min-h-0 flex-1 overflow-hidden" data-testid="canvas">
         {vp && (
           <Stage width={size.width} height={size.height} onMouseDown={onMouseDown}>

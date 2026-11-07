@@ -37,6 +37,21 @@ Pixel Lab should feel like a premium professional audiovisual tool, the kind of 
 
 **Pixel maps** are test patterns, not UI: identification colors, one checker square per cabinet, a white 1 px border and corner diagonals.
 
+## Motion Lab
+
+Violet is reserved for Motion Lab and marks live playback. Tokens: `--motion` `#9B87FF` for text and icons, and `--motion-strong` `#5B4FE0` for fills such as the active Play button, with white icons.
+
+| Element | Treatment |
+| --- | --- |
+| Canvas header | One strip above the canvas: Mapping or Live preview, then playback controls only in Live preview. A violet dot on the Live preview tab pulses while playing, unless reduced motion is set |
+| Readouts | In the status bar: frame number, timecode, target rate, measured preview rate, late and skipped. Tabular numerals. Preview rate is always labeled as the browser's |
+| Content palette | Bright and saturated, chosen for LED: cyan `#3EC1E3`, blue `#2F6FE4`, violet `#7B61FF`, magenta `#FF3DC8`, white, on deep navy `#070B24` |
+| Guides | 1 px white screen outlines, cyan when selected. Labels sit on a dark backing so they read over bright content |
+| Overlaps | Diagonal hatch with an outline. Violet dashed for shared, red for conflicts, amber for stage overlaps. Color is never the only signal: each mark has a text label when there's room, and conflicts also appear under Checks |
+| Pixels | Enlarged LED pixels are drawn square and sharp; reduced ones are smoothed |
+
+Content is the only bright thing on screen, as everywhere in the product: controls stay in the quiet panel colors.
+
 ## Known inconsistencies
 
 Found in the audit, recorded for [Phase 1](ROADMAP.md#phase-1-mapping-studio). Only item 9 has been partly fixed so far.

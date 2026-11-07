@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Motion Lab V1: a Live preview mode next to Mapping. Six deterministic test patterns (Content Flow, Moving Grid, Horizontal and Vertical Scan, RGB Color Cycle, Frame Counter) drawn across the mapped screens on the Physical, Content and Output views. Play, pause, restart, target content rate (24, 25, 30, 50, 60 fps), speed, measured browser preview rate, late and skipped frames. Shared, conflicting and stage overlaps marked without blocking the preview.
 - Undo and redo for every project edit, with ⌘Z and ⇧⌘Z (Ctrl+Z and Ctrl+Y elsewhere) and toolbar buttons. Rapid arrow-key nudges undo as one step.
 - GitHub Actions CI, pull request template and branch conventions.
 - Documentation system, roadmap, design direction and performance budgets.

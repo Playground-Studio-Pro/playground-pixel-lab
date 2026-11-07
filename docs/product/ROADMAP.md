@@ -51,16 +51,18 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 ## Phase 2: Motion Lab
 
+**Status: V1 delivered.** Started 2026-11-07, ahead of the rest of Phase 1, as the product priority. All deliverables and acceptance criteria below are met on the reference machine; see [OVERVIEW](../architecture/OVERVIEW.md#motion-lab). Venue-laptop performance is still unmeasured.
+
 **Objective:** generate test and calibration content that plays across the mapped screens.
 
 **Deliverables**
-- Moving grids, horizontal and vertical scans, frame counters and color cycling.
-- Content flowing across multiple screens, and intentionally overlapping regions.
-- Live preview with configurable target content FPS and measured browser FPS.
+- Moving grids, horizontal and vertical scans, frame counters and color cycling. ✅
+- Content flowing across multiple screens, and intentionally overlapping regions. ✅
+- Live preview with configurable target content FPS and measured browser FPS. ✅
 
-Design: [Motion Lab readiness](../architecture/OVERVIEW.md#motion-lab-readiness).
+Design: [Motion Lab](../architecture/OVERVIEW.md#motion-lab).
 
-**Dependencies:** Phase 1. A measured preview budget.
+**Dependencies:** Phase 1, waived for V1 by product decision. A measured preview budget on venue hardware.
 
 **Acceptance criteria**
 - A given frame number always renders identical pixels, independent of playback speed.
