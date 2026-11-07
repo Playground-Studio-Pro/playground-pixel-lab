@@ -4,9 +4,9 @@ Baselines and budgets. **Don't claim a performance change without before and aft
 
 ## Baseline
 
-Measured 2026-11-07 on commit `c17be93`: production build, Apple M1 Max, 32 GB, Chrome, 60 Hz display, Node 26, served from localhost.
+Measured 2026-11-07: production build, Apple M1 Max, 32 GB, Chrome 156, 60 Hz display, Node 26, served from localhost. The app chunk has the same content hash on commit `c17be93` and on the Phase 0 branch, so these numbers describe the MVP.
 
-**Read these with care.** This is a fast machine with no network, so numbers show relative cost and regressions rather than what a venue laptop would experience. Frame tests use synthetic input events, and most are single runs.
+**Read these with care.** This is a fast, idle machine with no network, so the numbers show relative cost and catch regressions. They don't predict a venue laptop. Frame tests use synthetic input events.
 
 ### Bundle
 
@@ -40,50 +40,57 @@ Module sizes before bundling, from `next analyze`. They overlap with the table a
 | Metric | Result |
 | --- | --- |
 | HTML response time | 1.4 ms (18 ms first request) |
-| First paint, repeat load | 40 to 136 ms (background only) |
-| **First contentful paint, repeat load** | **332 to 348 ms** (4 samples) |
-| Load event, repeat load | 39 to 138 ms |
-| Cold first load | Load event 157 ms, 484 KB transferred. FCP read 2332 ms in one sample, taken as the tool opened the tab, so treat that FCP as unreliable |
+| First paint, repeat load | 44 to 212 ms (background only) |
+| **First contentful paint, repeat load** | **344 to 428 ms** (6 samples) |
+| Load event, repeat load | 35 to 195 ms |
+| Cold first load | 484 KB transferred, load event 157 ms. Timing is a single sample and FCP wasn't reliable, so treat cold load as not yet measured |
 
 The server sends an empty shell, so nothing meaningful paints until the 260 KB app chunk has loaded and run. That's the main gap between first paint and FCP.
 
 ### Editor frame times
 
-Intervals between animation frames, in ms. 16.7 is a perfect 60 fps. Idle: p50 16.7, p95 17.3.
+Intervals between animation frames, in ms. 16.7 is a perfect 60 fps. Each cell gives the range of p95 across repeated runs of 180 frames: 4 for zoom, 3 for drag, 2 for pan. p50 was 16.7 in every run.
 
-| Test (100-screen project unless noted) | p50 | p95 | Max | Frames over 20 ms |
-| --- | --- | --- | --- | --- |
-| Drag one screen | 16.7 | 32.9 | 66 | 11 of 179 |
-| Drag all 100 screens | 16.7 | 17.4 | 67 | 3 of 179 |
-| Marquee select | 16.7 | 17.7 | 50 | 2 of 59 |
-| Wheel pan | 16.7 | 17.7 | 50 | 7 of 179 |
-| **Pinch zoom** | 33.4 | 67 to 133 | 183 | 142 to 147 of 179 |
+| Screens | Cabinets | Zoom p95 | Over 20 ms | Drag one, p95 | Pan p95 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 8192 | 17.9 to 18.0 | 0 | 17.8 to 18.0 | 18.2 to 18.3 |
+| 3 | 72 | 17.9 to 18.2 | 0 | 18.1 to 18.3 | 18.1 to 18.2 |
+| 20 | 480 | 17.9 to 18.3 | 0 | 18.2 to 18.4 | 18.2 to 18.3 |
+| 100 | 2000 | 17.5 to 18.1 | 0 | 17.5 to 17.8 | 18.1 to 18.3 |
+| 500 | 2000 | **33.3** | 15 to 19 of 179 | Invalid: selected nothing | 17.4 to 17.9 |
 
-Pinch zoom by project size:
+Dragging all 100 screens at once: p95 18.4 to 18.6, with no frames over 20 ms.
 
-| Screens | Cabinets | p50 | p95 | Over 20 ms |
-| --- | --- | --- | --- | --- |
-| 1 | 8192 | 16.7 | 33.3 | 10 of 179 |
-| 3 | 72 | 16.7 | 33.4 | 22 of 179 |
-| 20 | 480 | 16.7 | 66.5 | 37 of 179 |
-| 100 | 2000 | 33.4 | 133.3 | 142 of 179 |
-| 500 | 2000 | 116.7 | 250.5 | 174 of 179 |
+### Rendering
 
-### Rendering bottleneck
+**The editor holds 60 fps through 100 screens on this machine.** Zoom begins to drop frames only at 500 screens, well beyond a typical show.
 
-**Zoom cost follows screen count, not cabinet count.** One screen with 8192 cabinets holds 60 fps at the median, while 500 screens with 2000 cabinets drop to about 9 fps. So the cabinet grid isn't the cost. The per-screen work is: each zoom frame re-renders `TopBar` and every `ScreenItem` (no `memo`) and rebuilds their Konva nodes, including screens outside the view.
-
-This is inferred from the scaling and from reading the code. It hasn't been confirmed with a profiler.
+The first drops follow screen count rather than cabinet count: one screen with 8192 cabinets stays smooth, while 500 screens with 2000 cabinets don't. That fits the code, where each zoom frame re-renders `TopBar` and every `ScreenItem` (no `memo`) and rebuilds their Konva nodes, including screens outside the view. It's inferred from scaling and reading the code, and hasn't been confirmed with a profiler. There's no measured need to change this yet.
 
 ### Exports
 
-Time from click to finished file, one run each. Longest stall is the longest main-thread task.
+Time from click to finished file, as the range over repeated runs (3 runs, or 2 at the limit). Longest stall is the longest main-thread task.
 
 | Project | Canvas | PNG | SVG | Resolume package | Longest stall |
 | --- | --- | --- | --- | --- | --- |
-| 3 screens | 1536 × 768 | 41 ms | 12 ms | 337 ms, 0.3 MB | 56 ms |
-| 100 screens | 5120 × 6400 (33 MP) | 937 ms | 13 ms | 6.0 s, 8.8 MB | 269 ms |
-| 1 screen at limit | 16384 × 8192 (134 MP) | 2.9 s | 9 ms | 10.8 s, 2.3 MB | 752 ms |
+| 3 screens | 1536 × 768 | 15 to 24 ms | 2 to 5 ms | 108 to 143 ms, 0.3 MB | Under 50 ms |
+| 20 screens | 2560 × 3072 (8 MP) | 66 to 70 ms | 2 to 4 ms | 452 to 466 ms, 1.7 MB | Under 50 ms |
+| 100 screens | 5120 × 6400 (33 MP) | 190 to 211 ms | 4 to 6 ms | 1.3 s, 8.8 MB | 58 to 79 ms |
+| 1 screen at limit | 16384 × 8192 (134 MP) | 552 to 692 ms | 6 to 7 ms | 2.1 to 2.3 s, 2.3 MB | 192 to 323 ms |
+
+### Measurements under system load
+
+An earlier session on the same code gave far worse numbers, and they didn't reproduce on an idle machine:
+
+| Test | Under load | Idle |
+| --- | --- | --- |
+| Zoom, 100 screens, p95 | 67 to 133 ms | 18 ms |
+| Zoom, 500 screens, p50 / p95 | 117 / 251 ms | 16.7 / 33 ms |
+| PNG, 33 MP | 937 ms | 200 ms |
+| Package, 100 screens | 6.0 s | 1.3 s |
+| Package, limit size | 10.8 s | 2.2 s |
+
+The cause wasn't identified. That session followed a fresh install of about 600 MB, and iCloud Drive was later seen using a full CPU core on this machine, so [background syncing](TESTING.md#environment) is a possibility, but this is unconfirmed. These aren't a baseline. They are a warning: a busy or slower machine could plausibly see costs this high, and **nothing has been measured on venue-class hardware**.
 
 ### Pure engines
 
@@ -100,8 +107,7 @@ Validation is O(n²) in screens, and runs on every edit. At 500 screens it's sti
 
 | Item | Finding | Basis |
 | --- | --- | --- |
-| JS heap, idle | 25 to 43 MB | Measured (`performance.memory`, coarse) |
-| JS heap after 100-screen package | 94 MB, before collection | Measured |
+| JS heap, typical | 29 to 87 MB during the runs above | Measured (`performance.memory`, coarse) |
 | Canvas during PNG export | Width × height × 4: 131 MB at 33 MP, **537 MB at the limit** | Calculated. Not in the JS heap |
 | Package export | Holds every finished PNG in memory until zipped. Canvases aren't released explicitly | From the code |
 
@@ -114,28 +120,28 @@ Total process and GPU memory were **not measured**. On a smaller laptop, the lim
 | Initial JS, gzip | ≤ 190 KB | 172.8 KB | ✅ |
 | App chunk, gzip | ≤ 280 KB | 260.3 KB | ✅ |
 | Initial + app chunk, gzip | ≤ 460 KB | 433.1 KB | ✅ |
-| FCP, repeat load on this baseline setup | ≤ 500 ms | 348 ms | ✅ |
-| Drag, 100 screens, p95 | ≤ 20 ms | 17.4 to 32.9 ms | ❌ |
-| Zoom, 3 screens, p95 | ≤ 34 ms | 33.4 ms | ✅ |
-| Zoom, 20 screens, p95 | ≤ 34 ms | 66.5 ms | ❌ |
-| Zoom, 100 screens, p95 | ≤ 50 ms | 133.3 ms | ❌ |
-| PNG, 33 MP | ≤ 1.5 s | 0.94 s | ✅ |
-| PNG, limit size | ≤ 5 s | 2.9 s | ✅ |
-| Package, 100 screens | ≤ 10 s | 6.0 s | ✅ |
-| Longest main-thread stall during export | ≤ 1 s | 752 ms | ✅ |
+| FCP, repeat load | ≤ 500 ms | 344 to 428 ms | ✅ |
+| Zoom, 100 screens, p95 | ≤ 20 ms | 18.1 ms | ✅ |
+| Zoom, 500 screens, p95 | ≤ 34 ms | 33.3 ms | ✅ (at the limit) |
+| Drag all, 100 screens, p95 | ≤ 20 ms | 18.6 ms | ✅ |
+| PNG, 33 MP | ≤ 500 ms | 211 ms | ✅ |
+| PNG, limit size | ≤ 1.5 s | 692 ms | ✅ |
+| Package, 100 screens | ≤ 3 s | 1.3 s | ✅ |
+| Longest main-thread stall during export | ≤ 500 ms | 323 ms | ✅ |
 | `validateProject`, 500 screens | ≤ 16 ms | 3.8 ms | ✅ |
 
-Size budgets are set just above the baseline, to stop growth. New dependencies must fit inside them or justify raising them. The failing budgets are the [Phase 1](../product/ROADMAP.md#phase-1-mapping-studio) rendering goal.
+These budgets apply to this reference machine, idle, and exist to catch regressions. Size budgets sit just above the baseline to stop growth, so new dependencies must fit inside them or justify raising them. Venue-laptop budgets can only be set after measuring one.
 
 ## Priorities
 
-Effects are expectations until measured.
+Effects are expectations until measured. Don't optimize without a failing measurement.
 
-1. **Avoid unnecessary rerenders:** isolate `TopBar` from viewport changes and `memo` screen items. This addresses the only failing budgets.
-2. **Efficient canvas rendering:** skip screens outside the view. Consider a Konva layer transform for zoom and pan rather than recalculating every node.
-3. **Code splitting:** separate the start screen from the workspace, so Konva doesn't load until a project opens.
-4. **Lazy loading:** keep JSZip lazy, and review `zod` and `next-themes`.
-5. **Export:** release canvases after each image, and consider a worker if stalls cause real problems.
+1. **Measure on venue-class hardware.** The biggest unknown, and it decides whether anything below is urgent.
+2. **Code splitting:** the only measured user-facing gap. Separate the start screen from the workspace, so Konva doesn't load until a project opens.
+3. **Lazy loading:** keep JSZip lazy, and review `zod` and `next-themes`.
+4. **Avoid unnecessary rerenders:** isolate `TopBar` from viewport changes and `memo` screen items, when a measurement calls for it.
+5. **Efficient canvas rendering:** skip screens outside the view, or use a layer transform for zoom and pan, when a measurement calls for it.
+6. **Export memory:** release canvases after each image, and test the limit size on a smaller machine.
 
 ## How to measure
 
@@ -163,4 +169,9 @@ await ppl.importFixture("large");
 await ppl.measureExports();         // captures files in memory, no downloads
 ```
 
-Keep the tab visible, and close other heavy work. Clear the origin's site data afterward. Record the commit, machine and any differences in method alongside new numbers.
+**Rules, learned the hard way**
+- Confirm the machine is idle first. `await ppl.frames(90)` should give a p95 near 17 ms, and no install, build or indexing should be running.
+- Repeat every test and report the range. A single run can be wrong by a factor of five.
+- If a result surprises you, check that the test really did the work. `measureDrag` reports what it selected: an empty `selection` makes the run invalid.
+- Keep the tab visible. Clear the origin's site data afterward.
+- Record the commit, machine and any differences in method alongside new numbers.

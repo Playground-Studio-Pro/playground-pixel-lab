@@ -10,6 +10,12 @@ npm run typecheck && npm run lint && npm test && npm run build
 
 **Passing locally isn't proof of a clean checkout.** Generated files can hide problems, as with the route types that made `tsc` pass only after a build. When changing tooling, test from a fresh `git clone` with `npm ci`.
 
+## Environment
+
+**Don't develop inside a synced folder.** iCloud Drive syncs `~/Documents` on this development machine, and it creates duplicates such as `.next/types/routes.d 2.ts`. These break `tsc` with `Duplicate identifier` errors, and 360 had appeared in `node_modules` when this was found. Heavy syncing also competes for CPU during builds and measurements.
+
+If this happens, delete `.next` and `node_modules`, then run `npm ci`. The lasting fix is to keep the repository in a folder that doesn't sync.
+
 ## Unit tests
 
 Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for storage.

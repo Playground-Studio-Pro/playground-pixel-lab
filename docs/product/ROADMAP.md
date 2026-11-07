@@ -29,7 +29,8 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 **Deliverables**
 - Undo and redo.
-- Canvas rendering within budget (zoom at 100 screens), and code splitting of the start screen from the workspace.
+- Performance measured on venue-class hardware, with fixes for what that shows.
+- Code splitting of the start screen from the workspace.
 - Screen rotation (90°, 180°, 270°) in physical and output mapping.
 - Cabinet library management outside a project.
 - Content template exports per canvas.
@@ -40,7 +41,7 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 **Acceptance criteria**
 - Every edit to a project can be undone and redone, including deleting screens.
-- All [budgets](../development/PERFORMANCE.md#budgets) pass.
+- All [budgets](../development/PERFORMANCE.md#budgets) pass, and budgets for a venue laptop are set and met.
 - Playground Studio maps a real show without a spreadsheet.
 - The app opens with no network after one visit.
 
@@ -57,7 +58,7 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 Design: [Motion Lab readiness](../architecture/OVERVIEW.md#motion-lab-readiness).
 
-**Dependencies:** Phase 1 rendering work. A measured preview budget.
+**Dependencies:** Phase 1. A measured preview budget.
 
 **Acceptance criteria**
 - A given frame number always renders identical pixels, independent of playback speed.

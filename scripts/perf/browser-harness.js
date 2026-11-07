@@ -65,9 +65,11 @@ async function measureDrag(count = 180) {
   const y = box.top + box.height / 2;
   mouse("mousedown", x, y, stage());
   await sleep(50);
+  const selection = document.querySelector("[data-testid=selection-readout]").textContent;
   const result = await frames(count, (i) => mouse("mousemove", x + 40 * Math.sin(i / 15) + 6, y + 40 * Math.cos(i / 15), window));
   mouse("mouseup", x, y, window);
-  return result;
+  // An empty selection means the press hit nothing, so the run measured a marquee rather than a drag.
+  return { ...result, selection };
 }
 
 /** Captures exports in memory instead of downloading them, and times PNG, SVG and the Resolume package. */

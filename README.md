@@ -6,7 +6,7 @@ Map LED screens to exact pixels and prepare them for Resolume. A professional to
 
 ## Quick start
 
-Requires Node.js 24 or later.
+Requires Node.js 24 or later. Keep the repository outside folders synced by iCloud Drive or similar services. [Here's why](docs/development/TESTING.md#environment).
 
 ```bash
 npm install

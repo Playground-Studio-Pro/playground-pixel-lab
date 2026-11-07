@@ -56,10 +56,10 @@ Reviewed 2026-11-07.
 | Item | Risk | Suggested time |
 | --- | --- | --- |
 | Offline: no service worker, so the page must be served even though all data is local | Medium: conflicts with the offline principle at a venue without internet | Phase 1 |
-| Editor re-renders every screen node on each zoom, pan and drag frame: no `memo`, no culling ([measured](../development/PERFORMANCE.md#baseline)) | Medium at large shows | Phase 1 |
+| Editor re-renders every screen node on each zoom, pan and drag frame: no `memo`, no culling. Smooth through 100 screens on the reference machine ([measured](../development/PERFORMANCE.md#rendering)), untested on venue hardware | Low to medium | When measured as a problem |
 | No undo | High for production use | Phase 1, first |
 | Everything loads in one 260 KB gzip chunk, including Konva on the start screen | Low | Phase 1 |
-| PNG rendering runs on the main thread, with stalls up to about 750 ms | Low | When measured as a problem |
+| PNG rendering runs on the main thread, with stalls up to about 320 ms at the size limit | Low | When measured as a problem |
 | No automated browser tests: the acceptance run is manual | Medium | Phase 1 |
 | Migration path untested beyond version 1 | Low until the first schema change | At first schema change |
 | Library cabinets can't be edited or removed outside a project | Low | Phase 1 |
@@ -72,6 +72,7 @@ Harmless, so left in place. Fix when touching the file.
 - `project-ops.ts` calls `resolveMapping` inside eight operations, and re-exports `computeScreenSpec` without using the export.
 - Unused: `components/ui/badge.tsx`, `components/ui/separator.tsx`, and the scaffold's SVG files in `public/`.
 - `next-themes` is only used by `ui/sonner.tsx`, whose theme is always overridden to dark.
+- With keyboard focus on a toolbar menu trigger, Up and Down go to the menu instead of nudging the selection. Clicking the canvas clears it.
 
 ## Dependencies
 
@@ -139,8 +140,8 @@ components/motion/       Controls and preview. Reads the measured FPS through a 
 
 ### Rendering technology
 
-Start with Canvas 2D, which is already proven here: it draws a 134-megapixel map in under 3 s ([measured](../development/PERFORMANCE.md#baseline)). Measure first. If a preview can't hold its budget, try in order: scaling the preview canvas down, `OffscreenCanvas` in a worker, then raw WebGL for the slowest patterns. Three.js solves 3D scenes, which this doesn't need, so it stays out unless a measured requirement justifies it.
+Start with Canvas 2D, which is already proven here: it draws and encodes a 134-megapixel map in under 1 s ([measured](../development/PERFORMANCE.md#exports)). Measure first. If a preview can't hold its budget, try in order: scaling the preview canvas down, `OffscreenCanvas` in a worker, then raw WebGL for the slowest patterns. Three.js solves 3D scenes, which this doesn't need, so it stays out unless a measured requirement justifies it.
 
 ### Changes needed first
 
-No restructuring is required. Before Phase 2, separate the gesture and drawing code in `workspace-canvas.tsx`, as that also serves Phase 1's rendering work.
+No restructuring is required. Before Phase 2, separate the gesture and drawing code in `workspace-canvas.tsx`.
