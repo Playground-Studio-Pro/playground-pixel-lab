@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local session state
-.claude/SESSION.md
+# local performance measurement output
+/.perf/
+/public/perf/

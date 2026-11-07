@@ -1,31 +1,40 @@
 # Playground Pixel Lab
 
-Map LED screens to exact pixels and prepare them for Resolume.
+Map LED screens to exact pixels and prepare them for Resolume. A professional tool for audiovisual production, used by Playground Studio.
 
-## Status
-
-Vertical slice working: create a project, build screens from cabinets, position them, calculate the master canvas, preview and export, save and reopen. See [docs/TASKS.md](docs/TASKS.md).
+**Status:** working MVP. See [SESSION.md](SESSION.md) for the current state and [ROADMAP](docs/product/ROADMAP.md) for what's next.
 
 ## Quick start
+
+Requires Node.js 24 or later. Keep the repository outside folders synced by iCloud Drive or similar services. [Here's why](docs/development/TESTING.md#environment).
 
 ```bash
 npm install
 npm run dev     # http://localhost:3000
-npm test
 ```
 
-Projects are stored in the browser's IndexedDB, per browser and per address. Use **Export > Project file** for backups or to move a project to another machine.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Development server |
+| `npm test` | Unit tests |
+| `npm run typecheck` | Generate route types, then type-check |
+| `npm run lint` | ESLint |
+| `npm run build` | Production build |
+| `npm run perf:bundle` | Bundle size report, after a build |
+| `npm run perf:engines` | Engine timings and stress fixtures |
 
-## Workflow
+Projects are stored in the browser's IndexedDB, separately for each browser and address. Use **Export > Project file** for backups or to move a project to another machine.
+
+## Using it
 
 1. **New project.**
 2. **Add screen:** choose a cabinet or create one, then set columns and rows.
-3. **Position** on the Content tab by dragging, with arrow keys, or by typing coordinates. The Physical tab holds the stage plan in mm; the Output tab holds positions in the video signal.
+3. **Position:** Content holds pixel positions on the master canvas, Physical holds the stage plan in mm, and Output holds positions in the video signal.
 4. **Preview**, then **Export**. Exports that carry coordinates are blocked while Checks lists errors.
 
 | Input | Action |
 | --- | --- |
-| Scroll, or Space + drag, or middle drag | Pan |
+| Scroll, Space + drag, or middle drag | Pan |
 | Pinch, or ⌘ / Ctrl + scroll | Zoom |
 | Arrow keys / Shift + arrow | Nudge 1 / 10 (px, or mm on Physical) |
 | Shift + click, or drag on empty space | Multi-select |
@@ -35,10 +44,4 @@ Projects are stored in the browser's IndexedDB, per browser and per address. Use
 
 ## Documentation
 
-| File | Purpose |
-|------|---------|
-| docs/PROJECT_CONTEXT.md | Problem, user, objectives, constraints |
-| docs/ARCHITECTURE.md | System design, components, data, dependencies |
-| docs/DECISIONS.md | Permanent architecture and product decisions |
-| docs/RESOLUME.md | What is known about Resolume compatibility, and how to verify a package |
-| docs/TASKS.md | Current, next, later, and done work |
+Start with [CLAUDE.md](CLAUDE.md), which holds the engineering rules and a map of all documents.
