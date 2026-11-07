@@ -29,7 +29,8 @@ One exception: `exports/resolume/package.ts` imports `serializeProject` from `pe
 | `exports/scene.ts` | Renderer-neutral pixel map. SVG and PNG draw the same scene |
 | `exports/resolume/` | Resolume adapter, guide, CSV, package builder |
 | `persistence/` | Repository contract, IndexedDB adapter, schema, file format |
-| `state/store.ts` | App state, derived mapping and validation, autosave |
+| `state/store.ts` | App state, derived mapping and validation, autosave, undo and redo |
+| `state/history.ts` | Undo history as immutable project snapshots. Pure |
 | `state/view-model.ts` | Projects the mapping into one workspace view |
 | `components/workspace/` | App shell, canvas, panels, dialogs |
 | `components/ui/` | Generated shadcn/ui components (Base UI) |
@@ -42,7 +43,7 @@ Reviewed 2026-11-07.
 | --- | --- | --- |
 | Domain models | ✅ Strong | `domain/` imports nothing else in the app |
 | Geometry | ✅ Strong | Pure `engines/geometry.ts`, `snap.ts`, `align.ts`, `viewport.ts`; no framework imports |
-| Mapping | ✅ Strong | Pure `resolveMapping`, with 103 unit tests across the suite |
+| Mapping | ✅ Strong | Pure `resolveMapping`, covered by the unit test suite |
 | Rendering | ⚠️ Partial | Export rendering is cleanly split (scene, then SVG or PNG). Editor rendering isn't: `workspace-canvas.tsx` (488 lines) mixes drawing, gestures and viewport handling |
 | Animation | ➖ None yet | No time concept exists. See below |
 | Persistence | ✅ Strong | Repository contract with an IndexedDB adapter |
@@ -57,7 +58,6 @@ Reviewed 2026-11-07.
 | --- | --- | --- |
 | Offline: no service worker, so the page must be served even though all data is local | Medium: conflicts with the offline principle at a venue without internet | Phase 1 |
 | Editor re-renders every screen node on each zoom, pan and drag frame: no `memo`, no culling. Smooth through 100 screens on the reference machine ([measured](../development/PERFORMANCE.md#rendering)), untested on venue hardware | Low to medium | When measured as a problem |
-| No undo | High for production use | Phase 1, first |
 | Everything loads in one 260 KB gzip chunk, including Konva on the start screen | Low | Phase 1 |
 | PNG rendering runs on the main thread, with stalls up to about 320 ms at the size limit | Low | When measured as a problem |
 | No automated browser tests: the acceptance run is manual | Medium | Phase 1 |

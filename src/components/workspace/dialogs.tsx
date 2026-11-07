@@ -107,12 +107,13 @@ function AddScreenDialog() {
   const openDialog = useUi((s) => s.openDialog);
   const startCabinet = useUi((s) => s.startCabinetFromAddScreen);
   const preferred = useUi((s) => s.addScreenCabinetId);
+  const draft = useUi((s) => s.addScreenDraft);
   const options = useCabinetOptions();
   const lastUsed = project.physical.screens.at(-1)?.cabinetId;
   const [cabinetId, setCabinetId] = useState(preferred ?? lastUsed ?? options[0]?.id ?? BUILTIN_CABINETS[0].id);
-  const [name, setName] = useState(`Screen ${project.physical.screens.length + 1}`);
-  const [columns, setColumns] = useState("4");
-  const [rows, setRows] = useState("3");
+  const [name, setName] = useState(draft?.name ?? `Screen ${project.physical.screens.length + 1}`);
+  const [columns, setColumns] = useState(draft?.columns ?? "4");
+  const [rows, setRows] = useState(draft?.rows ?? "3");
   const [error, setError] = useState<string>();
 
   const cabinet = options.find((c) => c.id === cabinetId);
@@ -151,7 +152,7 @@ function AddScreenDialog() {
           items={options.map((c) => ({ value: c.id, label: c.name }))}
           onChange={setCabinetId}
         />
-        <Button type="button" variant="outline" size="sm" className="h-7 rounded" onClick={startCabinet}>New cabinet</Button>
+        <Button type="button" variant="outline" size="sm" className="h-7 rounded" onClick={() => startCabinet({ name, columns, rows })}>New cabinet</Button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Columns" value={columns} onChange={setColumns} />

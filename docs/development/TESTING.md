@@ -28,6 +28,8 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | `ops.test.ts` | Impossible configurations, screen operations, snapping, alignment, viewport |
 | `exports.test.ts` | Scene geometry, SVG, PNG header, manifest, report, Resolume adapter and package |
 | `persistence.test.ts` | File round trip, corrupted data, IndexedDB, revision conflicts |
+| `history.test.ts` | Undo history core: order, redo clearing, merging repeats, limit, save revision kept; undo and redo shortcuts |
+| `store-history.test.ts` | Undo and redo through the real store and IndexedDB for every kind of edit, plus saving after undo, selection and project switching |
 
 **Rules**
 - Engines and exports get unit tests, with values worked out by hand rather than copied from output.
@@ -38,7 +40,7 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 
 | Area | How it's checked today |
 | --- | --- |
-| Konva canvas, gestures, dialogs | Manual acceptance run |
+| Konva canvas, gestures, dialogs, keyboard shortcuts | Manual acceptance run |
 | PNG pixels in a real browser | Manual acceptance run |
 | Resolume behaviour | [Not yet tested](../integrations/RESOLUME.md#first-real-world-check) |
 
@@ -62,5 +64,11 @@ Run against a production build (`npm run build && npm start`) when canvas, state
 8. Export the project file, reload, and export it again.
    - **Expect:** the two files are byte-identical.
 9. Duplicate the project, open the original from the list, and delete the copy after confirming.
+10. Undo and redo with ⌘Z and ⇧⌘Z:
+    - Delete a screen, then undo and redo it. Drag a screen, then undo it.
+    - Press an arrow key several times quickly. **Expect:** one undo returns the screen to where it started.
+    - Change columns and the cabinet in the inspector, and a mapping setting such as "Same as content position". Undo each.
+    - Type in a text field without applying it, then press ⌘Z. **Expect:** only the typed text is undone, not the project.
+    - Reload after undoing. **Expect:** the project reopens as it was left, and Undo is disabled, because history isn't stored.
 
 Performance measurement is covered in [PERFORMANCE](PERFORMANCE.md).

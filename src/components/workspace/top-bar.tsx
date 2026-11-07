@@ -16,6 +16,8 @@ import {
   Maximize,
   Minus,
   Plus,
+  Redo2,
+  Undo2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -60,8 +62,12 @@ const saveLabels: Record<SaveStatus, string> = {
   unsaved: "Unsaved changes",
   saving: "Saving…",
   error: "Save failed",
-  conflict: "Changed elsewhere",
+  conflict: "Reload needed",
 };
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const undoKeys = isMac ? "⌘Z" : "Ctrl+Z";
+const redoKeys = isMac ? "⇧⌘Z" : "Ctrl+Y";
 
 const alignButtons: { mode: AlignMode; label: string; icon: ReactNode; min: number }[] = [
   { mode: "left", label: "Align left edges", icon: <AlignStartVertical />, min: 2 },
@@ -80,6 +86,8 @@ export function TopBar() {
   const issues = useApp((s) => s.issues);
   const saveStatus = useApp((s) => s.saveStatus);
   const saveError = useApp((s) => s.saveError);
+  const canUndo = useApp((s) => s.canUndo);
+  const canRedo = useApp((s) => s.canRedo);
   const view = useApp((s) => s.view);
   const selection = useApp((s) => s.selection);
   const activeOutputId = useApp((s) => s.activeOutputId);
@@ -131,20 +139,26 @@ export function TopBar() {
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {/* Fixed width, so a changing status never shifts the toolbar. */}
       <button
         type="button"
-        title={saveError ?? "Projects save automatically"}
+        title={saveStatus === "conflict" ? "This project changed in another tab. Click to reload it." : (saveError ?? "Projects save automatically")}
         onClick={() => {
           if (saveStatus === "conflict") window.location.reload();
           else void app.save();
         }}
         className={cn(
-          "rounded px-1.5 py-0.5 text-xs whitespace-nowrap hover:bg-accent",
+          "w-28 shrink-0 truncate rounded px-1.5 py-0.5 text-left text-xs whitespace-nowrap hover:bg-accent",
           saveStatus === "saved" || saveStatus === "saving" || saveStatus === "unsaved" ? "text-muted-foreground" : "font-medium text-destructive",
         )}
       >
-        {saveStatus === "conflict" ? "Changed elsewhere: reload" : saveLabels[saveStatus]}
+        {saveLabels[saveStatus]}
       </button>
+
+      <div className="flex shrink-0 items-center" role="group" aria-label="History">
+        <IconButton label={`Undo (${undoKeys})`} disabled={!canUndo} onClick={() => app.undo()}><Undo2 /></IconButton>
+        <IconButton label={`Redo (${redoKeys})`} disabled={!canRedo} onClick={() => app.redo()}><Redo2 /></IconButton>
+      </div>
 
       <div className="mx-auto flex min-w-0 items-center gap-2">
         <Tabs value={view} onValueChange={(value) => app.setView(value as WorkspaceView)}>
@@ -171,11 +185,35 @@ export function TopBar() {
           />
         </div>
 
-        <div className="flex items-center" role="group" aria-label="Align selection">
+        {/* Wide windows show every align button. Narrower ones fold them into a menu. */}
+        <div className="hidden items-center min-[1440px]:flex" role="group" aria-label="Align selection">
           {alignButtons.map((b) => (
             <IconButton key={b.mode} label={b.label} disabled={selectedCount < b.min} onClick={() => alignSelection(b.mode)}>{b.icon}</IconButton>
           ))}
         </div>
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  render={<Button variant="ghost" size="sm" aria-label="Align selection" disabled={selectedCount < 2} className="gap-0.5 rounded px-1.5 min-[1440px]:hidden" />}
+                />
+              }
+            >
+              <AlignStartVertical />
+              <ChevronDown />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Align selection</TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="center" className="w-56">
+            {alignButtons.map((b) => (
+              <DropdownMenuItem key={b.mode} disabled={selectedCount < b.min} onClick={() => alignSelection(b.mode)}>
+                {b.icon}
+                {b.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <div className="flex items-center">
           <IconButton label="Zoom out" onClick={() => app.zoomBy(1 / 1.25)}><Minus /></IconButton>

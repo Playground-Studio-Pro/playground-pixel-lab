@@ -4,6 +4,13 @@ import { create } from "zustand";
 
 export type DialogName = "new-project" | "open-project" | "add-screen" | "new-cabinet" | "preview";
 
+/** What was typed in Add screen, kept while New cabinet is open on top of it. */
+export interface AddScreenDraft {
+  name: string;
+  columns: string;
+  rows: string;
+}
+
 export interface ConfirmRequest {
   title: string;
   body: string;
@@ -17,8 +24,9 @@ interface UiState {
   /** Set while New cabinet was opened from Add screen: holds the cabinet to preselect on return. */
   addScreenCabinetId: string | null;
   returnToAddScreen: boolean;
+  addScreenDraft: AddScreenDraft | null;
   openDialog(dialog: DialogName | null): void;
-  startCabinetFromAddScreen(): void;
+  startCabinetFromAddScreen(draft: AddScreenDraft): void;
   finishCabinet(cabinetId: string): void;
   askConfirm(request: ConfirmRequest | null): void;
 }
@@ -28,8 +36,9 @@ export const useUi = create<UiState>((set) => ({
   confirm: null,
   addScreenCabinetId: null,
   returnToAddScreen: false,
-  openDialog: (dialog) => set({ dialog, returnToAddScreen: false, addScreenCabinetId: null }),
-  startCabinetFromAddScreen: () => set({ dialog: "new-cabinet", returnToAddScreen: true }),
+  addScreenDraft: null,
+  openDialog: (dialog) => set({ dialog, returnToAddScreen: false, addScreenCabinetId: null, addScreenDraft: null }),
+  startCabinetFromAddScreen: (draft) => set({ dialog: "new-cabinet", returnToAddScreen: true, addScreenDraft: draft }),
   finishCabinet: (cabinetId) =>
     set((state) =>
       state.returnToAddScreen

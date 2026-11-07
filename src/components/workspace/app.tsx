@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { deleteSelection, duplicateSelection, nudgeSelection } from "@/state/actions";
+import { historyShortcut } from "@/state/shortcuts";
 import { useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { Dialogs } from "./dialogs";
@@ -28,8 +29,14 @@ function useShortcuts() {
         void app.save();
         return;
       }
+      // Typing in a field keeps the browser's own text undo.
       if (!app.project || isTyping(e.target) || useUi.getState().dialog || useUi.getState().confirm) return;
-      if (mod && e.key.toLowerCase() === "d") {
+      const step = historyShortcut(e);
+      if (step) {
+        e.preventDefault();
+        if (step === "undo") app.undo();
+        else app.redo();
+      } else if (mod && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicateSelection();
       } else if (e.key === "Delete" || e.key === "Backspace") {

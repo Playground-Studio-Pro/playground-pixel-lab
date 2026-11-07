@@ -10,6 +10,7 @@ import * as ops from "@/engines/project-ops";
 import { IndexedDbCabinetLibrary, IndexedDbProjectRepository, openDatabase } from "@/persistence/indexeddb";
 import { RevisionConflictError, type CabinetLibrary, type ProjectRepository } from "@/persistence/repository";
 import { parseProjectFile } from "@/persistence/schema";
+import * as history from "./history";
 import { buildViewModel, type WorkspaceView } from "./view-model";
 
 export type Selection =
@@ -60,6 +61,32 @@ function derive(project: Project | null): Derived {
   return { mapping, issues: validateProject(project, mapping) };
 }
 
+/** Drops whatever an undo or redo removed from the selection. */
+export function pruneSelection(selection: Selection, project: Project): Selection {
+  switch (selection.kind) {
+    case "none":
+      return selection;
+    case "screens": {
+      const ids = selection.ids.filter((id) => project.physical.screens.some((s) => s.id === id));
+      if (ids.length === selection.ids.length) return selection;
+      return ids.length > 0 ? { kind: "screens", ids } : { kind: "none" };
+    }
+    case "group":
+      return project.physical.groups.some((g) => g.id === selection.id) ? selection : { kind: "none" };
+    case "cabinet":
+      return project.cabinets.some((c) => c.id === selection.id) ? selection : { kind: "none" };
+    case "canvas":
+      return project.content.canvases.some((c) => c.id === selection.id) ? selection : { kind: "none" };
+    case "output":
+      return project.output.outputs.some((o) => o.id === selection.id) ? selection : { kind: "none" };
+  }
+}
+
+export interface EditOptions {
+  /** Repeats of the same edit within a second, such as a held arrow key, undo as one step. */
+  coalesce?: string;
+}
+
 export interface AppState extends Derived {
   status: "loading" | "ready" | "failed";
   startupError: string | null;
@@ -68,6 +95,10 @@ export interface AppState extends Derived {
   library: readonly CabinetProfile[];
   saveStatus: SaveStatus;
   saveError: string | null;
+  /** Undo history of the open project. Cleared when another project opens. */
+  history: history.History;
+  canUndo: boolean;
+  canRedo: boolean;
 
   selection: Selection;
   view: WorkspaceView;
@@ -88,8 +119,10 @@ export interface AppState extends Derived {
   importProject(text: string): Promise<void>;
   save(): Promise<void>;
 
-  /** Applies a pure edit to the open project and schedules an autosave. */
-  edit(change: (project: Project) => Project): void;
+  /** Applies a pure edit to the open project, records it for undo and schedules an autosave. */
+  edit(change: (project: Project) => Project, options?: EditOptions): void;
+  undo(): void;
+  redo(): void;
   saveToLibrary(cabinet: CabinetProfile): Promise<void>;
   select(selection: Selection): void;
   setView(view: WorkspaceView): void;
@@ -115,6 +148,12 @@ function mergeLibrary(stored: readonly CabinetProfile[]): CabinetProfile[] {
   return [...BUILTIN_CABINETS, ...stored.filter((c) => c.source === "custom")];
 }
 
+const noHistory = { history: history.emptyHistory, canUndo: false, canRedo: false };
+
+function historyState(h: history.History) {
+  return { history: h, canUndo: history.canUndo(h), canRedo: history.canRedo(h) };
+}
+
 export const useApp = create<AppState>((set, get) => {
   const flushAutosave = () => {
     if (autosaveTimer) {
@@ -131,12 +170,35 @@ export const useApp = create<AppState>((set, get) => {
     set({
       project,
       ...derive(project),
+      ...noHistory,
       selection: { kind: "none" },
       view: "content",
       activeOutputId: firstOutput,
       viewports: {},
       saveStatus: "saved",
       saveError: null,
+    });
+  };
+
+  /** Shows a changed project and schedules its autosave. */
+  const apply = (next: Project, extra: Partial<AppState>) => {
+    editCounter++;
+    set({ project: next, ...derive(next), ...extra, saveStatus: "unsaved" });
+    flushAutosave();
+    autosaveTimer = setTimeout(() => void get().save(), AUTOSAVE_MS);
+  };
+
+  const travel = (step: typeof history.undo) => {
+    const { project, saveStatus, selection, activeOutputId } = get();
+    if (!project || saveStatus === "conflict") return;
+    const result = step(get().history, project);
+    if (!result) return;
+    const next = result.project;
+    const outputExists = next.output.outputs.some((o) => o.id === activeOutputId);
+    apply(next, {
+      ...historyState(result.history),
+      selection: pruneSelection(selection, next),
+      activeOutputId: outputExists ? activeOutputId : (next.output.outputs[0]?.id ?? null),
     });
   };
 
@@ -150,6 +212,7 @@ export const useApp = create<AppState>((set, get) => {
     library: BUILTIN_CABINETS,
     saveStatus: "saved",
     saveError: null,
+    ...noHistory,
     selection: { kind: "none" },
     view: "content",
     activeOutputId: null,
@@ -204,7 +267,7 @@ export const useApp = create<AppState>((set, get) => {
     async closeProject() {
       await get().save();
       rememberProject(null);
-      set({ project: null, ...derive(null), selection: { kind: "none" } });
+      set({ project: null, ...derive(null), ...noHistory, selection: { kind: "none" } });
       await get().refreshProjects();
     },
 
@@ -222,7 +285,7 @@ export const useApp = create<AppState>((set, get) => {
       if (get().project?.id === id) {
         flushAutosave();
         rememberProject(null);
-        set({ project: null, ...derive(null), selection: { kind: "none" }, saveStatus: "saved" });
+        set({ project: null, ...derive(null), ...noHistory, selection: { kind: "none" }, saveStatus: "saved" });
       }
       await repo!.delete(id);
       await get().refreshProjects();
@@ -270,15 +333,20 @@ export const useApp = create<AppState>((set, get) => {
       return saveChain;
     },
 
-    edit(change) {
+    edit(change, options) {
       const { project, saveStatus } = get();
       if (!project || saveStatus === "conflict") return;
       const next = change(project);
       if (next === project) return;
-      editCounter++;
-      set({ project: next, ...derive(next), saveStatus: "unsaved" });
-      flushAutosave();
-      autosaveTimer = setTimeout(() => void get().save(), AUTOSAVE_MS);
+      apply(next, historyState(history.record(get().history, project, { key: options?.coalesce, now: Date.now() })));
+    },
+
+    undo() {
+      travel(history.undo);
+    },
+
+    redo() {
+      travel(history.redo);
     },
 
     async saveToLibrary(cabinet) {

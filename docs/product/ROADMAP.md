@@ -25,10 +25,12 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 ## Phase 1: Mapping Studio
 
+**Status: in progress.** Started 2026-11-07. Done: undo and redo, and the top bar fix from the design system list.
+
 **Objective:** make mapping dependable and fast enough for daily use on real shows.
 
 **Deliverables**
-- Undo and redo.
+- Undo and redo. ✅
 - Performance measured on venue-class hardware, with fixes for what that shows.
 - Code splitting of the start screen from the workspace.
 - Screen rotation (90°, 180°, 270°) in physical and output mapping.
