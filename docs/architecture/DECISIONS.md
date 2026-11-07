@@ -71,3 +71,9 @@ DATE: 2026-11-07
 DECISION: Performance budgets are checked by hand with `npm run perf:bundle -- --check`, and aren't in CI.
 WHY: CI stays simple and non-flaky. The bundle check is deterministic and could join CI later; browser timings can't reliably run there.
 IMPACT: PRs touching performance must state their measurements.
+
+---
+DATE: 2026-11-07
+DECISION: Undo and redo keep immutable project snapshots (`state/history.ts`), recorded by the store's single `edit()` entry point. History lives in memory only, up to 200 steps, and resets when another project opens.
+WHY: Every edit is already a pure function returning a new `Project` that shares unchanged parts, so snapshots are cheap and exact, and cover every current and future edit without per-operation inverse code. No dependency was needed.
+IMPACT: An undo restores content but keeps the current save revision, so autosave never conflicts. Cabinets saved to the shared library aren't project edits and aren't undone. Stored history across reloads would need a schema change and isn't planned.

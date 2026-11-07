@@ -1,11 +1,11 @@
 "use client";
 
 import { toast } from "sonner";
-import type { Id } from "@/domain/model";
+import type { Id, Project } from "@/domain/model";
 import { px, um, type Rect } from "@/domain/units";
 import { alignItems, type AlignMode } from "@/engines/align";
 import * as ops from "@/engines/project-ops";
-import { opContext, selectedScreenIds, useApp } from "./store";
+import { opContext, selectedScreenIds, useApp, type EditOptions } from "./store";
 import { useUi } from "./ui-store";
 import { buildViewModel } from "./view-model";
 
@@ -14,16 +14,16 @@ export function reportError(error: unknown) {
 }
 
 /** Runs an edit, turning domain errors into a visible message. */
-export function tryEdit(change: Parameters<ReturnType<typeof useApp.getState>["edit"]>[0]) {
+export function tryEdit(change: (project: Project) => Project, options?: EditOptions) {
   try {
-    useApp.getState().edit(change);
+    useApp.getState().edit(change, options);
   } catch (error) {
     reportError(error);
   }
 }
 
 /** Applies positions expressed in the current view's world units. */
-export function moveInCurrentView(positions: readonly { id: Id; x: number; y: number }[]) {
+export function moveInCurrentView(positions: readonly { id: Id; x: number; y: number }[], options?: EditOptions) {
   const { view } = useApp.getState();
   tryEdit((project) => {
     switch (view) {
@@ -34,7 +34,7 @@ export function moveInCurrentView(positions: readonly { id: Id; x: number; y: nu
       case "output":
         return ops.setSlicePositions(project, positions.map((p) => ({ id: p.id, x: px(p.x), y: px(p.y) })));
     }
-  });
+  }, options);
 }
 
 function selectedViewItems() {
@@ -48,7 +48,9 @@ function selectedViewItems() {
 export function nudgeSelection(dx: number, dy: number) {
   const { items, quantum } = selectedViewItems();
   if (items.length === 0) return;
-  moveInCurrentView(items.map((i) => ({ id: i.id, x: i.rect.x + dx * quantum, y: i.rect.y + dy * quantum })));
+  // A held or repeated arrow key undoes as one move.
+  const coalesce = `nudge:${useApp.getState().view}:${items.map((i) => i.id).join(",")}`;
+  moveInCurrentView(items.map((i) => ({ id: i.id, x: i.rect.x + dx * quantum, y: i.rect.y + dy * quantum })), { coalesce });
 }
 
 export function alignSelection(mode: AlignMode) {
@@ -81,7 +83,9 @@ export function deleteSelection() {
   const names = project.physical.screens.filter((s) => ids.includes(s.id)).map((s) => s.name);
   useUi.getState().askConfirm({
     title: names.length === 1 ? `Delete “${names[0]}”?` : `Delete ${names.length} screens?`,
-    body: "This removes the screen and its content and output mapping. It can't be undone.",
+    body: names.length === 1
+      ? "This removes the screen and its content and output mapping. Undo with ⌘Z."
+      : "This removes the screens and their content and output mapping. Undo with ⌘Z.",
     action: names.length === 1 ? "Delete screen" : "Delete screens",
     onConfirm: () => {
       tryEdit((current) => ops.deleteScreens(current, ids));

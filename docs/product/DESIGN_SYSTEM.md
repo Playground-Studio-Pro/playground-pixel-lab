@@ -39,7 +39,7 @@ Pixel Lab should feel like a premium professional audiovisual tool, the kind of 
 
 ## Known inconsistencies
 
-Found in the audit, recorded for [Phase 1](ROADMAP.md#phase-1-mapping-studio). Nothing here has been changed yet.
+Found in the audit, recorded for [Phase 1](ROADMAP.md#phase-1-mapping-studio). Only item 9 has been partly fixed so far.
 
 | # | Inconsistency | Where |
 | --- | --- | --- |
@@ -51,6 +51,6 @@ Found in the audit, recorded for [Phase 1](ROADMAP.md#phase-1-mapping-studio). N
 | 6 | Satoshi, the brand heading face, isn't used | `layout.tsx` |
 | 7 | Font sizes mix `text-[13px]` and `text-xs` with no named scale | `components/workspace` |
 | 8 | Dialog backdrop blur hides the content behind it, which matters when checking a layout | `ui/dialog.tsx` |
-| 9 | Top bar is crowded at 1280 px, and the status bar hint truncates | `top-bar.tsx`, `workspace-canvas.tsx` |
+| 9 | The status bar hint truncates. The top bar is fixed: the save status has a fixed width, and below 1440 px the align buttons fold into one menu. It fits from 1200 px up with no overlap | `workspace-canvas.tsx` |
 | 10 | The cursor readout keeps the previous view's unit until the pointer moves | `workspace-canvas.tsx` |
 | 11 | Microinteractions are component defaults rather than designed | Throughout |

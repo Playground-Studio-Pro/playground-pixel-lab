@@ -19,6 +19,8 @@ Measured 2026-11-07: production build, Apple M1 Max, 32 GB, Chrome 156, 60 Hz di
 | Fonts (2 Inter subsets) | 45 KB | n/a |
 | HTML | 6.4 KB | n/a |
 
+**Since the baseline:** undo and redo ([Phase 1](../product/ROADMAP.md#phase-1-mapping-studio)) added 3.5 KB raw and 1.1 KB gzip to the app chunk, now 834.5 KB and 261.4 KB. Initial JS is unchanged at 172.8 KB. Both are within [budget](#budgets). Measured 2026-11-07 with `npm run perf:bundle`.
+
 ### Largest dependencies
 
 Module sizes before bundling, from `next analyze`. They overlap with the table above.
