@@ -1,4 +1,4 @@
-# Resolume compatibility
+# Resolume Integration
 
 Researched 2026-11-07. Resolume itself was not available on the development machine, so **nothing here has been tested in Resolume**.
 
@@ -27,7 +27,7 @@ All of these are required:
 3. Load them in Arena on Mac and Windows, and verify every slice value against the pixel map.
 4. Record the tested versions, and show them in the app. Treat other versions as unverified.
 
-Then implement the `supported` variant of `nativePresetSupport` in `src/exports/resolume/adapter.ts`. Back up any existing preset before writing near Resolume's folders.
+Then implement the `supported` variant of `nativePresetSupport` in [`adapter.ts`](../../src/exports/resolume/adapter.ts). This work belongs to [Phase 3](../product/ROADMAP.md#phase-3-resolume-bridge). Back up any existing preset before writing near Resolume's folders.
 
 ## First real-world check
 

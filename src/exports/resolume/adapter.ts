@@ -9,7 +9,7 @@ import { mdTable } from "../report";
  * files, but Resolume doesn't publish the format, and no generated file has been
  * tested in Arena. A writer can be plugged in here once a preset saved by Arena
  * has been analysed and generated files have been loaded and verified.
- * See docs/DECISIONS.md.
+ * See docs/integrations/RESOLUME.md.
  */
 export type NativePresetSupport =
   | { readonly status: "unsupported"; readonly reason: string }

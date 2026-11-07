@@ -41,3 +41,33 @@ DATE: 2026-11-07
 DECISION: Library cabinets ship as generic profiles only, with no manufacturer names.
 WHY: Inventing real product specs would be dangerous. Users enter values from the supplier's data sheet as custom profiles.
 IMPACT: Generic profiles are read-only, and can be duplicated as custom.
+
+---
+DATE: 2026-11-07
+DECISION: Moved `shadcn` to dev dependencies.
+WHY: It's a CLI with a large dependency tree (including `ts-morph`), used at runtime only for a CSS import resolved at build time. Production audit findings went from 6 to 0.
+IMPACT: Building needs dev dependencies installed, which `npm ci` and common hosts do by default. `npm audit` without `--omit=dev` still reports findings in tooling.
+
+---
+DATE: 2026-11-07
+DECISION: Content FPS, browser preview FPS and physical LED refresh rate are separate metrics with separate names.
+WHY: They measure different things. Showing browser FPS as refresh rate would mislead a technician about real hardware.
+IMPACT: Design in [OVERVIEW](OVERVIEW.md#motion-lab-readiness). Refresh rate only appears as a data sheet value.
+
+---
+DATE: 2026-11-07
+DECISION: Motion Lab will start on Canvas 2D, with frame number as the only input to content. No Three.js without a measured need.
+WHY: Patterns are 2D and need determinism. Canvas 2D already handles the master canvas size limit. Three.js would add weight for capabilities this doesn't use.
+IMPACT: See the escalation order in [OVERVIEW](OVERVIEW.md#rendering-technology).
+
+---
+DATE: 2026-11-07
+DECISION: SESSION.md is tracked in Git at the repository root.
+WHY: The state of the project should travel with the code and be visible to every collaborator and session.
+IMPACT: It holds current state only, so it's replaced rather than appended to.
+
+---
+DATE: 2026-11-07
+DECISION: Performance budgets are checked by hand with `npm run perf:bundle -- --check`, and aren't in CI.
+WHY: CI stays simple and non-flaky. The bundle check is deterministic and could join CI later; browser timings can't reliably run there.
+IMPACT: PRs touching performance must state their measurements.
