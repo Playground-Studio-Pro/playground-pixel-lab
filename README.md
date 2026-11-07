@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Playground Pixel Lab
 
-## Getting Started
+Map LED screens to exact pixels and prepare them for Resolume.
 
-First, run the development server:
+## Status
+
+Vertical slice working: create a project, build screens from cabinets, position them, calculate the master canvas, preview and export, save and reopen. See [docs/TASKS.md](docs/TASKS.md).
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3000
+npm test
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Projects are stored in the browser's IndexedDB, per browser and per address. Use **Export > Project file** for backups or to move a project to another machine.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Workflow
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **New project.**
+2. **Add screen:** choose a cabinet or create one, then set columns and rows.
+3. **Position** on the Content tab by dragging, with arrow keys, or by typing coordinates. The Physical tab holds the stage plan in mm; the Output tab holds positions in the video signal.
+4. **Preview**, then **Export**. Exports that carry coordinates are blocked while Checks lists errors.
 
-## Learn More
+| Input | Action |
+| --- | --- |
+| Scroll, or Space + drag, or middle drag | Pan |
+| Pinch, or ⌘ / Ctrl + scroll | Zoom |
+| Arrow keys / Shift + arrow | Nudge 1 / 10 (px, or mm on Physical) |
+| Shift + click, or drag on empty space | Multi-select |
+| ⌘ + click | Select one screen inside a group |
+| Ctrl while dragging | Bypass snapping |
+| ⌘D / Delete / ⌘S / Esc | Duplicate / delete / save / deselect |
 
-To learn more about Next.js, take a look at the following resources:
+## Documentation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| File | Purpose |
+|------|---------|
+| docs/PROJECT_CONTEXT.md | Problem, user, objectives, constraints |
+| docs/ARCHITECTURE.md | System design, components, data, dependencies |
+| docs/DECISIONS.md | Permanent architecture and product decisions |
+| docs/RESOLUME.md | What is known about Resolume compatibility, and how to verify a package |
+| docs/TASKS.md | Current, next, later, and done work |
