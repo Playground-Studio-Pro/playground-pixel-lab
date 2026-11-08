@@ -1,6 +1,6 @@
 # Customization and Modules
 
-**Status: proposal, not approved.** Written 2026-11-07 for the design and product reviews. Nothing here is in the [ROADMAP](ROADMAP.md) yet. Each item needs approval before work starts, and some change scope that the roadmap currently excludes; those are marked.
+**Status: proposal, not approved.** The module contract in section 3 is now defined, as types only, in [CONTRACTS](../architecture/CONTRACTS.md), and each candidate module has an owning agent in [docs/agents](../agents/README.md). Written 2026-11-07 for the design and product reviews. Nothing here is in the [ROADMAP](ROADMAP.md) yet. Each item needs approval before work starts, and some change scope that the roadmap currently excludes; those are marked.
 
 It covers four topics:
 1. Demo projects.

@@ -2,6 +2,22 @@
 
 Each phase needs explicit approval to start. Requirements for what exists today are in [REQUIREMENTS](REQUIREMENTS.md).
 
+## Product areas
+
+From 2026-11-08 the product is organized as four studios that share one preview engine. The phases below stay the unit of approval. The studios say who builds what.
+
+| Studio | Phases it carries | Agent |
+| --- | --- | --- |
+| Mapping Studio | 1 | Lead Architect |
+| Content Studio | 1 (content templates), then approved items from [MODULES](MODULES.md) | Content Engineering |
+| Engineering Studio | 1 (cabinet library), 4 | LED Engineering |
+| Output Studio | 2 (full-screen output, next step), 3 | Output Engineering |
+| Shell and customization | 1 (design corrections), then approved items from [MODULES](MODULES.md#2-customization) | Product Design |
+
+**Motion Lab** is the shared preview engine, owned by the Lead Architect. Shared contracts are in [CONTRACTS](../architecture/CONTRACTS.md). Lanes, file ownership and task dependencies are in [docs/agents](../agents/README.md).
+
+**Parallel start, inside approved scope:** module registry (L1), studio navigation spec, theme tokens and preferences (D1–D3), content templates (C1), cabinet library (E1), exports on the shared contract (O1). Everything else in the agent briefs waits for approval.
+
 ## Phase 0: Foundation
 
 **Status: complete.** Merged on 2026-11-07. All acceptance criteria were met, including a full manual acceptance run.
@@ -34,8 +50,8 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 - Performance measured on venue-class hardware, with fixes for what that shows.
 - Code splitting of the start screen from the workspace.
 - Screen rotation (90°, 180°, 270°) in physical and output mapping.
-- Cabinet library management outside a project.
-- Content template exports per canvas.
+- Cabinet library management outside a project. LED Engineering, task E1.
+- Content template exports per canvas. Content Engineering, task C1.
 - Design system corrections from [DESIGN_SYSTEM](DESIGN_SYSTEM.md#known-inconsistencies).
 - Offline loading of the app itself.
 
