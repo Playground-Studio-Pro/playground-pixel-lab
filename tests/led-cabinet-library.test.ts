@@ -1,9 +1,9 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
-import { toProjectCabinet, YESTECH_MG6S_P26_INDOOR, type LibraryCabinet } from "@/domain/cabinets";
+import { EMPTY_LIBRARY_FIELDS, toProjectCabinet, YESTECH_MG6S_P26_INDOOR, type LibraryCabinet } from "@/domain/cabinets";
 import { mmToUm, px } from "@/domain/units";
-import { cabinetFormText, parseCabinetForm, type CabinetFormText } from "@/engines/led/cabinet-form";
+import { cabinetFormText, parseCabinetForm, parseThousandths, type CabinetFormText } from "@/engines/led/cabinet-form";
 import { computeScreenSpec } from "@/engines/physical";
 import * as ops from "@/engines/project-ops";
 import {
@@ -31,6 +31,23 @@ const ABSEN: LibraryCabinet = {
   supplier: "Absen",
   model: "Test",
   datasheetNote: "",
+  maxPowerMw: null,
+  typicalPowerMw: null,
+  weightG: null,
+  refreshRateHz: null,
+  environment: null,
+};
+
+/** Made-up test values, not a real product's specifications. */
+const WITH_SPECS: LibraryCabinet = {
+  ...ABSEN,
+  id: "lib-specs",
+  name: "Spec test cabinet",
+  maxPowerMw: 180_000,
+  typicalPowerMw: 60_500,
+  weightG: 7_250,
+  refreshRateHz: 3840,
+  environment: "outdoor",
 };
 
 describe("Yestech MG6S P2.6 Indoor seed", () => {
@@ -54,9 +71,9 @@ describe("Yestech MG6S P2.6 Indoor seed", () => {
     expect([spec.widthUm, spec.heightUm]).toEqual([5_500_000, 3_000_000]);
   });
 
-  it("stores no weight, power or refresh value", () => {
-    const keys = Object.keys(YESTECH_MG6S_P26_INDOOR);
-    expect(keys.some((k) => /weight|power|watt|refresh|gram/i.test(k))).toBe(false);
+  it("states indoor, and leaves power, weight and refresh rate empty rather than guessed", () => {
+    expect(YESTECH_MG6S_P26_INDOOR.environment).toBe("indoor");
+    expect([YESTECH_MG6S_P26_INDOOR.maxPowerMw, YESTECH_MG6S_P26_INDOOR.typicalPowerMw, YESTECH_MG6S_P26_INDOOR.weightG, YESTECH_MG6S_P26_INDOOR.refreshRateHz]).toEqual([null, null, null, null]);
   });
 });
 
@@ -132,7 +149,7 @@ describe("older custom cabinets", () => {
     projectDb.close();
 
     const library = await openCabinetLibrary(factory);
-    expect(await library.get(CAB.id)).toEqual({ ...CAB, supplier: "", model: "", datasheetNote: "" });
+    expect(await library.get(CAB.id)).toEqual({ ...CAB, ...EMPTY_LIBRARY_FIELDS });
     expect(await library.get("builtin-x")).toBeNull();
 
     await library.delete(CAB.id);
@@ -220,5 +237,96 @@ describe("cabinet library store", () => {
 
     await store.getState().remove(ABSEN.id);
     expect(store.getState().entries).toEqual([YESTECH_MG6S_P26_INDOOR]);
+  });
+});
+
+describe("optional data-sheet specs", () => {
+  it("persist in integer units and survive reopening", async () => {
+    const factory = new IDBFactory();
+    await (await openCabinetLibrary(factory)).save(WITH_SPECS);
+    const reopened = await openCabinetLibrary(factory);
+    expect(await reopened.get(WITH_SPECS.id)).toEqual(WITH_SPECS);
+  });
+
+  it("can be cleared back to not stated", async () => {
+    const library = await openCabinetLibrary(new IDBFactory());
+    await library.save(WITH_SPECS);
+    await library.save({ ...WITH_SPECS, maxPowerMw: null, weightG: null, environment: null });
+    expect(await library.get(WITH_SPECS.id)).toMatchObject({ maxPowerMw: null, typicalPowerMw: 60_500, weightG: null, environment: null });
+  });
+
+  it("read as null on profiles saved before the fields existed", async () => {
+    const factory = new IDBFactory();
+    const db = await openCabinetLibraryDatabase(factory);
+    const tx = db.transaction("profiles", "readwrite");
+    // The exact shape PR #10's first version stored: no spec fields at all.
+    tx.objectStore("profiles").put({ ...toProjectCabinet(ABSEN), supplier: "Absen", model: "Test", datasheetNote: "" });
+    await new Promise((resolve) => (tx.oncomplete = resolve));
+    db.close();
+    const library = await openCabinetLibrary(factory);
+    expect(await library.get(ABSEN.id)).toEqual(ABSEN);
+  });
+
+  it.each<[string, Partial<LibraryCabinet>]>([
+    ["fractional milliwatts", { maxPowerMw: 1.5 }],
+    ["zero weight", { weightG: 0 }],
+    ["negative refresh rate", { refreshRateHz: -60 }],
+    ["an unknown environment", { environment: "semi-outdoor" as never }],
+    ["typical above maximum power", { maxPowerMw: 100_000, typicalPowerMw: 120_000 }],
+  ])("refuse %s", async (_, patch) => {
+    const library = await openCabinetLibrary(new IDBFactory());
+    await expect(library.save({ ...WITH_SPECS, ...patch })).rejects.toBeInstanceOf(CabinetFormatError);
+    expect(await library.get(WITH_SPECS.id)).toBeNull();
+  });
+
+  it("never reach the project copy, so project files keep their shape", () => {
+    const copy = toProjectCabinet(WITH_SPECS);
+    expect(Object.keys(copy).some((k) => /power|weight|refresh|environment/i.test(k))).toBe(false);
+    const project = ops.addCabinet(ops.createProject({ name: "Wall" }, testContext()), copy);
+    expect(parseProject(JSON.parse(JSON.stringify(project)))).toEqual(project);
+  });
+
+  it("are kept when a project edits the same profile", async () => {
+    const store = createCabinetLibraryStore(() => openCabinetLibrary(new IDBFactory()));
+    await store.getState().save(WITH_SPECS);
+    await store.getState().saveFromProject({ ...toProjectCabinet(WITH_SPECS), name: "Renamed in project" });
+    expect(store.getState().entries.find((e) => e.id === WITH_SPECS.id)).toEqual({ ...WITH_SPECS, name: "Renamed in project" });
+  });
+});
+
+describe("spec form fields", () => {
+  const base = cabinetFormText(WITH_SPECS);
+
+  it("show W and kg from integer mW and g, and round-trip exactly", () => {
+    expect([base.maxPower, base.typicalPower, base.weight, base.refreshRate, base.environment]).toEqual(["180", "60.5", "7.25", "3840", "outdoor"]);
+    const result = parseCabinetForm(base);
+    expect(result.ok && result.value).toMatchObject({ maxPowerMw: 180_000, typicalPowerMw: 60_500, weightG: 7_250, refreshRateHz: 3840, environment: "outdoor" });
+  });
+
+  it("store empty fields as null", () => {
+    const result = parseCabinetForm({ ...base, maxPower: "", typicalPower: " ", weight: "", refreshRate: "", environment: "" });
+    expect(result.ok && result.value).toMatchObject({ maxPowerMw: null, typicalPowerMw: null, weightG: null, refreshRateHz: null, environment: null });
+  });
+
+  it("parse thousandths without floating point", () => {
+    expect(parseThousandths("0.001")).toBe(1);
+    expect(parseThousandths("5.7")).toBe(5_700);
+    expect(parseThousandths("")).toBeNull();
+    expect(parseThousandths("0")).toBeUndefined();
+    expect(parseThousandths("1.2345")).toBeUndefined();
+    expect(parseThousandths("-3")).toBeUndefined();
+    expect(parseThousandths("5,7")).toBeUndefined();
+  });
+
+  it.each<[Partial<CabinetFormText>, keyof CabinetFormText]>([
+    [{ maxPower: "abc" }, "maxPower"],
+    [{ typicalPower: "200" }, "typicalPower"],
+    [{ weight: "0" }, "weight"],
+    [{ refreshRate: "3840.5" }, "refreshRate"],
+    [{ refreshRate: "0" }, "refreshRate"],
+  ])("rejects %o", (patch, field) => {
+    const result = parseCabinetForm({ ...base, ...patch });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[field]).toBeTruthy();
   });
 });

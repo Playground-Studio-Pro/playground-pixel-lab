@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { LibraryCabinet } from "@/domain/cabinets";
+import { EMPTY_LIBRARY_FIELDS, type LibraryCabinet } from "@/domain/cabinets";
 import type { CabinetProfile, Id } from "@/domain/model";
 import { openCabinetLibrary, type CabinetLibraryRepository } from "@/persistence/cabinet-library";
 
@@ -16,7 +16,7 @@ export interface CabinetLibraryState {
   remove(id: Id): Promise<void>;
   /**
    * Keeps the library in step with a custom profile edited inside a project, as the
-   * app did before the library existed. Supplier fields already in the library are kept.
+   * app did before the library existed. Supplier fields and specs already in the library are kept.
    */
   saveFromProject(profile: CabinetProfile): Promise<void>;
 }
@@ -62,7 +62,7 @@ export function createCabinetLibraryStore(open: () => Promise<CabinetLibraryRepo
         if (profile.source !== "custom") return;
         const library = await ready();
         const existing = await library.get(profile.id);
-        await library.save({ supplier: "", model: "", datasheetNote: "", ...existing, ...profile, source: "custom" });
+        await library.save({ ...EMPTY_LIBRARY_FIELDS, ...existing, ...profile, source: "custom" });
         await refresh();
       },
     };

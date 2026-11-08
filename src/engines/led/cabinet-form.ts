@@ -1,4 +1,4 @@
-import type { LibraryCabinet } from "@/domain/cabinets";
+import type { CabinetEnvironment, LibraryCabinet } from "@/domain/cabinets";
 import { formatMm, parseMm, parsePx, type Px, type Um } from "@/domain/units";
 
 /** What the user typed in the cabinet form. Lengths in millimetres, pixels as whole numbers. */
@@ -11,6 +11,12 @@ export interface CabinetFormText {
   pixelsX: string;
   pixelsY: string;
   pitch: string;
+  /** Optional data-sheet values. Empty text means "not stated" and is stored as null. */
+  maxPower: string; // W, up to 3 decimals
+  typicalPower: string; // W, up to 3 decimals
+  weight: string; // kg, up to 3 decimals
+  refreshRate: string; // Hz, whole number
+  environment: "" | CabinetEnvironment;
   datasheetNote: string;
 }
 
@@ -29,6 +35,11 @@ export const EMPTY_CABINET_FORM: CabinetFormText = {
   pixelsX: "",
   pixelsY: "",
   pitch: "",
+  maxPower: "",
+  typicalPower: "",
+  weight: "",
+  refreshRate: "",
+  environment: "",
   datasheetNote: "",
 };
 
@@ -44,8 +55,51 @@ export function cabinetFormText(entry: CabinetFormValue): CabinetFormText {
     pixelsX: String(entry.pixelsX),
     pixelsY: String(entry.pixelsY),
     pitch: formatMm(entry.nominalPitchUm),
+    maxPower: formatThousandths(entry.maxPowerMw),
+    typicalPower: formatThousandths(entry.typicalPowerMw),
+    weight: formatThousandths(entry.weightG),
+    refreshRate: entry.refreshRateHz === null ? "" : String(entry.refreshRateHz),
+    environment: entry.environment ?? "",
     datasheetNote: entry.datasheetNote,
   };
+}
+
+/** 5700 → "5.7", null → "". Integer thousandths (mW, g) shown as W or kg without float maths. */
+export function formatThousandths(value: number | null): string {
+  return value === null ? "" : formatMm(value);
+}
+
+/**
+ * Parses W or kg text with up to 3 decimals into integer thousandths (mW, g).
+ * Empty text is null ("not stated"). Returns undefined when the text is invalid.
+ */
+export function parseThousandths(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const match = /^(\d+)(?:\.(\d{1,3}))?$/.exec(trimmed);
+  if (!match) return undefined;
+  const value = Number(match[1]) * 1000 + Number((match[2] ?? "").padEnd(3, "0"));
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function optionalThousandths(text: string, what: string, unit: string, errors: CabinetFormErrors, key: keyof CabinetFormText): number | null {
+  const value = parseThousandths(text);
+  if (value === undefined) {
+    errors[key] = `${what} must be ${unit} above 0, with up to 3 decimals, or left empty.`;
+    return null;
+  }
+  return value;
+}
+
+function optionalWhole(text: string, what: string, errors: CabinetFormErrors, key: keyof CabinetFormText): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const value = parsePx(trimmed);
+  if (value === null || value <= 0) {
+    errors[key] = `${what} must be a whole number above 0, or left empty.`;
+    return null;
+  }
+  return value;
 }
 
 function positiveMm(text: string, what: string, errors: CabinetFormErrors, key: keyof CabinetFormText): Um | null {
@@ -79,6 +133,13 @@ export function parseCabinetForm(text: CabinetFormText): CabinetFormResult {
   const pixelsX = positivePx(text.pixelsX, "Pixels across", errors, "pixelsX");
   const pixelsY = positivePx(text.pixelsY, "Pixels down", errors, "pixelsY");
   const nominalPitchUm = positiveMm(text.pitch, "Nominal pitch", errors, "pitch");
+  const maxPowerMw = optionalThousandths(text.maxPower, "Maximum power", "watts", errors, "maxPower");
+  const typicalPowerMw = optionalThousandths(text.typicalPower, "Typical power", "watts", errors, "typicalPower");
+  const weightG = optionalThousandths(text.weight, "Weight", "kilograms", errors, "weight");
+  const refreshRateHz = optionalWhole(text.refreshRate, "Refresh rate", errors, "refreshRate");
+  if (maxPowerMw !== null && typicalPowerMw !== null && typicalPowerMw > maxPowerMw) {
+    errors.typicalPower = "Typical power can't be more than maximum power. Check the data sheet.";
+  }
   if (Object.keys(errors).length > 0 || widthUm === null || heightUm === null || pixelsX === null || pixelsY === null || nominalPitchUm === null) {
     return { ok: false, errors };
   }
@@ -95,6 +156,11 @@ export function parseCabinetForm(text: CabinetFormText): CabinetFormResult {
       supplier: text.supplier.trim(),
       model: text.model.trim(),
       datasheetNote: text.datasheetNote.trim(),
+      maxPowerMw,
+      typicalPowerMw,
+      weightG,
+      refreshRateHz,
+      environment: text.environment === "" ? null : text.environment,
     },
   };
 }

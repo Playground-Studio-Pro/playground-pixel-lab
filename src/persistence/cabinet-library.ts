@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SEED_LIBRARY_CABINETS, type LibraryCabinet } from "@/domain/cabinets";
+import { EMPTY_LIBRARY_FIELDS, SEED_LIBRARY_CABINETS, type LibraryCabinet } from "@/domain/cabinets";
 import type { Id } from "@/domain/model";
 import { openDatabase } from "./indexeddb";
 import { parseCabinet } from "./schema";
@@ -36,12 +36,31 @@ const META = "meta";
 const LEGACY_IMPORTED = "legacy-cabinets-imported";
 const LEGACY_STORE = "cabinets";
 
-const libraryFields = z.object({
-  source: z.literal("custom"),
-  supplier: z.string().trim().max(120).default(""),
-  model: z.string().trim().max(120).default(""),
-  datasheetNote: z.string().trim().max(2000).default(""),
-});
+/** A stated value is a positive safe integer; a missing one (older records) reads as null. */
+const optionalPositiveInt = z
+  .number()
+  .int()
+  .positive()
+  .refine(Number.isSafeInteger, "must be a safe integer")
+  .nullable()
+  .default(null);
+
+const libraryFields = z
+  .object({
+    source: z.literal("custom"),
+    supplier: z.string().trim().max(120).default(""),
+    model: z.string().trim().max(120).default(""),
+    datasheetNote: z.string().trim().max(2000).default(""),
+    maxPowerMw: optionalPositiveInt,
+    typicalPowerMw: optionalPositiveInt,
+    weightG: optionalPositiveInt,
+    refreshRateHz: optionalPositiveInt,
+    environment: z.enum(["indoor", "outdoor"]).nullable().default(null),
+  })
+  .refine((v) => v.maxPowerMw === null || v.typicalPowerMw === null || v.typicalPowerMw <= v.maxPowerMw, {
+    message: "typical power can't exceed maximum power",
+    path: ["typicalPowerMw"],
+  });
 
 /** Validates a library record. Profile fields pass the shared cabinet schema; supplier fields are library-only. */
 export function parseLibraryCabinet(raw: unknown): LibraryCabinet {
@@ -147,7 +166,7 @@ export async function importLegacyCabinets(libraryDb: IDBDatabase, projectDb: ID
   const candidates = legacy.flatMap((raw) => {
     try {
       const profile = parseCabinet(raw);
-      return profile.source === "custom" ? [parseLibraryCabinet({ ...profile, supplier: "", model: "", datasheetNote: "" })] : [];
+      return profile.source === "custom" ? [parseLibraryCabinet({ ...profile, ...EMPTY_LIBRARY_FIELDS })] : [];
     } catch {
       return [];
     }

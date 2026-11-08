@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Readout } from "@/components/workspace/fields";
-import { BUILTIN_CABINETS, toProjectCabinet, type LibraryCabinet } from "@/domain/cabinets";
+import { Readout, SelectField } from "@/components/workspace/fields";
+import { BUILTIN_CABINETS, EMPTY_LIBRARY_FIELDS, toProjectCabinet, type LibraryCabinet } from "@/domain/cabinets";
 import type { CabinetProfile } from "@/domain/model";
 import { formatMm, um } from "@/domain/units";
 import { cabinetFormText, EMPTY_CABINET_FORM, parseCabinetForm, type CabinetFormErrors, type CabinetFormText } from "@/engines/led/cabinet-form";
@@ -101,7 +101,7 @@ function EntryForm({ entry, initial, onSaved, onDeleted, onDuplicate }: { entry:
   const parsed = parseCabinetForm(text);
   const dirty = JSON.stringify(text) !== JSON.stringify(initial);
   const set = (key: keyof CabinetFormText) => (value: string) => {
-    setText((t) => ({ ...t, [key]: value }));
+    setText((t) => ({ ...t, [key]: value }) as CabinetFormText);
     setSavedAt(undefined);
   };
 
@@ -149,6 +149,26 @@ function EntryForm({ entry, initial, onSaved, onDeleted, onDuplicate }: { entry:
         <TextField label="Pixels down" suffix="px" value={text.pixelsY} onChange={set("pixelsY")} error={errors.pixelsY} />
         <TextField label="Nominal pitch" suffix="mm" value={text.pitch} onChange={set("pitch")} error={errors.pitch} />
       </div>
+      <fieldset className="flex flex-col gap-2 rounded border border-border p-3" data-testid="cabinet-specs">
+        <legend className="px-1 text-xs font-semibold">Data-sheet specs <span className="font-normal text-muted-foreground">optional, per cabinet</span></legend>
+        <p className="text-xs text-muted-foreground">Leave a value empty when the data sheet doesn’t state it. Nothing is calculated from these yet.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <TextField label="Maximum power" suffix="W" value={text.maxPower} onChange={set("maxPower")} error={errors.maxPower} placeholder="Not stated" />
+          <TextField label="Typical power" suffix="W" value={text.typicalPower} onChange={set("typicalPower")} error={errors.typicalPower} placeholder="Not stated" />
+          <TextField label="Weight" suffix="kg" value={text.weight} onChange={set("weight")} error={errors.weight} placeholder="Not stated" />
+          <TextField label="LED refresh rate" suffix="Hz" value={text.refreshRate} onChange={set("refreshRate")} error={errors.refreshRate} placeholder="Not stated" />
+          <SelectField
+            label="Environment"
+            value={text.environment || "unknown"}
+            items={[
+              { value: "unknown", label: "Not stated" },
+              { value: "indoor", label: "Indoor" },
+              { value: "outdoor", label: "Outdoor" },
+            ]}
+            onChange={(v) => set("environment")(v === "unknown" ? "" : v)}
+          />
+        </div>
+      </fieldset>
       <div className="flex flex-col gap-1">
         <Label htmlFor="cabinet-note" className="text-xs font-normal text-muted-foreground">Data-sheet note</Label>
         <textarea
@@ -211,7 +231,7 @@ function BuiltinView({ cabinet, onDuplicate }: { cabinet: CabinetProfile; onDupl
       </div>
       <ProfileFacts cabinet={cabinet} />
       <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-        <Button type="button" variant="outline" size="sm" onClick={() => onDuplicate({ ...cabinetFormText({ ...cabinet, source: "custom", supplier: "", model: "", datasheetNote: "" }), name: `${cabinet.name} copy` })}>Duplicate to library</Button>
+        <Button type="button" variant="outline" size="sm" onClick={() => onDuplicate({ ...cabinetFormText({ ...cabinet, ...EMPTY_LIBRARY_FIELDS, source: "custom" }), name: `${cabinet.name} copy` })}>Duplicate to library</Button>
         <span className="flex-1" />
         {(returning || (hasProject && !inProject)) && <Button type="button" size="sm" onClick={() => take(cabinet)}>{returning ? "Use for screen" : "Add to project"}</Button>}
       </div>
