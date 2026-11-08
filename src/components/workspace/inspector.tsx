@@ -9,6 +9,7 @@ import { formatMm, parseMm, px, um, type Um } from "@/domain/units";
 import { computeScreenSpec, pitchDeviation } from "@/engines/physical";
 import * as ops from "@/engines/project-ops";
 import { deleteSelection, duplicateSelection, groupSelection, tryEdit } from "@/state/actions";
+import { useCabinetLibrary } from "@/modules/engineering/library-store";
 import { opContext, selectedScreenIds, useApp, type AppState } from "@/state/store";
 import { CommitField, Readout, Section, SelectField, intStep, requireWhole } from "./fields";
 
@@ -218,7 +219,7 @@ function GroupPanel({ id }: { id: Id }) {
 
 function CabinetPanel({ cabinet }: { cabinet: CabinetProfile }) {
   const select = useApp((s) => s.select);
-  const saveToLibrary = useApp((s) => s.saveToLibrary);
+  const saveToLibrary = useCabinetLibrary((s) => s.saveFromProject);
   const readOnly = cabinet.source === "builtin";
 
   const update = (patch: Partial<CabinetProfile>) => {

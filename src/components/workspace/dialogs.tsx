@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BUILTIN_CABINETS } from "@/domain/cabinets";
-import type { CabinetProfile } from "@/domain/model";
-import { formatMm, parseMm, parsePx, type Um } from "@/domain/units";
-import { computeScreenSpec, pitchDeviation } from "@/engines/physical";
+import { BUILTIN_CABINETS, toProjectCabinet } from "@/domain/cabinets";
+import { formatMm, parsePx } from "@/domain/units";
+import { computeScreenSpec } from "@/engines/physical";
+import { CabinetLibraryDialog } from "@/modules/engineering/cabinet-library-dialog";
+import { useCabinetLibrary } from "@/modules/engineering/library-store";
 import * as ops from "@/engines/project-ops";
 import { renderSvg } from "@/exports/svg";
 import { reportError } from "@/state/actions";
@@ -92,12 +93,15 @@ function OpenProjectDialog() {
 
 function useCabinetOptions() {
   const project = useApp((s) => s.project);
-  const library = useApp((s) => s.library);
+  const entries = useCabinetLibrary((s) => s.entries);
+  const initLibrary = useCabinetLibrary((s) => s.init);
+  useEffect(() => void initLibrary(), [initLibrary]);
   return useMemo(() => {
     const inProject = project?.cabinets ?? [];
     const ids = new Set(inProject.map((c) => c.id));
-    return [...inProject, ...library.filter((c) => !ids.has(c.id))];
-  }, [project, library]);
+    // The project's own copies first, then generic profiles, then the cabinet library.
+    return [...inProject, ...[...BUILTIN_CABINETS, ...entries.map(toProjectCabinet)].filter((c) => !ids.has(c.id))];
+  }, [project, entries]);
 }
 
 function AddScreenDialog() {
@@ -152,7 +156,7 @@ function AddScreenDialog() {
           items={options.map((c) => ({ value: c.id, label: c.name }))}
           onChange={setCabinetId}
         />
-        <Button type="button" variant="outline" size="sm" className="h-7 rounded" onClick={() => startCabinet({ name, columns, rows })}>New cabinet</Button>
+        <Button type="button" variant="outline" size="sm" className="h-7 rounded" onClick={() => startCabinet({ name, columns, rows })}>Library</Button>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Columns" value={columns} onChange={setColumns} />
@@ -171,89 +175,6 @@ function AddScreenDialog() {
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
       <DialogFooter><Button type="submit">Add screen</Button></DialogFooter>
-    </form>
-  );
-}
-
-function NewCabinetDialog() {
-  const edit = useApp((s) => s.edit);
-  const project = useApp((s) => s.project);
-  const select = useApp((s) => s.select);
-  const saveToLibrary = useApp((s) => s.saveToLibrary);
-  const finishCabinet = useUi((s) => s.finishCabinet);
-  const returning = useUi((s) => s.returnToAddScreen);
-  const [name, setName] = useState("");
-  const [width, setWidth] = useState("500");
-  const [height, setHeight] = useState("500");
-  const [pixelsX, setPixelsX] = useState("128");
-  const [pixelsY, setPixelsY] = useState("128");
-  const [pitch, setPitch] = useState("3.91");
-  const [error, setError] = useState<string>();
-
-  const parsed = {
-    widthUm: parseMm(width),
-    heightUm: parseMm(height),
-    pixelsX: parsePx(pixelsX),
-    pixelsY: parsePx(pixelsY),
-    nominalPitchUm: parseMm(pitch),
-  };
-  const complete = Object.values(parsed).every((v) => v !== null && v > 0);
-  const deviation = complete ? pitchDeviation(parsed as Parameters<typeof pitchDeviation>[0]) : 0;
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      setError("Enter a cabinet name.");
-      return;
-    }
-    if (!complete) {
-      setError("Size and pitch must be millimetres above 0 with up to 3 decimals. Pixels must be whole numbers above 0.");
-      return;
-    }
-    const cabinet: CabinetProfile = {
-      id: opContext.newId(),
-      name: name.trim(),
-      widthUm: parsed.widthUm as Um,
-      heightUm: parsed.heightUm as Um,
-      pixelsX: parsed.pixelsX!,
-      pixelsY: parsed.pixelsY!,
-      nominalPitchUm: parsed.nominalPitchUm as Um,
-      source: "custom",
-    };
-    try {
-      ops.validateCabinet(cabinet);
-      await saveToLibrary(cabinet);
-      if (project) {
-        edit((p) => ops.addCabinet(p, cabinet));
-        if (!returning) select({ kind: "cabinet", id: cabinet.id });
-      }
-      finishCabinet(cabinet.id);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  return (
-    <form onSubmit={submit} className="flex flex-col gap-3">
-      <DialogHeader>
-        <DialogTitle>New cabinet</DialogTitle>
-        <DialogDescription>Saved to your library, so it’s available in every project. Use the values from the supplier’s data sheet.</DialogDescription>
-      </DialogHeader>
-      <Field label="Name" value={name} onChange={setName} autoFocus />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Width" suffix="mm" value={width} onChange={setWidth} />
-        <Field label="Height" suffix="mm" value={height} onChange={setHeight} />
-        <Field label="Pixels across" value={pixelsX} onChange={setPixelsX} />
-        <Field label="Pixels down" value={pixelsY} onChange={setPixelsY} />
-        <Field label="Nominal pitch" suffix="mm" value={pitch} onChange={setPitch} />
-      </div>
-      {deviation > 0.02 && (
-        <p className="text-xs text-warn">
-          Width ÷ pixels gives {formatMm(Math.round(parsed.widthUm! / parsed.pixelsX!))} mm, which differs from the {pitch} mm pitch. Check the data sheet.
-        </p>
-      )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      <DialogFooter><Button type="submit">Save cabinet</Button></DialogFooter>
     </form>
   );
 }
@@ -354,11 +275,11 @@ export function Dialogs() {
   return (
     <>
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && openDialog(null)}>
-        <DialogContent className={dialog === "preview" ? "sm:max-w-5xl" : "sm:max-w-md"}>
+        <DialogContent className={dialog === "preview" ? "sm:max-w-5xl" : dialog === "new-cabinet" ? "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl" : "sm:max-w-md"}>
           {dialog === "new-project" && <NewProjectDialog />}
           {dialog === "open-project" && <OpenProjectDialog />}
           {dialog === "add-screen" && hasProject && <AddScreenDialog />}
-          {dialog === "new-cabinet" && <NewCabinetDialog />}
+          {dialog === "new-cabinet" && <CabinetLibraryDialog />}
           {dialog === "preview" && hasProject && <PreviewDialog />}
         </DialogContent>
       </Dialog>
