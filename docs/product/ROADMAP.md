@@ -51,7 +51,7 @@ Each phase needs explicit approval to start. Requirements for what exists today 
 
 ## Phase 2: Motion Lab
 
-**Status: V1 delivered.** Started 2026-11-07, ahead of the rest of Phase 1, as the product priority. All deliverables and acceptance criteria below are met on the reference machine; see [OVERVIEW](../architecture/OVERVIEW.md#motion-lab). Venue-laptop performance is still unmeasured.
+**Status: V1 complete.** Started 2026-11-07, ahead of the rest of Phase 1, as the product priority. All deliverables and acceptance criteria below are met on the reference machine; see [OVERVIEW](../architecture/OVERVIEW.md#motion-lab). Preview labels no longer overlap on realistic shows, checked with the Festival Main Stage example, which is kept in `examples/` for future testing. Venue-laptop performance is still unmeasured. The next Motion Lab step is waiting for a product decision; see [SESSION](../../SESSION.md#pending-decisions).
 
 **Objective:** generate test and calibration content that plays across the mapped screens.
 

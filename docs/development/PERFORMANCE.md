@@ -26,6 +26,7 @@ Measured 2026-11-07: production build, Apple M1 Max, 32 GB, Chrome 156, 60 Hz di
 | Baseline | 172.8 KB | 260.3 KB | n/a |
 | Undo and redo | 172.8 KB | 261.4 KB (+1.1) | n/a |
 | Motion Lab V1 | 172.8 KB | 264.2 KB (+2.8), now split into chunks of 222.9 and 41.3 KB | +7.0 KB, its own chunk |
+| Preview label layout | 172.8 KB | unchanged | 7.5 KB (+0.5) |
 
 Since the app chunk is split, the "largest lazy chunk" line of `perf:bundle` understates what loads with a project: add the two chunks.
 
@@ -88,6 +89,8 @@ Live preview frame intervals, in ms: two runs of 180 frames each, Content Flow, 
 | `n500` | 500 | 6400 × 5120 | 30 fps | 17.1 to 17.4 | 0 | 0 | 0 |
 | `motion`, `large`, `n500` | | | 60 fps | 17.0 to 17.1 | 0 | 0 | 0 |
 | `large` at 100% zoom (off-screen image at its 4096 px cap) | 100 | 5120 × 6400 | 60 fps | 17.3 to 17.4 | 0 | 0 | 0 |
+
+**Label layout.** Laying out labels so they never overlap first ran on every drawn frame. Against the previous build, measured A/B in the same session on `n500` at 30 fps over five runs of 180 frames, it added 3 to 4 frames over 20 ms per run (previous build: 0 to 1), with 4 to 14 late frames. The layout is now cached and recomputed only when the scene, view, size or toggles change. After that change, five runs had 0 frames over 20 ms and p95 of 17.2 to 17.6 ms, with 0 late and 0 skipped. While panning, which recomputes the layout on every frame, three runs of 120 frames had 0 frames over 20 ms and p95 of 17.1 to 17.6 ms, including at 31% zoom with about 70 labels on screen.
 
 Content frames advanced at the target rate in every case: 23.9, 25.0, 30.0, 50.5 and 59.9 frames per second, counted over 2 s. At 2× speed, 50 fps content asks for 100 frames a second from a 60 Hz display, so about 40 a second are reported as skipped, by design.
 
@@ -164,7 +167,7 @@ Total process and GPU memory were **not measured**. On a smaller laptop, the lim
 | Longest main-thread stall during export | ≤ 500 ms | 323 ms | ✅ |
 | `validateProject`, 500 screens | ≤ 16 ms | 3.8 ms | ✅ |
 | Motion Lab preview, 500 screens, p95 | ≤ 20 ms | 17.4 ms | ✅ |
-| Motion Lab chunk, gzip | ≤ 15 KB | 7.0 KB | ✅ |
+| Motion Lab chunk, gzip | ≤ 15 KB | 7.5 KB | ✅ |
 
 These budgets apply to this reference machine, idle, and exist to catch regressions. Size budgets sit just above the baseline to stop growth, so new dependencies must fit inside them or justify raising them. Venue-laptop budgets can only be set after measuring one.
 

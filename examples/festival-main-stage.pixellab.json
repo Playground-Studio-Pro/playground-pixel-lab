@@ -1,0 +1,234 @@
+{
+  "format": "playground-pixel-lab/project",
+  "project": {
+    "schemaVersion": 1,
+    "id": "show-1",
+    "meta": {
+      "name": "Festival Main Stage",
+      "client": "Playground Studio",
+      "venue": "Demo",
+      "notes": "",
+      "createdAt": "2026-11-07T00:00:00.000Z",
+      "updatedAt": "2026-11-07T00:00:00.000Z",
+      "revision": 0
+    },
+    "cabinets": [
+      {
+        "id": "builtin-500x500-p391",
+        "name": "Generic 500×500 P3.91",
+        "widthUm": 500000,
+        "heightUm": 500000,
+        "pixelsX": 128,
+        "pixelsY": 128,
+        "nominalPitchUm": 3910,
+        "source": "builtin"
+      },
+      {
+        "id": "builtin-500x500-p26",
+        "name": "Generic 500×500 P2.6",
+        "widthUm": 500000,
+        "heightUm": 500000,
+        "pixelsX": 192,
+        "pixelsY": 192,
+        "nominalPitchUm": 2604,
+        "source": "builtin"
+      }
+    ],
+    "physical": {
+      "screens": [
+        {
+          "id": "show-4",
+          "name": "Center Wall",
+          "cabinetId": "builtin-500x500-p26",
+          "columns": 16,
+          "rows": 8,
+          "groupId": null,
+          "color": "#2F6FE4",
+          "stageX": 4000000,
+          "stageY": 1500000
+        },
+        {
+          "id": "show-5",
+          "name": "IMAG Left",
+          "cabinetId": "builtin-500x500-p391",
+          "columns": 6,
+          "rows": 10,
+          "groupId": null,
+          "color": "#17A398",
+          "stageX": 0,
+          "stageY": 1000000
+        },
+        {
+          "id": "show-6",
+          "name": "IMAG Right",
+          "cabinetId": "builtin-500x500-p391",
+          "columns": 6,
+          "rows": 10,
+          "groupId": null,
+          "color": "#7A5FE8",
+          "stageX": 13000000,
+          "stageY": 1000000
+        },
+        {
+          "id": "show-7",
+          "name": "Header",
+          "cabinetId": "builtin-500x500-p26",
+          "columns": 16,
+          "rows": 2,
+          "groupId": null,
+          "color": "#D9902F",
+          "stageX": 4000000,
+          "stageY": 0
+        },
+        {
+          "id": "show-8",
+          "name": "Ribbon",
+          "cabinetId": "builtin-500x500-p391",
+          "columns": 36,
+          "rows": 1,
+          "groupId": null,
+          "color": "#3FA34D",
+          "stageX": -1000000,
+          "stageY": 6500000
+        },
+        {
+          "id": "show-9",
+          "name": "DJ Booth",
+          "cabinetId": "builtin-500x500-p391",
+          "columns": 4,
+          "rows": 2,
+          "groupId": null,
+          "color": "#D2554A",
+          "stageX": 7000000,
+          "stageY": 7500000
+        }
+      ],
+      "groups": []
+    },
+    "content": {
+      "master": {
+        "mode": "auto"
+      },
+      "canvases": [
+        {
+          "id": "show-2",
+          "name": "Main canvas",
+          "originX": 0,
+          "originY": 0
+        },
+        {
+          "id": "show-10",
+          "name": "DJ Booth canvas",
+          "originX": 4608,
+          "originY": 0
+        }
+      ],
+      "regions": [
+        {
+          "screenId": "show-4",
+          "canvasId": "show-2",
+          "x": 768,
+          "y": 0,
+          "allowOverlap": true
+        },
+        {
+          "screenId": "show-5",
+          "canvasId": "show-2",
+          "x": 0,
+          "y": 128,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "show-6",
+          "canvasId": "show-2",
+          "x": 3840,
+          "y": 128,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "show-7",
+          "canvasId": "show-2",
+          "x": 768,
+          "y": 0,
+          "allowOverlap": true
+        },
+        {
+          "screenId": "show-8",
+          "canvasId": "show-2",
+          "x": 0,
+          "y": 1536,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "show-9",
+          "canvasId": "show-10",
+          "x": 0,
+          "y": 0,
+          "allowOverlap": false
+        }
+      ]
+    },
+    "output": {
+      "outputs": [
+        {
+          "id": "show-3",
+          "name": "Processor A",
+          "sizing": {
+            "mode": "auto"
+          }
+        },
+        {
+          "id": "show-11",
+          "name": "Processor B",
+          "sizing": {
+            "mode": "auto"
+          }
+        }
+      ],
+      "slices": [
+        {
+          "screenId": "show-4",
+          "outputId": "show-3",
+          "followsContent": false,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "screenId": "show-5",
+          "outputId": "show-11",
+          "followsContent": false,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "screenId": "show-6",
+          "outputId": "show-11",
+          "followsContent": false,
+          "x": 768,
+          "y": 0
+        },
+        {
+          "screenId": "show-7",
+          "outputId": "show-3",
+          "followsContent": false,
+          "x": 0,
+          "y": 1536
+        },
+        {
+          "screenId": "show-8",
+          "outputId": "show-11",
+          "followsContent": false,
+          "x": 0,
+          "y": 1280
+        },
+        {
+          "screenId": "show-9",
+          "outputId": "show-11",
+          "followsContent": false,
+          "x": 1536,
+          "y": 0
+        }
+      ]
+    }
+  }
+}
