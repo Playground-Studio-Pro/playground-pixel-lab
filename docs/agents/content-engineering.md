@@ -4,10 +4,10 @@
 
 **Start:**
 ```sh
-cd ~/Play.Code/pixel-lab-agents/content-engineering && claude "Eres el agente Content Engineering. Tu brief es docs/agents/content-engineering.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/content-engineering && claude "Eres el agente Content Engineering. Tu brief es docs/agents/content-engineering.md. Sigue docs/agents/START.md."
 ```
 
-Worktree `~/Play.Code/pixel-lab-agents/content-engineering`, branch `feature/content-engineering`, dev port 3102.
+Worktree `~/Play.Code/playground.pixel/agents/content-engineering`, branch `feature/content-engineering`, dev port 3102.
 
 Read first:
 1. [README](README.md), especially file ownership.

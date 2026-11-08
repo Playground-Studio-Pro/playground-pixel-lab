@@ -4,10 +4,10 @@
 
 **Start:**
 ```sh
-cd ~/Play.Code/pixel-lab-agents/led-engineering && claude "Eres el agente LED Engineering. Tu brief es docs/agents/led-engineering.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/led-engineering && claude "Eres el agente LED Engineering. Tu brief es docs/agents/led-engineering.md. Sigue docs/agents/START.md."
 ```
 
-Worktree `~/Play.Code/pixel-lab-agents/led-engineering`, branch `feature/led-engineering`, dev port 3103.
+Worktree `~/Play.Code/playground.pixel/agents/led-engineering`, branch `feature/led-engineering`, dev port 3103.
 
 Read first:
 1. [README](README.md), especially file ownership.

@@ -8,12 +8,13 @@ Parallel development with five agents, each in its own worktree. The product is 
 
 ## Verified current state
 
-- **Integration checkout:** `~/Play.Code/playground.pixel`, on `main`. Merges and final checks happen here. `~/Documents/Play.Code/playground.pixel` is an old copy, so don't develop there.
+- **Folder layout:** everything lives in `~/Play.Code/playground.pixel/`. It holds `app/`, the main worktree, and `agents/`, the five agent worktrees. The parent folder itself is not a Git repository.
+- **Integration checkout:** `~/Play.Code/playground.pixel/app`, on `main`. Merges and final checks happen here. `~/Documents/Play.Code/playground.pixel` is an old copy, so don't develop there.
 - **Pull requests:** these merge in order, each with the user's approval:
   - #5, agent briefs and the module proposal;
   - #6, example gallery;
   - #7, contracts and agent lanes.
-- **Agent worktrees:** in `~/Play.Code/pixel-lab-agents/`, all created from the same `main` commit, the merge of #7. Each has its own `feature/<lane>` branch:
+- **Agent worktrees:** in `~/Play.Code/playground.pixel/agents/`, all created from the same `main` commit, the merge of #7. Each has its own `feature/<lane>` branch:
 
   | Worktree | Branch | Port |
   | --- | --- | --- |

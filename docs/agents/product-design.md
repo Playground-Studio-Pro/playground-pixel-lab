@@ -4,10 +4,10 @@
 
 **Start:**
 ```sh
-cd ~/Play.Code/pixel-lab-agents/product-design && claude "Eres el agente Product Design. Tu brief es docs/agents/product-design.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/product-design && claude "Eres el agente Product Design. Tu brief es docs/agents/product-design.md. Sigue docs/agents/START.md."
 ```
 
-Worktree `~/Play.Code/pixel-lab-agents/product-design`, branch `feature/product-design`, dev port 3101.
+Worktree `~/Play.Code/playground.pixel/agents/product-design`, branch `feature/product-design`, dev port 3101.
 
 Read first:
 1. [README](README.md), especially file ownership.
