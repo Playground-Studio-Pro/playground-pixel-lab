@@ -2,74 +2,98 @@
 
 Current state only. Replace it, don't accumulate. Latest update: 2026-11-07.
 
-## Status
+## Objective
 
-**Phase 2: Motion Lab V1 is complete**, merged to `main` through PR #4. It was built ahead of the rest of Phase 1 as the product priority. Undo and redo are on `main`, and Phase 0 is complete. No new feature is in progress.
+Motion Lab V1 is done. The next step is product direction, not code:
+- a design review of customization;
+- a review of the module proposals in [MODULES](docs/product/MODULES.md), including demos, NDI, quick video and video generation;
+- choosing what to build next.
 
-## Location
+Three lanes work in parallel: core, design and functional modules. See [docs/agents](docs/agents/README.md).
 
-The repository is at `~/Play.Code/playground.pixel`, outside iCloud Drive. The previous copy at `~/Documents/Play.Code/playground.pixel` is not the working copy, so don't develop there.
+## Verified current state
 
-## Last completed work
+- **Repository:** `~/Play.Code/playground.pixel`, outside iCloud Drive. `~/Documents/Play.Code/playground.pixel` is an old copy, so don't develop there.
+- **Branch:** `main`, equal to `origin/main` at the PR #4 merge. CI passes on `main`.
+- **Agent briefs:** one per lane in [docs/agents/](docs/agents/README.md): core, design and functional modules. They cover how the app works today, file ownership for parallel work, and each lane's path to its objective.
+- **Shipped:** Phase 0, undo and redo, and Motion Lab V1, merged as PRs #2, #3 and #4. Phase 1 is partly done. Design is in [OVERVIEW](docs/architecture/OVERVIEW.md#motion-lab).
+- **Example project:** Festival Main Stage.
+  - File: `examples/festival-main-stage.pixellab.json`. Import it with "Import project file" in the project menu.
+  - Builder: `festivalMainStage()` in `tests/helpers.ts`.
+  - `tests/festival.test.ts` keeps the two in sync.
+- **Browser data on `localhost:3000`:**
+  - two copies of `perf-500` and one of Festival Main Stage, all imported during testing;
+  - `perf-500` is a perf fixture of 500 identical 256 × 256 screens, not a demo, and can be deleted from the app;
+  - other origins and ports have separate storage.
+- **Local server:** `npx next start -p 3000` was started from the session and stops with it. Run `npm run build` first.
+- **Old branches:** merged branches remain locally and on GitHub. None were deleted.
 
-**Motion Lab V1.** A Live preview mode next to Mapping:
-- Six deterministic patterns, drawn across the mapped screens on the Physical, Content and Output views.
-- Playback toolbar, measured preview rate, and late and skipped frames.
-- Overlap marks that never block the preview.
-- Labels that never draw over each other. They move aside, or are dropped when there's no room. Checked in Chrome on Festival Main Stage at 8% to 38% zoom on every view.
+## Last test results
 
-**Festival Main Stage example.** A realistic six-screen show kept for reuse:
-- File: `examples/festival-main-stage.pixellab.json`. Import it with "Import project file" in the project menu.
-- Builder: `festivalMainStage()` in `tests/helpers.ts`.
-- `tests/festival.test.ts` keeps the file and the builder in sync. See [TESTING](docs/development/TESTING.md#unit-tests).
+Run on the PR #4 head, and again on `main` after the merge:
 
-Design in [OVERVIEW](docs/architecture/OVERVIEW.md#motion-lab), decisions in [DECISIONS](docs/architecture/DECISIONS.md).
+| Check | Result |
+| --- | --- |
+| Typecheck, lint, build | Pass |
+| Unit tests | 163 of 163 pass |
+| Bundle | Initial 172.8 KB, unchanged. Motion Lab chunk 7.5 KB |
+| Preview performance, 500 screens | 60 fps, 0 late, 0 skipped. Details in [PERFORMANCE](docs/development/PERFORMANCE.md#motion-lab) |
 
-## Active workstream
+## Important decisions
 
-None. Waiting for the next product decision below.
+- Motion Lab was built ahead of the rest of Phase 1 by product decision. See [ROADMAP](docs/product/ROADMAP.md#phase-2-motion-lab).
+- [MODULES](docs/product/MODULES.md) is a proposal only. Each item needs approval. Video encoding, NDI and anything that needs a backend are outside the current roadmap phases.
+- User preferences and themes must never enter the project file. Exports look the same under every theme.
+
+## Important files
+
+- `docs/product/MODULES.md`: the proposals to review, and a reading list per agent.
+- `docs/product/DESIGN_SYSTEM.md` and `src/app/globals.css`: design direction and tokens.
+- `docs/product/ROADMAP.md`: phases and exclusions.
+- `docs/architecture/OVERVIEW.md`: layers. Motion Lab is the template for a module.
+- `src/components/workspace/canvas-header.tsx` and `canvas-area.tsx`: where Motion Lab is wired in by hand today.
+- `tests/helpers.ts` and `examples/`: reusable projects.
+
+## Do not
+
+- Don't start features before the user approves them.
+- Don't commit straight to `main`, force-push, or make the repository public.
+- Don't develop in `~/Documents/Play.Code`, or delete it. Its deletion needs separate confirmation.
+- Don't add dependencies without a measured bundle cost and a DECISIONS record.
 
 ## Known issues
 
 - **Motion Lab:**
-  - Venue-laptop performance is unmeasured. All numbers come from the reference machine.
-  - The off-screen image is capped at 4096 px a side, so masters larger than that are upscaled in the preview when zoomed in close. Exports are unaffected.
-  - Pausing while the tab is hidden is implemented but wasn't verified in the browser, because the test tab never became hidden.
-  - Patterns have no parameters yet: speed, colors, cell size and text are fixed.
-  - There's no full-screen or second-display output for showing the preview on a real wall.
-  - Where labels don't fit, they're dropped. On Festival Main Stage, the Physical view at fit zoom shows the shared band's label on the Header only, not on the Center Wall's strip. A screen's labels sit at its top edge, so they scroll out of view with it when zoomed in close.
-- **Undo history:** not stored across reloads. Library cabinet saves aren't undone. Each arrow step in an inspector field is its own undo step.
-- The delete confirmation says "Undo with ⌘Z" on every platform.
-- The Resolume guide hasn't been followed in real Resolume. Native presets are unverified and not generated. See [RESOLUME](docs/integrations/RESOLUME.md).
-- In this test environment, zooming 100 screens in the editor runs at about 50 ms p95, against 18 ms in the original baseline. That's the same before and after Motion Lab, so it isn't a regression, but it's unexplained. See [PERFORMANCE](docs/development/PERFORMANCE.md#motion-lab).
-- The app can't load offline without being served. See [technical debt](docs/architecture/OVERVIEW.md#technical-debt).
-- `npm audit` reports 13 findings in dev tooling. Production dependencies report 0.
+  - Venue-laptop performance is unmeasured.
+  - The preview image is capped at 4096 px a side.
+  - Pausing on a hidden tab wasn't verified in a browser.
+  - Patterns have no parameters.
+  - There's no full-screen output.
+  - Labels that don't fit are dropped.
+- **Undo:** not kept across reloads. Each inspector arrow step is its own undo step.
+- **Resolume:** the guide is untested in real Arena. Native presets aren't generated.
+- **Editor zoom:** zooming 100 screens runs at about 50 ms p95 here, unexplained. It isn't a regression.
+- **Offline:** the app can't load offline without being served.
+- **Audit:** `npm audit` reports 13 findings in dev tooling and 0 in production dependencies.
 
 ## Pending decisions
 
-1. **Next Motion Lab step.** Recommended: full-screen output of the preview to a second display, so a pattern can be played on a real wall through the processor.
-2. **Resolume:** the first real-world check in Arena, and saved Arena presets for analysis. Both need access to Arena.
-3. Order of the remaining Phase 1 work: venue performance, offline loading, rotation, cabinet library, content templates.
-4. Branch protection on `main`, and whether to add automated browser tests.
+1. Which [MODULES](docs/product/MODULES.md) items to approve, and in what order. Recommended: the example gallery and content templates first.
+2. Customization direction from the design review: theme levels, layout, workspace presets, whether to offer a light theme.
+3. The next Motion Lab step. Recommended: full-screen output to a second display.
+4. The Resolume real-world check, which needs Arena.
+5. For NDI and video generation: native helper or not, and user keys or a backend.
 
-## Next recommended action
+## Next action
 
-Run the [first real-world check](docs/integrations/RESOLUME.md#first-real-world-check) in Arena with Festival Main Stage or the Motion Lab acceptance project, playing Content Flow on the wall to confirm continuity end to end. Then choose the next Motion Lab step.
+Core lane: finish the example gallery on `feat/example-gallery`, as item 1 in [core.md](docs/agents/core.md), then content templates. The user asked to advance on every front at once. The design and functional-modules lanes start from their briefs, and items that need decisions (video encoding scope, NDI route, keys or a backend) go to the user with prototype findings.
 
-## Latest test results
+## Resume prompt
 
-On `feat/motion-lab` before merge, 2026-11-07:
+Read:
+- CLAUDE.md
+- SESSION.md
+- docs/agents/README.md and the brief for your lane
+- docs/product/MODULES.md
 
-| Check | Result |
-| --- | --- |
-| Typecheck, ESLint, production build | Pass |
-| Unit tests | 163 of 163 pass: 35 for Motion Lab, 4 for label layout, 3 for the example |
-| Bundle | Initial JS 172.8 KB, unchanged. Loaded with a project 264.2 KB. Motion Lab chunk 7.5 KB, on first use only. All within budget |
-| Motion Lab acceptance in Chrome, production build | Pass. See the [manual run](docs/development/TESTING.md#manual-acceptance-run) |
-| Labels in Chrome, Festival Main Stage | No overlapping labels on Physical, Content and Output, at 8%, 13%, 20%, fit and 38% zoom |
-| Preview performance | 60 fps through 500 screens, with no late or skipped frames. The label layout is cached, and was measured A/B against the previous build. See [PERFORMANCE](docs/development/PERFORMANCE.md#motion-lab) |
-
-## Git
-
-- **Stable:** `main`. Run `git log -1` for its latest commit, since a file can't contain the hash of its own commit.
-- **Remote:** `origin`, [Playground-Studio-Pro/playground-pixel-lab](https://github.com/Playground-Studio-Pro/playground-pixel-lab), private.
+Continue from the verified current state. Execute the next action. Don't re-audit completed work unless the repository contradicts SESSION.md.
