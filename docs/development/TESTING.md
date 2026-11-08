@@ -32,14 +32,14 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | `motion.test.ts` | Motion Lab: clock and frame boundaries at every rate, deterministic patterns, scan and grid positions, continuity across screen edges, preview regions reusing mapping coordinates, overlap marks per view, metrics, preview resolution, wheel |
 | `motion-store.test.ts` | Motion Lab playback never changes the project, its history or save state; playback starts when the preview is ready |
 | `label-layout.test.ts` | Live preview labels never cover each other, stay inside their screen or overlap, and are dropped rather than stacked when there's no room |
-| `festival.test.ts` | The Festival Main Stage example is valid, marks its shared band, and matches the committed file in `examples/` |
+| `examples.test.ts` | Every gallery example matches its catalog entry, has no errors, builds identically each time and survives a file round trip. Festival Main Stage marks its shared band and matches the committed file in `examples/` |
 | `store-history.test.ts` | Undo and redo through the real store and IndexedDB for every kind of edit, plus saving after undo, selection and project switching |
 
 **Rules**
 - Engines and exports get unit tests, with values worked out by hand rather than copied from output.
 - Test the error message when it's the point: users act on those messages.
-- Shared fixtures in `tests/helpers.ts`: `threeScreenProject()` gives a known 2432 × 768 project. `motionLabProject()` gives the Motion Lab acceptance project: three screens of different resolutions and stage positions, two sharing part of one canvas with an intentional overlap, and one on its own canvas. `npm run perf:engines` also writes it as the `motion` fixture. `festivalMainStage()` gives Festival Main Stage, a realistic six-screen show: Center Wall 3072 × 1536 with a Header sharing its top band, two IMAGs, a Ribbon and a DJ Booth on its own canvas, across two outputs, on a 5120 × 1664 master.
-- **Example project:** `examples/festival-main-stage.pixellab.json` is the same project as a file, for importing into the app ("Import project file" in the project menu) in demos and manual checks. `festival.test.ts` fails if the file and the builder drift apart, for example after a schema change; regenerate it with `UPDATE_EXAMPLES=1 npx vitest run tests/festival.test.ts` and review the diff.
+- Shared fixtures in `tests/helpers.ts`: `threeScreenProject()` gives a known 2432 × 768 project. `motionLabProject()` gives the Motion Lab acceptance project: three screens of different resolutions and stage positions, two sharing part of one canvas with an intentional overlap, and one on its own canvas. `npm run perf:engines` also writes it as the `motion` fixture. `festivalMainStage()` gives Festival Main Stage, a realistic six-screen show: Center Wall 3072 × 1536 with a Header sharing its top band, two IMAGs, a Ribbon and a DJ Booth on its own canvas, across two outputs, on a 5120 × 1664 master. Both builders live in `src/examples/`, with the rest of the gallery, and are re-exported from `tests/helpers.ts`.
+- **Example project:** `examples/festival-main-stage.pixellab.json` is the same project as a file, for importing into the app ("Import project file" in the project menu) in demos and manual checks. `examples.test.ts` fails if the file and the builder drift apart, for example after a schema change; regenerate it with `UPDATE_EXAMPLES=1 npx vitest run tests/examples.test.ts` and review the diff.
 
 ## Not covered by unit tests
 

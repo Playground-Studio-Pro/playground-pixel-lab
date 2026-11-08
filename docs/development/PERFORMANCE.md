@@ -27,6 +27,7 @@ Measured 2026-11-07: production build, Apple M1 Max, 32 GB, Chrome 156, 60 Hz di
 | Undo and redo | 172.8 KB | 261.4 KB (+1.1) | n/a |
 | Motion Lab V1 | 172.8 KB | 264.2 KB (+2.8), now split into chunks of 222.9 and 41.3 KB | +7.0 KB, its own chunk |
 | Preview label layout | 172.8 KB | unchanged | 7.5 KB (+0.5) |
+| Example gallery | 172.8 KB | largest app chunk 223.7 KB (+0.8, the catalog and list) | builders 1.5 KB, on first use |
 
 Since the app chunk is split, the "largest lazy chunk" line of `perf:bundle` understates what loads with a project: add the two chunks.
 

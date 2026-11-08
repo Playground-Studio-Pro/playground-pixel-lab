@@ -75,7 +75,7 @@ Agents work at the same time, so each lane owns files. Touching another lane's f
 
 | Lane | Owns | Reads but doesn't edit |
 | --- | --- | --- |
-| Core | `src/engines/**`, `src/domain/**`, `src/persistence/**`, `src/state/store.ts`, `src/state/view-model.ts`, `src/exports/**`, `examples/`, `tests/helpers.ts`, `SESSION.md`, `CHANGELOG.md`, `ROADMAP.md` | Everything else |
+| Core | `src/engines/**`, `src/domain/**`, `src/persistence/**`, `src/state/store.ts`, `src/state/view-model.ts`, `src/exports/**`, `src/examples/**`, `examples/`, `tests/helpers.ts`, `SESSION.md`, `CHANGELOG.md`, `ROADMAP.md` | Everything else |
 | Design | `src/app/globals.css`, `src/components/ui/**`, `DESIGN_SYSTEM.md`, a new `src/state/preferences.ts` | Engines and exports; exports must not change |
 | Functional modules | New folders: `src/modules/<name>/`, `src/engines/<name>/`, `docs/integrations/<name>.md`, prototypes under `prototypes/<name>/` | Mapping, project schema |
 
