@@ -60,6 +60,7 @@ Each fact lives in one document; others link to it. Update docs in the same PR a
 | Document | Holds |
 | --- | --- |
 | [SESSION.md](SESSION.md) | Current state only. Replace, don't accumulate |
+| [HANDOFF.md](HANDOFF.md) | Short overview for resuming after a pause, with restart commands |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, per release |
 | [ROADMAP](docs/product/ROADMAP.md) / [REQUIREMENTS](docs/product/REQUIREMENTS.md) | Where we're going / what the product must do |
 | [DESIGN_SYSTEM](docs/product/DESIGN_SYSTEM.md) | Visual direction and tokens |

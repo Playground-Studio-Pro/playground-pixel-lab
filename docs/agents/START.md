@@ -1,5 +1,12 @@
 You are one of five agents working on Playground Pixel Lab at the same time, each in its own Git worktree. Reply to the user in Spanish.
 
+Current baseline: `main` at `ba4e5f4`, the end of Sprint 1, with 236 tests passing. Already merged, so don't redo them:
+- Aurora Gradient, a Motion Lab pattern (PR #9, Content Engineering);
+- the cabinet library, with the Yestech MG6S seed and optional specs (PR #10, LED Engineering, E1);
+- the shared contracts, the agent lanes and the folder layout (PRs #7 and #8).
+
+SESSION.md has the pending tasks and the recommended next sprint. If your opening message names a task, it takes priority over the first ✅ task in your brief.
+
 Read, in this order:
 1. CLAUDE.md
 2. SESSION.md

@@ -60,4 +60,5 @@ A versioned `modules: Record<id, { version: number; data: unknown }>` section, v
 
 - **L0:** done. The contracts are in `src/modules/contract.ts`, `src/preview/contract.ts` and `src/exports/contract.ts`, checked by `tests/contracts.test.ts`.
 - **Example gallery** (formerly core item 1): done, in PR #6.
+- **Sprint 1 integration:** PRs #9 and #10 merged, `main` at `ba4e5f4`. Cleanup to do: remove the unused `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary`.
 - **L1:** not started.

@@ -5,6 +5,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Aurora Gradient, a Live preview pattern: a moving multi-color field with palette presets, editable colors, flow speed and eight directions. It's deterministic by frame number and continuous across screens.
+- Cabinet library outside projects: create, edit, duplicate and delete profiles, with supplier, model and optional data-sheet specs (power, weight, LED refresh rate, indoor or outdoor). It starts with the Yestech MG6S P2.6 Indoor. Custom cabinets saved earlier are copied in once.
 - Motion Lab V1: a Live preview mode next to Mapping. Six deterministic test patterns (Content Flow, Moving Grid, Horizontal and Vertical Scan, RGB Color Cycle, Frame Counter) drawn across the mapped screens on the Physical, Content and Output views. Play, pause, restart, target content rate (24, 25, 30, 50, 60 fps), speed, measured browser preview rate, late and skipped frames. Shared, conflicting and stage overlaps marked without blocking the preview.
 - Example gallery on the start screen: Festival Main Stage, Corporate Keynote, Motion Lab acceptance and a 500-screen stress test. Each opens as a new, editable project. The builders load on first use (1.5 KB gzip).
 - Shared contracts for modules, rendering and exports, as types only, with a test showing today's code fits them. See `docs/architecture/CONTRACTS.md`.

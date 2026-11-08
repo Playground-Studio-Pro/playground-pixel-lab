@@ -69,7 +69,7 @@ Each result lists its inputs and assumptions. Safety-relevant values carry a dis
 
 ## Status
 
-**E1, in review** (branch `feature/led-engineering`, 2026-11-08).
+**E1, done:** merged in PR #10 on 2026-11-08, `main` at `ba4e5f4`.
 
 - **Storage:** `src/persistence/cabinet-library.ts`, its own IndexedDB database `playground-pixel-lab-cabinet-library`, behind `CabinetLibraryRepository` (`list`, `get`, `save`, `delete`). Profile fields pass `parseCabinet` from `schema.ts`; the library-only fields (`supplier`, `model`, `datasheetNote`) are validated next to it.
 - **Optional specs (library only):** `maxPowerMw`, `typicalPowerMw` (per cabinet, milliwatts), `weightG` (grams), `refreshRateHz` (LED refresh, hertz) and `environment` (`indoor`, `outdoor`). `null` means not stated. Records saved before these fields existed read as `null`. Nothing calculates with them yet (E2). They are not copied into projects until L2.
