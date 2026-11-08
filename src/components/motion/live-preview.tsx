@@ -8,6 +8,7 @@ import { overlapMarks, previewRegions } from "@/engines/motion/regions";
 import { screenToWorld } from "@/engines/viewport";
 import { LiveRenderer, type LiveScene } from "@/preview/live-renderer";
 import { useMotion } from "@/state/motion-store";
+import { useAurora } from "@/modules/content/aurora-store";
 import { selectedScreenIds, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { buildViewModel } from "@/state/view-model";
@@ -42,6 +43,7 @@ export default function LivePreviewPanel() {
   const showGuides = useMotion((s) => s.showGuides);
   const showOverlaps = useMotion((s) => s.showOverlaps);
   const statsEpoch = useMotion((s) => s.statsEpoch);
+  const aurora = useAurora((s) => s.settings);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,7 +78,7 @@ export default function LivePreviewPanel() {
     live.current.scene = scene;
     live.current.viewport = viewport;
     live.current.dirty = true;
-  }, [scene, viewport, size, pattern, fps, showGuides, showOverlaps]);
+  }, [scene, viewport, size, pattern, fps, showGuides, showOverlaps, aurora]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -103,7 +105,7 @@ export default function LivePreviewPanel() {
     const state = live.current;
     const renderer = rendererRef.current;
     if (renderer && state.viewport && (state.dirty || frame !== state.lastFrame)) {
-      renderer.render(state.scene, state.viewport, { pattern: motion.pattern, frame, fps: motion.fps, guides: motion.showGuides, overlaps: motion.showOverlaps });
+      renderer.render(state.scene, state.viewport, { pattern: motion.pattern, frame, fps: motion.fps, guides: motion.showGuides, overlaps: motion.showOverlaps, options: { aurora: useAurora.getState().settings } });
       state.dirty = false;
       if (frame !== state.lastFrame) {
         if (frameText.current) frameText.current.textContent = String(frame).padStart(6, "0");
@@ -120,7 +122,7 @@ export default function LivePreviewPanel() {
       live.current.dirty = true;
       draw(performance.now());
     }
-  }, [draw, playClock, scene, viewport, size, pattern, fps, showGuides, showOverlaps]);
+  }, [draw, playClock, scene, viewport, size, pattern, fps, showGuides, showOverlaps, aurora]);
 
   // Animation loop: only while playing and visible.
   useEffect(() => {

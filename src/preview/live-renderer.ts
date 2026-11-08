@@ -1,6 +1,6 @@
 import type { ContentFps, MotionScreen, PatternId } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
-import { renderPattern } from "@/engines/motion/patterns";
+import { renderPattern, type PatternOptions } from "@/engines/motion/patterns";
 import type { OverlapKind, OverlapMark, PreviewRegion } from "@/engines/motion/regions";
 import type { Viewport } from "@/engines/viewport";
 import { drawPattern } from "./draw-pattern";
@@ -31,6 +31,7 @@ export interface LiveFrame {
   readonly fps: ContentFps;
   readonly guides: boolean;
   readonly overlaps: boolean;
+  readonly options?: PatternOptions;
 }
 
 /** Largest side of the off-screen master image. Beyond it the preview is upscaled, never the export. */
@@ -105,7 +106,7 @@ export class LiveRenderer {
     const sh = Math.max(1, Math.ceil(scene.masterHeight * s));
     if (this.source.width !== sw) this.source.width = sw;
     if (this.source.height !== sh) this.source.height = sh;
-    const pattern = renderPattern(frame.pattern, { frame: frame.frame, fps: frame.fps, width: scene.masterWidth, height: scene.masterHeight, screens: scene.screens });
+    const pattern = renderPattern(frame.pattern, { frame: frame.frame, fps: frame.fps, width: scene.masterWidth, height: scene.masterHeight, screens: scene.screens }, frame.options);
     drawPattern(this.sourceCtx, pattern, s, this.fontFamily);
 
     for (const r of scene.regions) {
