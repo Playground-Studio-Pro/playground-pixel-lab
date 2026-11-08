@@ -48,6 +48,7 @@ LED mapping and visual production tool for audiovisual companies. Serves Playgro
 
 - `main` is stable and always passes CI. Never force-push or rewrite its history.
 - Work on a branch, then open a PR: `feat/`, `fix/`, `chore/`, `docs/`, `perf/`, `refactor/` + short kebab-case description (`feat/undo-redo`).
+- Parallel agents each work in their own worktree on a long-lived `feature/<lane>` branch, as set out in [docs/agents](docs/agents/README.md). They merge `main` in, never rebase or force-push, and don't merge their own PRs.
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `chore:`, ...).
 - Never commit `node_modules`, build output, secrets, local databases or perf output.
 - The repository stays private.
@@ -63,7 +64,8 @@ Each fact lives in one document; others link to it. Update docs in the same PR a
 | [ROADMAP](docs/product/ROADMAP.md) / [REQUIREMENTS](docs/product/REQUIREMENTS.md) | Where we're going / what the product must do |
 | [DESIGN_SYSTEM](docs/product/DESIGN_SYSTEM.md) | Visual direction and tokens |
 | [MODULES](docs/product/MODULES.md) | Proposal, not approved: demos, customization, module contract, candidate modules |
-| [docs/agents](docs/agents/README.md) | How the app works today, lanes and file ownership, one brief per agent |
+| [docs/agents](docs/agents/README.md) | How the app works today, lanes, worktrees, file ownership, task dependencies, one brief per agent |
+| [CONTRACTS](docs/architecture/CONTRACTS.md) | The four studios, and the shared module, rendering and export contracts |
 | [OVERVIEW](docs/architecture/OVERVIEW.md) / [DATA_MODEL](docs/architecture/DATA_MODEL.md) / [DECISIONS](docs/architecture/DECISIONS.md) | Structure / stored data / why |
 | [RESOLUME](docs/integrations/RESOLUME.md) | Resolume compatibility |
 | [TESTING](docs/development/TESTING.md) / [PERFORMANCE](docs/development/PERFORMANCE.md) | How we verify / budgets and baselines |

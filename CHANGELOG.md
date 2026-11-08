@@ -7,6 +7,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ### Added
 - Motion Lab V1: a Live preview mode next to Mapping. Six deterministic test patterns (Content Flow, Moving Grid, Horizontal and Vertical Scan, RGB Color Cycle, Frame Counter) drawn across the mapped screens on the Physical, Content and Output views. Play, pause, restart, target content rate (24, 25, 30, 50, 60 fps), speed, measured browser preview rate, late and skipped frames. Shared, conflicting and stage overlaps marked without blocking the preview.
 - Example gallery on the start screen: Festival Main Stage, Corporate Keynote, Motion Lab acceptance and a 500-screen stress test. Each opens as a new, editable project. The builders load on first use (1.5 KB gzip).
+- Shared contracts for modules, rendering and exports, as types only, with a test showing today's code fits them. See `docs/architecture/CONTRACTS.md`.
+- Parallel development setup: four studios, five agent lanes with file ownership, task dependencies and one brief per agent in `docs/agents/`.
 - Festival Main Stage example project in `examples/`, a realistic six-screen show for demos and testing, kept in sync with its test fixture.
 - Undo and redo for every project edit, with ⌘Z and ⇧⌘Z (Ctrl+Z and Ctrl+Y elsewhere) and toolbar buttons. Rapid arrow-key nudges undo as one step.
 - GitHub Actions CI, pull request template and branch conventions.
