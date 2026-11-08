@@ -78,4 +78,9 @@ No network code until the user decides.
 
 ## Status
 
-Not started. Update this section in your PRs.
+**2026-11-08, Sprint 1: Aurora Gradient** (approved by the user in this session; not one of C1–C5).
+- A new Motion Lab pattern, "Aurora Gradient", in the Live preview pattern selector. Pure engine in `src/engines/content/aurora.ts`: deterministic by frame number, defined once over the master canvas, loops exactly every 20 s ÷ flow speed.
+- Settings: palette presets plus three editable colors, flow speed (0.25× to 4×) and eight directions. Module state in `src/modules/content/aurora-store.ts`, not saved (waits for L2). Controls in `src/modules/content/aurora-controls.tsx`, a compact button in the header that opens the settings.
+- Tests: `tests/content-aurora.test.ts`, 23 tests for determinism, loop closure, FPS independence, settings, and continuity across every Festival Main Stage seam.
+- Small edits in Lead Architect files, listed in the PR: `domain/motion.ts`, `engines/motion/patterns.ts`, `preview/live-renderer.ts`, `components/motion/live-preview.tsx`, `components/workspace/canvas-header.tsx`.
+- C1 not started yet.

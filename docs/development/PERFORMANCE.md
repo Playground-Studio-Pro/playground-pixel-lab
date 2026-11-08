@@ -215,3 +215,18 @@ await ppl.measureExports();         // captures files in memory, no downloads
 - If a result surprises you, check that the test really did the work. `measureDrag` reports what it selected: an empty `selection` makes the run invalid.
 - Keep the tab visible. Clear the origin's site data afterward.
 - Record the commit, machine and any differences in method alongside new numbers.
+
+## Content Engineering
+
+### Aurora Gradient (Motion Lab pattern)
+
+Measured 2026-11-08: production build, Apple M1 Max, 32 GB, Chrome, Node 26, `npx next start -p 3102`. Before is `main` at `c21af29`, built in the same worktree.
+
+| | Before | After |
+| --- | --- | --- |
+| Initial JS | 172.8 KB | 172.8 KB (unchanged) |
+| Largest app chunk | 223.7 KB | 224.2 KB (+0.5: pattern list, settings store, header button) |
+| Second app chunk | 10.8 KB | 11.8 KB (+1.0: the Aurora engine, reached through `renderPattern`) |
+| Live preview chunk | 7.5 KB | 7.6 KB (+0.1) |
+
+**Preview, Festival Main Stage** (5120 × 1664 master, 6 screens, 13% zoom, a single run per setting, not the full harness): the browser preview read 59.9 to 60.0 fps with 0 late and 0 skipped frames at flow speeds 1× and 4×. Each frame draws one linear gradient and up to 16 additive radial glows on the off-screen master. This is browser preview FPS only; it says nothing about LED refresh. Venue laptops are unmeasured.

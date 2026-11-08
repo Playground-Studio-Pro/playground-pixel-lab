@@ -1,4 +1,5 @@
 import type { ContentFps, MotionScreen, PatternId } from "@/domain/motion";
+import { auroraGradient, type AuroraSettings } from "@/engines/content/aurora";
 import { timecode } from "./clock";
 
 /**
@@ -285,7 +286,12 @@ function contentFlow(input: PatternInput): PatternFrame {
   return { width: W, height: H, background: MOTION_COLORS.deep, primitives };
 }
 
-export function renderPattern(id: PatternId, input: PatternInput): PatternFrame {
+/** Settings for patterns that have them. Missing settings use each pattern's defaults. */
+export interface PatternOptions {
+  readonly aurora?: AuroraSettings;
+}
+
+export function renderPattern(id: PatternId, input: PatternInput, options: PatternOptions = {}): PatternFrame {
   switch (id) {
     case "grid":
       return movingGrid(input);
@@ -299,5 +305,7 @@ export function renderPattern(id: PatternId, input: PatternInput): PatternFrame 
       return frameCounter(input);
     case "flow":
       return contentFlow(input);
+    case "aurora":
+      return auroraGradient(input, options.aurora);
   }
 }

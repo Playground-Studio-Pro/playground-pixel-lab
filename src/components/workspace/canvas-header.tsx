@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CONTENT_FPS, PATTERNS, PLAYBACK_SPEEDS, type ContentFps, type PatternId, type PlaybackSpeed } from "@/domain/motion";
 import { cn } from "@/lib/utils";
 import { useMotion, type CanvasMode } from "@/state/motion-store";
+import { AuroraControls } from "@/modules/content/aurora-controls";
 import { SelectField } from "./fields";
 import { IconButton } from "./top-bar";
 
@@ -63,6 +64,7 @@ export function CanvasHeader() {
           <IconButton label="Restart from frame 0" onClick={() => motion.restart()}><RotateCcw /></IconButton>
           <Divider />
           <SelectField ariaLabel="Pattern" className="w-36" value={pattern} items={patternItems} onChange={(v) => motion.setPattern(v as PatternId)} />
+          {pattern === "aurora" && <AuroraControls />}
           <SelectField ariaLabel="Target content rate" className="w-[5.5rem]" value={String(fps)} items={fpsItems} onChange={(v) => motion.setFps(Number(v) as ContentFps)} />
           <SelectField ariaLabel="Playback speed" className="w-[4.5rem]" value={String(speed)} items={speedItems} onChange={(v) => motion.setSpeed(Number(v) as PlaybackSpeed)} />
           <Divider />

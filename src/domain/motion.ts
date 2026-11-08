@@ -13,7 +13,7 @@ export type ContentFps = (typeof CONTENT_FPS)[number];
 export const PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
-export type PatternId = "flow" | "grid" | "scan-h" | "scan-v" | "rgb" | "counter";
+export type PatternId = "flow" | "aurora" | "grid" | "scan-h" | "scan-v" | "rgb" | "counter";
 
 export interface PatternInfo {
   readonly id: PatternId;
@@ -24,6 +24,7 @@ export interface PatternInfo {
 
 export const PATTERNS: readonly PatternInfo[] = [
   { id: "flow", name: "Content Flow", checks: "Continuity of moving content across every screen boundary" },
+  { id: "aurora", name: "Aurora Gradient", checks: "Smooth color flow and uniformity across every screen boundary" },
   { id: "grid", name: "Moving Grid", checks: "Alignment and spacing: lines must stay straight across screens" },
   { id: "scan-h", name: "Horizontal Scan", checks: "Column order and screen order from left to right" },
   { id: "scan-v", name: "Vertical Scan", checks: "Row order and vertical alignment between screens" },
