@@ -14,13 +14,26 @@ The shared contracts are in [CONTRACTS](../architecture/CONTRACTS.md). Read them
 
 | Agent | Studio | Brief | Worktree | Branch | Dev port |
 | --- | --- | --- | --- | --- | --- |
-| Lead Architect | Mapping Studio, Motion Lab, contracts, integration | [lead-architect.md](lead-architect.md) | `~/Play.Code/pixel-lab-agents/lead-architect` | `feature/lead-architect` | 3100 |
-| Product Design | Shell, studio navigation, customization | [product-design.md](product-design.md) | `~/Play.Code/pixel-lab-agents/product-design` | `feature/product-design` | 3101 |
-| Content Engineering | Content Studio | [content-engineering.md](content-engineering.md) | `~/Play.Code/pixel-lab-agents/content-engineering` | `feature/content-engineering` | 3102 |
-| LED Engineering | Engineering Studio | [led-engineering.md](led-engineering.md) | `~/Play.Code/pixel-lab-agents/led-engineering` | `feature/led-engineering` | 3103 |
-| Output Engineering | Output Studio | [output-engineering.md](output-engineering.md) | `~/Play.Code/pixel-lab-agents/output-engineering` | `feature/output-engineering` | 3104 |
+| Lead Architect | Mapping Studio, Motion Lab, contracts, integration | [lead-architect.md](lead-architect.md) | `~/Play.Code/playground.pixel/agents/lead-architect` | `feature/lead-architect` | 3100 |
+| Product Design | Shell, studio navigation, customization | [product-design.md](product-design.md) | `~/Play.Code/playground.pixel/agents/product-design` | `feature/product-design` | 3101 |
+| Content Engineering | Content Studio | [content-engineering.md](content-engineering.md) | `~/Play.Code/playground.pixel/agents/content-engineering` | `feature/content-engineering` | 3102 |
+| LED Engineering | Engineering Studio | [led-engineering.md](led-engineering.md) | `~/Play.Code/playground.pixel/agents/led-engineering` | `feature/led-engineering` | 3103 |
+| Output Engineering | Output Studio | [output-engineering.md](output-engineering.md) | `~/Play.Code/playground.pixel/agents/output-engineering` | `feature/output-engineering` | 3104 |
 
-`~/Play.Code/playground.pixel` is the integration checkout. It stays on `main`, and merges and final checks happen there. Don't develop in it, and never in `~/Documents/Play.Code`.
+Everything lives in one parent folder, which is not itself a Git repository:
+
+```
+~/Play.Code/playground.pixel/
+├── app/       main worktree, the integration checkout, on main
+└── agents/    one worktree per agent
+    ├── lead-architect/
+    ├── product-design/
+    ├── content-engineering/
+    ├── led-engineering/
+    └── output-engineering/
+```
+
+`app/` stays on `main`, and merges and final checks happen there. Don't develop in it, and never in `~/Documents/Play.Code`. Move a worktree only with `git worktree move`, run from `app/`.
 
 **Browser data is per port.** Each dev port has its own IndexedDB, so projects made on 3102 don't show on 3104. Use the example gallery, or export and import a project file, to share test data.
 
@@ -120,7 +133,7 @@ L0 Shared contracts (types) ─────────────── done, 
 One terminal per agent. The exact command for each lane is at the top of its brief, in this form:
 
 ```sh
-cd ~/Play.Code/pixel-lab-agents/<lane> && claude "Eres el agente <Agent name>. Tu brief es docs/agents/<lane>.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/<lane> && claude "Eres el agente <Agent name>. Tu brief es docs/agents/<lane>.md. Sigue docs/agents/START.md."
 ```
 
 [START.md](START.md) is the shared opening checklist.

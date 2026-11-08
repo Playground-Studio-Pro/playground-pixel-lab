@@ -4,10 +4,10 @@
 
 **Start:**
 ```sh
-cd ~/Play.Code/pixel-lab-agents/output-engineering && claude "Eres el agente Output Engineering. Tu brief es docs/agents/output-engineering.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/output-engineering && claude "Eres el agente Output Engineering. Tu brief es docs/agents/output-engineering.md. Sigue docs/agents/START.md."
 ```
 
-Worktree `~/Play.Code/pixel-lab-agents/output-engineering`, branch `feature/output-engineering`, dev port 3104.
+Worktree `~/Play.Code/playground.pixel/agents/output-engineering`, branch `feature/output-engineering`, dev port 3104.
 
 Read first:
 1. [README](README.md), especially file ownership.

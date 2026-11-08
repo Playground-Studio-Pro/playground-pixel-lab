@@ -4,10 +4,10 @@
 
 **Start:**
 ```sh
-cd ~/Play.Code/pixel-lab-agents/lead-architect && claude "Eres el agente Lead Architect. Tu brief es docs/agents/lead-architect.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/lead-architect && claude "Eres el agente Lead Architect. Tu brief es docs/agents/lead-architect.md. Sigue docs/agents/START.md."
 ```
 
-Worktree `~/Play.Code/pixel-lab-agents/lead-architect`, branch `feature/lead-architect`, dev port 3100. Merges and final checks happen in the integration checkout, `~/Play.Code/playground.pixel`, on `main`.
+Worktree `~/Play.Code/playground.pixel/agents/lead-architect`, branch `feature/lead-architect`, dev port 3100. Merges and final checks happen in the integration checkout, `~/Play.Code/playground.pixel/app`, on `main`.
 
 Read first: [README](README.md), [CONTRACTS](../architecture/CONTRACTS.md), [OVERVIEW](../architecture/OVERVIEW.md).
 
