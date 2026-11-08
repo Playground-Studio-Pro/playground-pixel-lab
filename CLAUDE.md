@@ -62,6 +62,8 @@ Each fact lives in one document; others link to it. Update docs in the same PR a
 | [CHANGELOG.md](CHANGELOG.md) | What changed, per release |
 | [ROADMAP](docs/product/ROADMAP.md) / [REQUIREMENTS](docs/product/REQUIREMENTS.md) | Where we're going / what the product must do |
 | [DESIGN_SYSTEM](docs/product/DESIGN_SYSTEM.md) | Visual direction and tokens |
+| [MODULES](docs/product/MODULES.md) | Proposal, not approved: demos, customization, module contract, candidate modules |
+| [docs/agents](docs/agents/README.md) | How the app works today, lanes and file ownership, one brief per agent |
 | [OVERVIEW](docs/architecture/OVERVIEW.md) / [DATA_MODEL](docs/architecture/DATA_MODEL.md) / [DECISIONS](docs/architecture/DECISIONS.md) | Structure / stored data / why |
 | [RESOLUME](docs/integrations/RESOLUME.md) | Resolume compatibility |
 | [TESTING](docs/development/TESTING.md) / [PERFORMANCE](docs/development/PERFORMANCE.md) | How we verify / budgets and baselines |
