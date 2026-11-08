@@ -34,7 +34,7 @@ import { useUi } from "@/state/ui-store";
 import type { WorkspaceView } from "@/state/view-model";
 import { ImportProjectInput } from "./start-screen";
 
-function IconButton({ label, children, onClick, disabled, active }: { label: string; children: ReactNode; onClick(): void; disabled?: boolean; active?: boolean }) {
+export function IconButton({ label, children, onClick, disabled, active }: { label: string; children: ReactNode; onClick(): void; disabled?: boolean; active?: boolean }) {
   return (
     <Tooltip>
       <TooltipTrigger

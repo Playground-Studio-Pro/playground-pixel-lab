@@ -52,7 +52,7 @@ IMPACT: Building needs dev dependencies installed, which `npm ci` and common hos
 DATE: 2026-11-07
 DECISION: Content FPS, browser preview FPS and physical LED refresh rate are separate metrics with separate names.
 WHY: They measure different things. Showing browser FPS as refresh rate would mislead a technician about real hardware.
-IMPACT: Design in [OVERVIEW](OVERVIEW.md#motion-lab-readiness). Refresh rate only appears as a data sheet value.
+IMPACT: Design in [OVERVIEW](OVERVIEW.md#motion-lab). Refresh rate only appears as a data sheet value.
 
 ---
 DATE: 2026-11-07
@@ -77,3 +77,21 @@ DATE: 2026-11-07
 DECISION: Undo and redo keep immutable project snapshots (`state/history.ts`), recorded by the store's single `edit()` entry point. History lives in memory only, up to 200 steps, and resets when another project opens.
 WHY: Every edit is already a pure function returning a new `Project` that shares unchanged parts, so snapshots are cheap and exact, and cover every current and future edit without per-operation inverse code. No dependency was needed.
 IMPACT: An undo restores content but keeps the current save revision, so autosave never conflicts. Cabinets saved to the shared library aren't project edits and aren't undone. Stored history across reloads would need a schema change and isn't planned.
+
+---
+DATE: 2026-11-07
+DECISION: Motion Lab V1 starts before Phase 1 is finished.
+WHY: Product priority set by the owner. Phase 1's remaining work (venue performance, offline, rotation, library) doesn't block a preview built on the existing mapping.
+IMPACT: The Phase 2 dependency on Phase 1 is waived for V1 only. Venue-laptop measurement remains open for both.
+
+---
+DATE: 2026-11-07
+DECISION: The Motion Lab preview never blocks on validation. It reads overlap issues from `validateProject` and marks them, and export gating stays as it is.
+WHY: A technician needs to see a broken mapping to fix it. A second set of overlap rules would drift from the one that decides exports.
+IMPACT: Shared, conflicting and stage overlaps are marked in different colors. See [OVERVIEW](OVERVIEW.md#preview-and-export-validation).
+
+---
+DATE: 2026-11-07
+DECISION: The preview draws each content frame once onto an off-screen master image and copies each screen's `masterRect` into the rectangle its view already uses. It loads on first use, in its own 7 KB gzip chunk.
+WHY: One image per frame keeps shared regions identical and content continuous by construction, with no second mapping engine. Lazy loading keeps the editor's load unchanged.
+IMPACT: The off-screen image is capped at 4096 px a side, so a very large master is upscaled in the preview when zoomed in. Exports are unaffected.

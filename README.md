@@ -31,6 +31,7 @@ Projects are stored in the browser's IndexedDB, separately for each browser and 
 2. **Add screen:** choose a cabinet or create one, then set columns and rows.
 3. **Position:** Content holds pixel positions on the master canvas, Physical holds the stage plan in mm, and Output holds positions in the video signal.
 4. **Preview**, then **Export**. Exports that carry coordinates are blocked while Checks lists errors.
+5. **Live preview**, above the canvas, plays animated test patterns across the mapped screens to check continuity, shared regions and timing. It never changes the project.
 
 | Input | Action |
 | --- | --- |
@@ -41,6 +42,8 @@ Projects are stored in the browser's IndexedDB, separately for each browser and 
 | ⌘ + click | Select one screen inside a group |
 | Ctrl while dragging | Bypass snapping |
 | ⌘D / Delete / ⌘S / Esc | Duplicate / delete / save / deselect |
+| ⌘Z / ⇧⌘Z | Undo / redo |
+| Space, in Live preview | Play / pause |
 
 ## Documentation
 

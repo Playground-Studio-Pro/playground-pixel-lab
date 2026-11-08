@@ -7,14 +7,14 @@ A client-side Next.js application with no backend. Stored data is described in [
 Dependencies point downward only.
 
 ```
-src/app, components/workspace   UI: explorer, Konva canvas, inspector, dialogs
+src/app, components/   UI: explorer, Konva canvas, Motion Lab preview, inspector, dialogs
                 │
-             state/             Zustand store, view model, user actions
+       state/   preview/   Zustand stores, view model, user actions / Canvas 2D drawing for Motion Lab
                 │
    ┌────────────┼────────────┐
 exports/   persistence/    engines/      pure, deterministic calculation
    └────────────┼────────────┘
-             domain/            types, units, generic cabinet profiles
+             domain/            types, units, generic cabinet profiles, Motion Lab settings
 ```
 
 One exception: `exports/resolume/package.ts` imports `serializeProject` from `persistence/schema.ts`, to include the project file in the package.
@@ -26,13 +26,17 @@ One exception: `exports/resolume/package.ts` imports `serializeProject` from `pe
 | `engines/validation.ts` | Issues with severity, code, exact message and screen ids |
 | `engines/project-ops.ts` | Every project edit, as a pure function |
 | `engines/physical.ts`, `geometry.ts`, `snap.ts`, `align.ts`, `viewport.ts` | Supporting pure calculation |
+| `engines/motion/` | Motion Lab: playback clock, patterns, preview regions and overlaps, preview metrics. Pure |
+| `preview/` | Draws Motion Lab patterns and composites them into screens on a 2D canvas |
 | `exports/scene.ts` | Renderer-neutral pixel map. SVG and PNG draw the same scene |
 | `exports/resolume/` | Resolume adapter, guide, CSV, package builder |
 | `persistence/` | Repository contract, IndexedDB adapter, schema, file format |
 | `state/store.ts` | App state, derived mapping and validation, autosave, undo and redo |
 | `state/history.ts` | Undo history as immutable project snapshots. Pure |
 | `state/view-model.ts` | Projects the mapping into one workspace view |
-| `components/workspace/` | App shell, canvas, panels, dialogs |
+| `state/motion-store.ts` | Motion Lab playback state. Never saved, undone or exported |
+| `components/workspace/` | App shell, canvas header and Mapping canvas, panels, dialogs |
+| `components/motion/` | Live preview, loaded on first use |
 | `components/ui/` | Generated shadcn/ui components (Base UI) |
 
 ## Assessment
@@ -92,56 +96,61 @@ Purpose and review. Sizes are in [PERFORMANCE](../development/PERFORMANCE.md#lar
 | `vitest`, `fake-indexeddb` (dev) | Tests | Required |
 | `eslint*`, `typescript`, `tailwindcss`, `@tailwindcss/turbopack`, `@types/*` (dev) | Tooling | Required |
 
-## Motion Lab readiness
+## Motion Lab
 
-Design only. Nothing is implemented, and [Phase 2](../product/ROADMAP.md#phase-2-motion-lab) needs approval to start.
+V1, built in [Phase 2](../product/ROADMAP.md#phase-2-motion-lab). The canvas has two modes: **Mapping**, the editor, and **Live preview**, animated test content clipped to each screen. Both use the same view (Physical, Content or Output) and the same zoom and pan.
 
 ### Three separate metrics
 
-These must stay separate types, labels and fields. None can be derived from another.
+These stay separate types, labels and fields. None is derived from another.
 
-| Metric | Meaning | Source | Name in code |
+| Metric | Meaning | Source | In code |
 | --- | --- | --- | --- |
-| Content FPS | Frames per second the content is designed to play at | User setting, part of the pattern | `contentFps` |
-| Browser preview FPS | How fast this browser is drawing the preview right now | Measured with `requestAnimationFrame` | `previewFpsMeasured` |
-| LED refresh rate | How often the physical panel refreshes | Supplier data sheet, from [Phase 4](../product/ROADMAP.md#phase-4-production-engineering) | `ledRefreshHz` |
+| Content FPS | Frames per second the content is designed to play at: 24, 25, 30, 50 or 60 | User setting | `ContentFps`, `fps` |
+| Browser preview FPS | How fast this browser is drawing the preview right now | Measured from `requestAnimationFrame` intervals | `previewFps()` |
+| LED refresh rate | How often the physical panel refreshes | Supplier data sheet, from [Phase 4](../product/ROADMAP.md#phase-4-production-engineering) | Not measured or shown |
 
-Browser FPS describes this computer, and tells you nothing about the wall. The UI must never present it as hardware refresh rate.
+Browser FPS describes this computer, and tells you nothing about the wall. The UI never presents it as hardware refresh rate.
 
-### Proposed structure
+### Structure
 
 ```
-domain/motion.ts         Pattern definitions: type, parameters, contentFps
-engines/motion/          frameAt(timeMs, contentFps), and a pure pattern description for frame N
-exports/  or preview/    Draws that description to a 2D canvas
-components/motion/       Controls and preview. Reads the measured FPS through a ref
+domain/motion.ts            Patterns, content rates, speeds
+engines/motion/clock.ts     Play, pause, restart, speed; frameAt(contentMs, fps); timecode
+engines/motion/patterns.ts  Pure description of each pattern at frame N, in master pixels
+engines/motion/regions.ts   Source (masterRect) and destination (view rect) per screen; overlap marks
+engines/motion/metrics.ts   Preview FPS, late browser frames, skipped content frames
+preview/                    Draws a description to an off-screen master image, then into each screen
+state/motion-store.ts       Playback state, apart from the project store
+components/motion/          Live preview: canvas, animation loop, readouts
 ```
 
-| Principle | Reason |
+| Principle | How it's met |
 | --- | --- |
-| Frame number is the only input to content. `frame = floor(timeMs × contentFps / 1000)` | Deterministic: the same frame always gives the same pixels, whether the browser runs slow or fast |
-| Patterns draw in master canvas coordinates | Content flows across screens by construction, using each screen's existing `masterRect` |
-| Each screen reads a region of one shared image | Intentional overlap needs nothing new: regions with `allowOverlap` read the same pixels |
-| Reuses `resolveMapping`, unchanged | No second source of coordinates |
-| Output space reuses `outputRect` | The same frame can preview as content or as output |
-| Preview draws to its own plain `<canvas>`, outside Konva and React state | One draw per frame without React work. Konva stays the editor |
-| Measured FPS writes to a ref and updates text a few times a second | Measuring must not change what it measures |
+| Frame number is the only input to content | `frame = floor(contentMs × fps / 1000)`. Speed changes content time, never the pattern |
+| One source of coordinates | Sources are `masterRect` from `resolveMapping`. Destinations are the rectangles `buildViewModel` already gives each view |
+| Content continues across screens | Patterns are drawn once over the whole master canvas, then cut into screens |
+| Shared regions read identical pixels | Every screen samples the same master image for that frame |
+| No React work per frame | The loop reads stores directly and writes readouts to the DOM. React only updates on play, pause and setting changes |
+| Draw only when needed | A frame is drawn when the content frame changes or the scene does. Nothing runs while paused, hidden or in Mapping |
+| Preview resolution follows need | The off-screen image has just enough pixels for the most magnified screen, up to full resolution and 4096 px a side |
 
-### Pattern coverage
+### Preview and export validation
 
-| Requirement | Approach |
-| --- | --- |
-| Moving grids, scans | Pure function of frame and canvas bounds |
-| Frame counters | Text per screen at its region, from the frame number |
-| Color cycling | Hue from frame number, in integer steps |
-| Multi-screen flow | Master coordinates, as above |
-| Overlapping regions | Shared image, as above |
-| Target FPS | `contentFps` holds a frame until its time arrives, regardless of the display rate |
+The preview shows every resolved screen, whatever validation says. Overlaps are marked, not blocked:
+
+| Mark | Meaning | Comes from |
+| --- | --- | --- |
+| Violet, dashed | Content both screens mark as shared. Valid, and exportable | `REGION_SHARED` |
+| Red | Content or output slices overlapping without permission. Blocks mapping exports | `REGION_OVERLAP`, `SLICE_OVERLAP` |
+| Amber | Screens overlapping on the stage plan | `PHYSICAL_OVERLAP` |
+
+Which overlaps are allowed is decided only by `validateProject`. Motion Lab reads its issues and finds where each one appears on screen, so it can't change a rule. Export gating is unchanged: exports still refuse projects with errors.
 
 ### Rendering technology
 
-Start with Canvas 2D, which is already proven here: it draws and encodes a 134-megapixel map in under 1 s ([measured](../development/PERFORMANCE.md#exports)). Measure first. If a preview can't hold its budget, try in order: scaling the preview canvas down, `OffscreenCanvas` in a worker, then raw WebGL for the slowest patterns. Three.js solves 3D scenes, which this doesn't need, so it stays out unless a measured requirement justifies it.
+Canvas 2D, as planned: 60 fps through 500 screens and at 100% zoom on the reference machine ([measured](../development/PERFORMANCE.md#motion-lab)). Three.js and WebGL stay out without a measured need. If a slower machine can't hold its budget, try in order: a smaller off-screen image, `OffscreenCanvas` in a worker, then raw WebGL for the heaviest pattern.
 
-### Changes needed first
+### Canvas refactor
 
-No restructuring is required. Before Phase 2, separate the gesture and drawing code in `workspace-canvas.tsx`.
+Resizing, first fit and wheel zoom and pan moved from `workspace-canvas.tsx` into `useCanvasViewport`, shared by both modes, with the wheel calculation as the pure `wheelViewport`. The Konva gesture and drawing code wasn't split: the preview draws to its own canvas and needs none of it.

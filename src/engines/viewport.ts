@@ -21,6 +21,22 @@ export function zoomAt(vp: Viewport, factor: number, screenX: number, screenY: n
   return { scale, offsetX: screenX - world.x * scale, offsetY: screenY - world.y * scale };
 }
 
+export interface WheelInput {
+  readonly deltaX: number;
+  readonly deltaY: number;
+  /** Pinch on a trackpad arrives as a wheel event with ctrlKey set. */
+  readonly zoom: boolean;
+  /** Pointer position on the canvas, in screen pixels. */
+  readonly x: number;
+  readonly y: number;
+}
+
+/** A wheel or trackpad step: pinch or ⌘-scroll zooms at the pointer, plain scroll pans. */
+export function wheelViewport(vp: Viewport, input: WheelInput, min: number, max: number): Viewport {
+  if (input.zoom) return zoomAt(vp, Math.exp(-input.deltaY * 0.01), input.x, input.y, min, max);
+  return { ...vp, offsetX: vp.offsetX - input.deltaX, offsetY: vp.offsetY - input.deltaY };
+}
+
 export function fitViewport(bounds: Rect<number> | null, viewWidth: number, viewHeight: number, margin = 48): Viewport {
   if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
     return { scale: 0.25, offsetX: margin, offsetY: margin };

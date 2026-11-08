@@ -29,12 +29,17 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | `exports.test.ts` | Scene geometry, SVG, PNG header, manifest, report, Resolume adapter and package |
 | `persistence.test.ts` | File round trip, corrupted data, IndexedDB, revision conflicts |
 | `history.test.ts` | Undo history core: order, redo clearing, merging repeats, limit, save revision kept; undo and redo shortcuts |
+| `motion.test.ts` | Motion Lab: clock and frame boundaries at every rate, deterministic patterns, scan and grid positions, continuity across screen edges, preview regions reusing mapping coordinates, overlap marks per view, metrics, preview resolution, wheel |
+| `motion-store.test.ts` | Motion Lab playback never changes the project, its history or save state; playback starts when the preview is ready |
+| `label-layout.test.ts` | Live preview labels never cover each other, stay inside their screen or overlap, and are dropped rather than stacked when there's no room |
+| `festival.test.ts` | The Festival Main Stage example is valid, marks its shared band, and matches the committed file in `examples/` |
 | `store-history.test.ts` | Undo and redo through the real store and IndexedDB for every kind of edit, plus saving after undo, selection and project switching |
 
 **Rules**
 - Engines and exports get unit tests, with values worked out by hand rather than copied from output.
 - Test the error message when it's the point: users act on those messages.
-- Shared fixture: `threeScreenProject()` in `tests/helpers.ts` gives a known 2432 × 768 project.
+- Shared fixtures in `tests/helpers.ts`: `threeScreenProject()` gives a known 2432 × 768 project. `motionLabProject()` gives the Motion Lab acceptance project: three screens of different resolutions and stage positions, two sharing part of one canvas with an intentional overlap, and one on its own canvas. `npm run perf:engines` also writes it as the `motion` fixture. `festivalMainStage()` gives Festival Main Stage, a realistic six-screen show: Center Wall 3072 × 1536 with a Header sharing its top band, two IMAGs, a Ribbon and a DJ Booth on its own canvas, across two outputs, on a 5120 × 1664 master.
+- **Example project:** `examples/festival-main-stage.pixellab.json` is the same project as a file, for importing into the app ("Import project file" in the project menu) in demos and manual checks. `festival.test.ts` fails if the file and the builder drift apart, for example after a schema change; regenerate it with `UPDATE_EXAMPLES=1 npx vitest run tests/festival.test.ts` and review the diff.
 
 ## Not covered by unit tests
 
@@ -70,5 +75,12 @@ Run against a production build (`npm run build && npm start`) when canvas, state
     - Change columns and the cabinet in the inspector, and a mapping setting such as "Same as content position". Undo each.
     - Type in a text field without applying it, then press ⌘Z. **Expect:** only the typed text is undone, not the project.
     - Reload after undoing. **Expect:** the project reopens as it was left, and Undo is disabled, because history isn't stored.
+11. Motion Lab, with the `motion` fixture imported:
+    - Open Live preview. **Expect:** playback starts, Preview shows a measured rate, Late and Skipped stay at 0.
+    - On Physical, Content and Output: content moves across all three screens, nothing is drawn outside them, and the shared area is marked on both screens that show it.
+    - Change the target rate and speed. **Expect:** the frame counter advances at rate × speed.
+    - Pause, then Restart. **Expect:** the frame holds, then shows 000000.
+    - Switch back to Mapping and export the project file. **Expect:** byte-identical to an export made before opening Live preview.
+    - Clear "Can share pixels" on one shared screen. **Expect:** the overlap turns red and Checks shows the error, while playback continues. Undo it.
 
 Performance measurement is covered in [PERFORMANCE](PERFORMANCE.md).

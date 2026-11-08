@@ -19,7 +19,16 @@ Measured 2026-11-07: production build, Apple M1 Max, 32 GB, Chrome 156, 60 Hz di
 | Fonts (2 Inter subsets) | 45 KB | n/a |
 | HTML | 6.4 KB | n/a |
 
-**Since the baseline:** undo and redo ([Phase 1](../product/ROADMAP.md#phase-1-mapping-studio)) added 3.5 KB raw and 1.1 KB gzip to the app chunk, now 834.5 KB and 261.4 KB. Initial JS is unchanged at 172.8 KB. Both are within [budget](#budgets). Measured 2026-11-07 with `npm run perf:bundle`.
+**Since the baseline**, measured 2026-11-07 with `npm run perf:bundle` and the browser's resource timings:
+
+| Change | Initial JS | Loaded with a project | On first Live preview |
+| --- | --- | --- | --- |
+| Baseline | 172.8 KB | 260.3 KB | n/a |
+| Undo and redo | 172.8 KB | 261.4 KB (+1.1) | n/a |
+| Motion Lab V1 | 172.8 KB | 264.2 KB (+2.8), now split into chunks of 222.9 and 41.3 KB | +7.0 KB, its own chunk |
+| Preview label layout | 172.8 KB | unchanged | 7.5 KB (+0.5) |
+
+Since the app chunk is split, the "largest lazy chunk" line of `perf:bundle` understates what loads with a project: add the two chunks.
 
 ### Largest dependencies
 
@@ -68,6 +77,32 @@ Dragging all 100 screens at once: p95 18.4 to 18.6, with no frames over 20 ms.
 **The editor holds 60 fps through 100 screens on this machine.** Zoom begins to drop frames only at 500 screens, well beyond a typical show.
 
 The first drops follow screen count rather than cabinet count: one screen with 8192 cabinets stays smooth, while 500 screens with 2000 cabinets don't. That fits the code, where each zoom frame re-renders `TopBar` and every `ScreenItem` (no `memo`) and rebuilds their Konva nodes, including screens outside the view. It's inferred from scaling and reading the code, and hasn't been confirmed with a profiler. There's no measured need to change this yet.
+
+### Motion Lab
+
+Live preview frame intervals, in ms: two runs of 180 frames each, Content Flow, guides and overlap marks on. Measured 2026-11-07 on `feat/motion-lab`: same machine, Chrome in a 1280 × 582 viewport at device pixel ratio 1.5.
+
+| Fixture | Screens | Master | Target | p95 | Over 20 ms | Late | Skipped |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `motion` | 3 | 2688 × 768 | 30 fps | 17.2 | 0 | 0 | 0 |
+| `large` | 100 | 5120 × 6400 | 30 fps | 17.2 to 17.5 | 0 | 0 | 0 |
+| `n500` | 500 | 6400 × 5120 | 30 fps | 17.1 to 17.4 | 0 | 0 | 0 |
+| `motion`, `large`, `n500` | | | 60 fps | 17.0 to 17.1 | 0 | 0 | 0 |
+| `large` at 100% zoom (off-screen image at its 4096 px cap) | 100 | 5120 × 6400 | 60 fps | 17.3 to 17.4 | 0 | 0 | 0 |
+
+**Label layout.** Laying out labels so they never overlap first ran on every drawn frame. Against the previous build, measured A/B in the same session on `n500` at 30 fps over five runs of 180 frames, it added 3 to 4 frames over 20 ms per run (previous build: 0 to 1), with 4 to 14 late frames. The layout is now cached and recomputed only when the scene, view, size or toggles change. After that change, five runs had 0 frames over 20 ms and p95 of 17.2 to 17.6 ms, with 0 late and 0 skipped. While panning, which recomputes the layout on every frame, three runs of 120 frames had 0 frames over 20 ms and p95 of 17.1 to 17.6 ms, including at 31% zoom with about 70 labels on screen.
+
+Content frames advanced at the target rate in every case: 23.9, 25.0, 30.0, 50.5 and 59.9 frames per second, counted over 2 s. At 2× speed, 50 fps content asks for 100 frames a second from a 60 Hz display, so about 40 a second are reported as skipped, by design.
+
+**Editor, before and after Motion Lab.** p95 in ms, three zoom runs and two drag runs each, same session and viewport. The editor is unchanged within noise.
+
+| Test | `main` at `c361ceb` | `feat/motion-lab` |
+| --- | --- | --- |
+| Zoom, 3 screens | 17.3 to 17.5 | 17.3 to 17.4, one first run at 32.4 |
+| Zoom, 100 screens | 50.1 to 50.9 | 50.1 to 50.4 |
+| Drag one, 100 screens | 17.6 to 17.7 | 17.2 to 17.6 |
+
+This environment is slower at zooming than the [baseline](#editor-frame-times): 100-screen zoom gives about 50 ms here against 18 ms there, on both builds. An earlier run of the same `main` build at 1280 × 619 gave 67 to 83 ms. Viewport size and device pixel ratio differ from the baseline, which wasn't recorded with them, so compare only within one table.
 
 ### Exports
 
@@ -131,6 +166,8 @@ Total process and GPU memory were **not measured**. On a smaller laptop, the lim
 | Package, 100 screens | ≤ 3 s | 1.3 s | ✅ |
 | Longest main-thread stall during export | ≤ 500 ms | 323 ms | ✅ |
 | `validateProject`, 500 screens | ≤ 16 ms | 3.8 ms | ✅ |
+| Motion Lab preview, 500 screens, p95 | ≤ 20 ms | 17.4 ms | ✅ |
+| Motion Lab chunk, gzip | ≤ 15 KB | 7.5 KB | ✅ |
 
 These budgets apply to this reference machine, idle, and exist to catch regressions. Size budgets sit just above the baseline to stop growth, so new dependencies must fit inside them or justify raising them. Venue-laptop budgets can only be set after measuring one.
 
