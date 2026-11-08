@@ -14,13 +14,17 @@ Three lanes work in parallel: core, design and functional modules. See [docs/age
 ## Verified current state
 
 - **Repository:** `~/Play.Code/playground.pixel`, outside iCloud Drive. `~/Documents/Play.Code/playground.pixel` is an old copy, so don't develop there.
-- **Branch:** `main`, equal to `origin/main` at the PR #4 merge. CI passes on `main`.
+- **Branches:**
+  - `main` is at the PR #4 merge, and CI passes.
+  - PR #5 (`docs/agent-briefs`) is open with CI passing. It waits for the user's approval to merge.
+  - PR #6 (`feat/example-gallery`) is stacked on PR #5. Merge #5 first.
 - **Agent briefs:** one per lane in [docs/agents/](docs/agents/README.md): core, design and functional modules. They cover how the app works today, file ownership for parallel work, and each lane's path to its objective.
 - **Shipped:** Phase 0, undo and redo, and Motion Lab V1, merged as PRs #2, #3 and #4. Phase 1 is partly done. Design is in [OVERVIEW](docs/architecture/OVERVIEW.md#motion-lab).
 - **Example project:** Festival Main Stage.
   - File: `examples/festival-main-stage.pixellab.json`. Import it with "Import project file" in the project menu.
-  - Builder: `festivalMainStage()` in `tests/helpers.ts`.
-  - `tests/festival.test.ts` keeps the two in sync.
+  - Builder: `festivalMainStage()` in `src/examples/festival.ts`.
+  - `tests/examples.test.ts` keeps the two in sync.
+- **Example gallery** on the start screen, on `feat/example-gallery`: Festival Main Stage, Corporate Keynote, Motion Lab acceptance and Stress test, 500 screens. Each opens as a new copy. The 500-screen example opens in 177 ms. Code is in `src/examples/`.
 - **Browser data on `localhost:3000`:**
   - two copies of `perf-500` and one of Festival Main Stage, all imported during testing;
   - `perf-500` is a perf fixture of 500 identical 256 × 256 screens, not a demo, and can be deleted from the app;
@@ -30,13 +34,14 @@ Three lanes work in parallel: core, design and functional modules. See [docs/age
 
 ## Last test results
 
-Run on the PR #4 head, and again on `main` after the merge:
+On `feat/example-gallery`, 2026-11-07:
 
 | Check | Result |
 | --- | --- |
 | Typecheck, lint, build | Pass |
-| Unit tests | 163 of 163 pass |
-| Bundle | Initial 172.8 KB, unchanged. Motion Lab chunk 7.5 KB |
+| Unit tests | 168 of 168 pass |
+| Bundle | Initial 172.8 KB, unchanged. Example builders 1.5 KB, on first use. Motion Lab chunk 7.5 KB |
+| Gallery in Chrome | Listed on the start screen. Corporate Keynote and the 500-screen test open as new projects with no errors, and Live preview runs at 60 fps on Corporate Keynote |
 | Preview performance, 500 screens | 60 fps, 0 late, 0 skipped. Details in [PERFORMANCE](docs/development/PERFORMANCE.md#motion-lab) |
 
 ## Important decisions
@@ -86,7 +91,7 @@ Run on the PR #4 head, and again on `main` after the merge:
 
 ## Next action
 
-Core lane: finish the example gallery on `feat/example-gallery`, as item 1 in [core.md](docs/agents/core.md), then content templates. The user asked to advance on every front at once. The design and functional-modules lanes start from their briefs, and items that need decisions (video encoding scope, NDI route, keys or a backend) go to the user with prototype findings.
+Core lane: once PRs #5 and #6 are merged, start content templates, item 2 in [core.md](docs/agents/core.md), on `feat/content-templates`. The user asked to advance on every front at once. The design and functional-modules lanes start from their briefs, and items that need decisions (video encoding scope, NDI route, keys or a backend) go to the user with prototype findings.
 
 ## Resume prompt
 

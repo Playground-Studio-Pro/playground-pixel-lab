@@ -30,7 +30,8 @@ Read first:
 - **Labels:** the label layout is cached between frames.
 
 **Examples.**
-- Festival Main Stage is in `examples/`, built by `festivalMainStage()` and kept in sync by `tests/festival.test.ts`.
+- The example gallery is in `src/examples/`. It has pure builders, a plain-data catalog shown on the start screen, and builders loaded on first use. `tests/examples.test.ts` checks each entry against its builder.
+- Festival Main Stage is also kept as a file in `examples/`, in sync with its builder.
 - `motionLabProject()` is the three-screen acceptance project.
 - Perf fixtures come from `npm run perf:engines`. They're gitignored.
 
@@ -51,5 +52,5 @@ Read first:
 
 ## Status
 
-- **Item 1, example gallery:** in progress on `feat/example-gallery`.
-- **Items 2 to 5:** not started.
+- **Item 1, example gallery:** done on `feat/example-gallery`. It has four examples. Adding one means a builder in `src/examples/`, a catalog entry and a `case` in `buildExample`; the test picks it up automatically.
+- **Items 2 to 5:** not started. Content templates are next.

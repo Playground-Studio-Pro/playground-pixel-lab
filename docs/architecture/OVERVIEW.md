@@ -27,6 +27,7 @@ One exception: `exports/resolume/package.ts` imports `serializeProject` from `pe
 | `engines/project-ops.ts` | Every project edit, as a pure function |
 | `engines/physical.ts`, `geometry.ts`, `snap.ts`, `align.ts`, `viewport.ts` | Supporting pure calculation |
 | `engines/motion/` | Motion Lab: playback clock, patterns, preview regions and overlaps, preview metrics. Pure |
+| `examples/` | Example gallery: pure builders and a plain-data catalog. Builders load on first use |
 | `preview/` | Draws Motion Lab patterns and composites them into screens on a 2D canvas |
 | `exports/scene.ts` | Renderer-neutral pixel map. SVG and PNG draw the same scene |
 | `exports/resolume/` | Resolume adapter, guide, CSV, package builder |

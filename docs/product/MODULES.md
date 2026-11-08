@@ -15,7 +15,9 @@ It covers four topics:
 - **Motion Lab acceptance:** the three-screen project from `motionLabProject()`.
 - **Perf fixtures:** `perf-500` and the others come from `npm run perf:engines`. They're stress tests, not demos. `perf-500` is 500 identical 256 × 256 screens in a 25 × 20 grid, built only to measure speed. Its output in `public/perf/` is gitignored.
 
-**Proposal: an example gallery on the start screen.**
+**Example gallery: built** on `feat/example-gallery`, as described below, with four examples: Festival Main Stage, Corporate Keynote, Motion Lab acceptance and a 500-screen stress test. Examples are built in the app by pure builders loaded on first use, instead of fetched files.
+
+**Original proposal:**
 - **Open example:** opening one creates a new local copy through the normal import path, so it passes `parseProjectFile` and the shipped file is never edited.
 - **Content:** Festival Main Stage, Motion Lab acceptance, and two or three more real show shapes, such as a corporate stage with side screens, a touring wall with delay screens, and a stress test labelled as one.
 - **Kept in sync:** each example has a builder and a test, as Festival Main Stage does, so a schema change can't silently break it.
