@@ -30,7 +30,7 @@ Read first:
 
 | Id | Task | State | Depends on |
 | --- | --- | --- | --- |
-| E1 | Cabinet library outside a project | ✅ Ready | — |
+| E1 | Cabinet library outside a project | 🔍 In review | — |
 | E2 | Pure calculations: power, weight, port capacity | ⏸ | User approval to start Phase 4 |
 | E3 | Saved processor and power plan per project | ⏸ | L2, E2 |
 | E4 | Engineering Studio panel | ⏸ | L1, E1 |
@@ -69,4 +69,12 @@ Each result lists its inputs and assumptions. Safety-relevant values carry a dis
 
 ## Status
 
-Not started. Update this section in your PRs.
+**E1, in review** (branch `feature/led-engineering`, 2026-11-08).
+
+- **Storage:** `src/persistence/cabinet-library.ts`, its own IndexedDB database `playground-pixel-lab-cabinet-library`, behind `CabinetLibraryRepository` (`list`, `get`, `save`, `delete`). Profile fields pass `parseCabinet` from `schema.ts`; the library-only fields (`supplier`, `model`, `datasheetNote`) are validated next to it.
+- **Optional specs (library only):** `maxPowerMw`, `typicalPowerMw` (per cabinet, milliwatts), `weightG` (grams), `refreshRateHz` (LED refresh, hertz) and `environment` (`indoor`, `outdoor`). `null` means not stated. Records saved before these fields existed read as `null`. Nothing calculates with them yet (E2). They are not copied into projects until L2.
+- **Seed:** a new library starts with Yestech MG6S P2.6 Indoor: 500 × 500 mm, 192 × 192 px, nominal pitch 2.604 mm, indoor. Power, weight and refresh rate stay empty until entered from the data sheet. A deleted seed doesn't come back.
+- **Older data:** custom cabinets saved before, in the project database's `cabinets` store, are copied in once. Nothing is deleted there.
+- **UI:** the New cabinet dialog slot shows the library (`src/modules/engineering/cabinet-library-dialog.tsx`): create, edit, duplicate and delete profiles, and add one to the project or hand it back to Add screen. Add screen lists library profiles. A project still stores a plain `CabinetProfile` copy.
+- **Edits outside the lane:** `dialogs.tsx` (Product Design) and `inspector.tsx` (Product Design), small; listed in the PR.
+- **For the Lead Architect:** `useApp.library` and `saveToLibrary` in `state/store.ts`, and `IndexedDbCabinetLibrary` in `indexeddb.ts`, are no longer used by the UI. They can go in a later cleanup.
