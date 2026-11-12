@@ -47,4 +47,9 @@ export interface FrameSource {
   readonly id: string;
   readonly name: string;
   draw(ctx: CanvasRenderingContext2D, input: FrameInput, options: DrawOptions): void;
+  /**
+   * Optional: calls `onChange` when something outside `FrameInput` changes what `draw` produces (settings,
+   * loaded media), so a paused preview redraws. Returns the unsubscribe function.
+   */
+  subscribe?(onChange: () => void): () => void;
 }

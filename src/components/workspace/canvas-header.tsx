@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { useMotion, type CanvasMode } from "@/state/motion-store";
 import { AuroraControls } from "@/modules/content/aurora-controls";
 import { MODULE_SOURCES } from "@/modules/catalog";
+import { CalibrationSourceControls } from "@/modules/output/calibration-controls";
 import { SelectField } from "./fields";
 import { IconButton } from "./top-bar";
 
@@ -78,6 +79,7 @@ export function CanvasHeader() {
             onChange={(v) => (v.startsWith(SOURCE_PREFIX) ? motion.setSource(v.slice(SOURCE_PREFIX.length)) : motion.setPattern(v as PatternId))}
           />
           {!sourceId && pattern === "aurora" && <AuroraControls />}
+          {sourceId === "calibration-test-card" && <CalibrationSourceControls />}
           <SelectField ariaLabel="Target content rate" className="w-[5.5rem]" value={String(fps)} items={fpsItems} onChange={(v) => motion.setFps(Number(v) as ContentFps)} />
           <SelectField ariaLabel="Playback speed" className="w-[4.5rem]" value={String(speed)} items={speedItems} onChange={(v) => motion.setSpeed(Number(v) as PlaybackSpeed)} />
           <Divider />
