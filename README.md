@@ -4,6 +4,8 @@ Map LED screens to exact pixels and prepare them for Resolume. A professional to
 
 **Status:** working MVP. See [SESSION.md](SESSION.md) for the current state and [ROADMAP](docs/product/ROADMAP.md) for what's next.
 
+**Reading this with an AI assistant** such as ChatGPT or Claude? Start with [HANDOFF.md](HANDOFF.md), the short overview: what's built, what works, what's next, and the key architecture decisions. Then read [SESSION.md](SESSION.md) for the detailed state, and [CLAUDE.md](CLAUDE.md) for the engineering rules every change follows.
+
 ## Quick start
 
 Requires Node.js 24 or later. Keep the repository outside folders synced by iCloud Drive or similar services. [Here's why](docs/development/TESTING.md#environment).
