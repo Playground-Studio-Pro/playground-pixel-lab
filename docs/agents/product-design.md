@@ -88,4 +88,6 @@ A new `src/state/preferences.ts`:
 
 ## Status
 
-Not started. Update this section in your PRs.
+- **Done, in review:** screen identification and calibration frames in the Preview dialog, requested by the user outside D1–D7. Design and handoff notes are in [DESIGN_SYSTEM](../product/DESIGN_SYSTEM.md#screen-identification-and-calibration).
+- **Not started:** D1, D2, D3.
+- **Files outside this lane's list:** `public/brand/playground-studio-outline-white.png` (new) and `tests/design-calibration.test.ts` (new).

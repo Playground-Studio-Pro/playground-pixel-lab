@@ -34,6 +34,7 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | `label-layout.test.ts` | Live preview labels never cover each other, stay inside their screen or overlap, and are dropped rather than stacked when there's no room |
 | `examples.test.ts` | Every gallery example matches its catalog entry, has no errors, builds identically each time and survives a file round trip. Festival Main Stage marks its shared band and matches the committed file in `examples/` |
 | `store-history.test.ts` | Undo and redo through the real store and IndexedDB for every kind of edit, plus saving after undo, selection and project switching |
+| `design-calibration.test.ts` | Identification and calibration frames: targets read from the resolved mapping, whole-pixel geometry, border, crosshair, seams and grid at hand-worked positions, exact reference colors, labels never clipped or overlapping at 17 screen shapes and in every example, identifiers kept where screens share pixels, logo aspect ratio and placement |
 
 **Rules**
 - Engines and exports get unit tests, with values worked out by hand rather than copied from output.

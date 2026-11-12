@@ -230,3 +230,19 @@ Measured 2026-11-08: production build, Apple M1 Max, 32 GB, Chrome, Node 26, `np
 | Live preview chunk | 7.5 KB | 7.6 KB (+0.1) |
 
 **Preview, Festival Main Stage** (5120 × 1664 master, 6 screens, 13% zoom, a single run per setting, not the full harness): the browser preview read 59.9 to 60.0 fps with 0 late and 0 skipped frames at flow speeds 1× and 4×. Each frame draws one linear gradient and up to 16 additive radial glows on the off-screen master. This is browser preview FPS only; it says nothing about LED refresh. Venue laptops are unmeasured.
+
+## Product Design
+
+### Screen identification and calibration (Preview dialog)
+
+Measured 2026-11-12: production build, gzip sizes from `npm run perf:bundle`. Before is `main` at `c81a17b`, from the build in `app/`.
+
+| | Before | After |
+| --- | --- | --- |
+| Initial JS | 172.8 KB | 172.8 KB (unchanged) |
+| All lazy chunks together | 336.0 KB | 346.9 KB (+10.9) |
+| Calibration chunk, loaded when the Preview dialog first opens | n/a | 9.3 KB |
+
+The largest app chunk went from 228.5 KB to 212.8 KB because the bundler moved shared code into a new 17.2 KB chunk; those two together are 230.0 KB (+1.5). No dependency was added. JetBrains Mono is self-hosted by `next/font` and not preloaded.
+
+**Not measured:** preview frame times. Playback repaints only the counter layer, without React state, but there is no before and after figure, so no performance claim is made. The 500-screen example was not opened in the dialog.
