@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Pixel Lab · H.264 export verification</title>
+<style>body{font:16px system-ui;background:#16181c;color:#eee;max-width:900px;margin:48px auto}button,input{font:inherit;margin:8px;padding:8px}video{width:100%}output{display:block;white-space:pre-wrap;margin:16px}</style>
+<h1>H.264 MP4 pipeline verification</h1>
+<p>1920 × 1080 · 30 fps · 10 seconds · 300 frames · no audio. Synthetic static source; Calibration renderer awaits integration.</p>
+<label>Centered logo <input id="logo" type="file" accept="image/*"></label>
+<button id="export">Export MP4</button><button id="cancel" disabled>Cancel</button>
+<output id="status">Ready. Requires a secure context and a browser with H.264 WebCodecs encoding.</output>
+<a id="download" hidden>Download MP4</a><video id="player" controls loop></video>
+<script type="module" src="./main.ts"></script></html>

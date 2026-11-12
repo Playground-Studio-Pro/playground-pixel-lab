@@ -76,4 +76,4 @@ After approval. This is also the recommended next Motion Lab step.
 
 ## Status
 
-Not started. Update this section in your PRs.
+H.264 infrastructure implemented independently under `src/modules/output/`; browser verification harness in `prototypes/output-video/`. No shared contracts or renderer duplicated. Calibration integration waits for the Lead Architect renderer and a frozen source snapshot. See [video encoding](../integrations/video-encoding.md) for verification and limits.
