@@ -77,3 +77,9 @@ node prototypes/output-video/verify-browser.mjs
 ffprobe -v error -count_frames -show_streams -show_format -of json /tmp/pixel-animated-calibration.mp4
 ffmpeg -v error -i /tmp/pixel-animated-calibration.mp4 -f null -
 ```
+
+## Stop checkpoint — 2026-11-12
+
+Completed implementation commit: `57227483a0b62b17e9db94134f144af621877a40` on `feature/output-engineering`, following encoder commit `6402f00c1e37011b2d3affd0a0b3ebaec4ff0af4`. Final validation before that commit: typecheck PASS; lint PASS; 245/245 tests PASS; production Webpack build PASS. Real Chrome export, loop-boundary playback and cancellation PASS; ffprobe confirmed H.264, 1920×1080, 30 fps, exactly 300 frames, 10 seconds and no audio; full FFmpeg decode PASS.
+
+The integration instructions, exact commands and known limitations are above. Next milestone, only when explicitly resumed: wire the existing encoder to a prepared, immutable real Calibration source and expose Export MP4 in Output Studio. No additional encoder or prototype redesign is needed. Work is stopped; no branch combinations, push, shared-contract edits or other-worktree modifications were performed. This final checkpoint is documentation only; implementation and validation results are unchanged.
