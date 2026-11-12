@@ -76,4 +76,4 @@ After approval. This is also the recommended next Motion Lab step.
 
 ## Status
 
-H.264 infrastructure implemented independently under `src/modules/output/`; browser verification harness in `prototypes/output-video/`. No shared contracts or renderer duplicated. Calibration integration waits for the Lead Architect renderer and a frozen source snapshot. See [video encoding](../integrations/video-encoding.md) for verification and limits.
+H.264 infrastructure implemented independently under `src/modules/output/`; animated calibration demonstration and browser verification harness in `prototypes/output-video/`. The prototype has periodic scanning lines, optional frame counter, RGB references, center crosshair, a loop-phase indicator and configurable logo; real Chrome export/playback and ffprobe frame count are verified. No shared contracts or renderer duplicated. Calibration integration waits for the Lead Architect renderer and a frozen source snapshot. See [video encoding](../integrations/video-encoding.md) for verification and limits.
