@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -11,13 +12,18 @@ import { computeScreenSpec } from "@/engines/physical";
 import { CabinetLibraryDialog } from "@/modules/engineering/cabinet-library-dialog";
 import { useCabinetLibrary } from "@/modules/engineering/library-store";
 import * as ops from "@/engines/project-ops";
-import { renderSvg } from "@/exports/svg";
 import { reportError } from "@/state/actions";
-import { exportPng, exportSvg, sourceScene, type MapSource } from "@/state/export-actions";
+import { exportPng, exportSvg, type MapSource } from "@/state/export-actions";
 import { opContext, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { Readout, SelectField } from "./fields";
 import { formatDate } from "./start-screen";
+
+// Loaded when the dialog first opens, so calibration frames cost nothing until they're used.
+const CalibrationView = dynamic(() => import("@/components/shell/calibration/calibration-view").then((m) => m.CalibrationView), {
+  ssr: false,
+  loading: () => <div className="flex-1 bg-stage" />,
+});
 
 function Field({ label, value, onChange, autoFocus, suffix, error }: { label: string; value: string; onChange(v: string): void; autoFocus?: boolean; suffix?: string; error?: string }) {
   return (
@@ -180,55 +186,34 @@ function AddScreenDialog() {
 }
 
 function PreviewDialog() {
+  const project = useApp((s) => s.project)!;
   const mapping = useApp((s) => s.mapping)!;
   const view = useApp((s) => s.view);
   const activeOutputId = useApp((s) => s.activeOutputId);
   const issues = useApp((s) => s.issues);
-  const [choice, setChoice] = useState(view === "output" && activeOutputId ? activeOutputId : "master");
-  const [url, setUrl] = useState<string | null>(null);
-
-  const source: MapSource = choice === "master" ? { kind: "master" } : { kind: "output", id: choice };
-  const { scene } = sourceScene(source);
+  const initial = view === "output" && activeOutputId ? activeOutputId : "master";
+  const source: MapSource = initial === "master" ? { kind: "master" } : { kind: "output", id: initial };
   const blocked = issues.some((i) => i.severity === "error");
-  const empty = scene.width < 1 || scene.height < 1;
-
-  useEffect(() => {
-    const objectUrl = URL.createObjectURL(new Blob([renderSvg(scene)], { type: "image/svg+xml" }));
-    const frame = requestAnimationFrame(() => setUrl(objectUrl));
-    return () => {
-      cancelAnimationFrame(frame);
-      URL.revokeObjectURL(objectUrl);
-    };
-    // The scene is rebuilt each render; its content only changes with these inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapping, choice]);
+  const empty = mapping.screens.length === 0;
 
   return (
     <>
-      <DialogHeader><DialogTitle>Pixel map preview</DialogTitle></DialogHeader>
-      <div className="flex items-end justify-between gap-3">
-        <SelectField
-          className="w-56"
-          label="Show"
-          value={choice}
-          items={[{ value: "master", label: "Master canvas" }, ...mapping.outputs.map((o) => ({ value: o.outputId, label: o.name }))]}
-          onChange={setChoice}
-        />
-        <p className="text-sm font-semibold tabular-nums" data-testid="preview-size">{scene.width} × {scene.height} px</p>
-      </div>
-      <div className="flex h-[58vh] items-center justify-center rounded bg-stage p-3">
-        {empty ? (
-          <p className="text-muted-foreground">Add a screen to see its pixel map.</p>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          url && <img src={url} alt={`Pixel map, ${scene.width} by ${scene.height} pixels`} className="max-h-full max-w-full object-contain" />
-        )}
-      </div>
-      <DialogFooter>
-        {blocked && <p className="mr-auto self-center text-xs text-destructive">Fix the errors listed under Checks before exporting.</p>}
-        <Button variant="outline" disabled={blocked || empty} onClick={() => exportSvg(source)}>Export SVG</Button>
-        <Button disabled={blocked || empty} onClick={() => exportPng(source)}>Export PNG</Button>
-      </DialogFooter>
+      <DialogHeader className="border-b border-border py-2.5 pr-12 pl-3">
+        <DialogTitle className="text-sm">Screen identification and calibration</DialogTitle>
+        <DialogDescription className="sr-only">Identification and calibration frames for the master canvas, each output and each screen.</DialogDescription>
+      </DialogHeader>
+      <CalibrationView
+        mapping={mapping}
+        projectName={project.meta.name}
+        initialTargetId={initial}
+        actions={
+          <>
+            {blocked && <p className="text-xs text-destructive">Fix the errors listed under Checks before exporting pixel maps.</p>}
+            <Button variant="outline" size="sm" className="rounded" disabled={blocked || empty} onClick={() => exportSvg(source)}>Pixel map SVG</Button>
+            <Button variant="outline" size="sm" className="rounded" disabled={blocked || empty} onClick={() => exportPng(source)}>Pixel map PNG</Button>
+          </>
+        }
+      />
     </>
   );
 }
@@ -275,7 +260,7 @@ export function Dialogs() {
   return (
     <>
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && openDialog(null)}>
-        <DialogContent className={dialog === "preview" ? "sm:max-w-5xl" : dialog === "new-cabinet" ? "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl" : "sm:max-w-md"}>
+        <DialogContent className={dialog === "preview" ? "flex h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(1760px,calc(100%-2rem))]" : dialog === "new-cabinet" ? "max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl" : "sm:max-w-md"}>
           {dialog === "new-project" && <NewProjectDialog />}
           {dialog === "open-project" && <OpenProjectDialog />}
           {dialog === "add-screen" && hasProject && <AddScreenDialog />}

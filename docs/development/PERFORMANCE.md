@@ -247,3 +247,19 @@ Measured 2026-11-12: Apple M1 Max, 32 GB, Chrome, Node 26. Bundle from a product
 **Preview, Corporate Keynote** (1,500 particles, default preset, a single reading per setting, not the full harness): the browser preview read 60.0 fps on the production build for the master canvas (4224 × 1536 target, rendered at 1032 × 375), and 60.0 fps on the development server for Main Wall (2688 × 1536 target, rendered at 1032 × 590). Treat both as smoke checks. It is browser preview FPS only and says nothing about LED refresh. Not yet measured: p95 frame time, other densities, full-resolution rendering, and any venue laptop or integrated GPU.
 
 Each frame is one draw of the room (under 200 triangles, shaded per pixel) and one instanced draw of the particles. The preview renders at the size it is shown, capped at twice the CSS size and never above the target's own resolution.
+
+## Product Design
+
+### Screen identification and calibration (Preview dialog)
+
+Measured 2026-11-12: production build, gzip sizes from `npm run perf:bundle`. Before is `main` at `c81a17b`, from the build in `app/`.
+
+| | Before | After |
+| --- | --- | --- |
+| Initial JS | 172.8 KB | 172.8 KB (unchanged) |
+| All lazy chunks together | 336.0 KB | 346.9 KB (+10.9) |
+| Calibration chunk, loaded when the Preview dialog first opens | n/a | 9.3 KB |
+
+The largest app chunk went from 228.5 KB to 212.8 KB because the bundler moved shared code into a new 17.2 KB chunk; those two together are 230.0 KB (+1.5). No dependency was added. JetBrains Mono is self-hosted by `next/font` and not preloaded.
+
+**Not measured:** preview frame times. Playback repaints only the counter layer, without React state, but there is no before and after figure, so no performance claim is made. The 500-screen example was not opened in the dialog.
