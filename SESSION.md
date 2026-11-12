@@ -1,10 +1,21 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-08, end of Sprint 1. Development is paused.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Depth Studio milestone 1.
 
 ## Objective
 
-Sprint 1 is done: Aurora Gradient and the cabinet library are merged. Development is paused. When it resumes, the next step is Sprint 2, below. A short overview for anyone picking this up is in [HANDOFF](HANDOFF.md).
+Development resumed on 2026-11-12 with **Depth Studio**, at the owner's request and ahead of Sprint 2. Milestone 1, the Emerald Chamber, is built on `feature/lead-architect` and not merged. Sprint 2, below, has not started and keeps its order. A short overview for anyone picking this up is in [HANDOFF](HANDOFF.md).
+
+## Depth Studio
+
+A third canvas mode, next to Mapping and Live preview. Decisions are in [DECISIONS](docs/architecture/DECISIONS.md), numbers in [PERFORMANCE](docs/development/PERFORMANCE.md#depth-studio).
+
+- **Where:** pure maths in `src/engines/depth/` (config, window camera, seeded particles, targets). Renderer, shaders, store, viewport and controls in `src/modules/depth-studio/`. Shell changes: `CanvasMode` gains `depth`, plus the tab and two lazy imports.
+- **Works:** the Emerald Chamber scene, framed for the master canvas or any screen at its exact aspect ratio; depth, viewer, particle, light, fog, palette, loop and seed controls; play, pause, scrub; perspective guides; a deterministic 15-second loop by frame number.
+- **Checked in a browser** (dev server, port 3100, Corporate Keynote): depth reads with particles off; ultrawide master, 16:9 Main Wall and portrait side screen all frame without stretching; guides match the room; 60 fps preview on an M1 Max.
+- **Not built yet:** saving (waits for L2), full-screen output (waits for O2), frame export, a `FrameSource` adapter so the scene plays across mapped screens in Live preview, and automatic comparison of rendered pixels and of the loop seam.
+- **The pack:** `CLAUDE_MASTER_PROMPT.md`, `START_HERE.md` and `docs/features/depth-studio/` sit untracked in `app/`. They were read from there and not copied or changed. The owner decides when they are committed.
+- **Three.js:** not installed. The install was blocked in the session, and the scene didn't need it.
 
 ## Verified current state
 
@@ -19,13 +30,13 @@ Sprint 1 is done: Aurora Gradient and the cabinet library are merged. Developmen
   | `agents/led-engineering` | `feature/led-engineering` | 3103 |
   | `agents/output-engineering` | `feature/output-engineering` | 3104 |
 
-- **Baseline:** `main` is at `ba4e5f4`, the merge of PR #10. All six worktrees were at that commit and clean when development paused. All branches are pushed.
+- **Baseline:** `main` is at `c81a17b`, the merge of PR #11. The four other agent worktrees are at that commit and clean. `feature/lead-architect` carries Depth Studio milestone 1 on top of it.
 - **Merged PRs:**
   - #1 Phase 0 foundation, #2 Phase 0 complete;
   - #3 undo and redo, #4 Motion Lab V1;
   - #5 agent briefs, #6 example gallery, #7 shared contracts and lanes, #8 folder layout;
   - #9 Aurora Gradient, #10 cabinet library.
-- **Open PRs:** the documentation-only PR for this handoff.
+- **Open PRs:** none on `main`. PR #11, the handoff, is merged.
 - **Agents:** none running. All five are stopped.
 
 ## Completed features
@@ -42,12 +53,13 @@ Sprint 1 is done: Aurora Gradient and the cabinet library are merged. Developmen
 
 ## Last validation
 
-On `main` at `ba4e5f4`, 2026-11-08:
+On `feature/lead-architect`, 2026-11-12. The browser and bundle rows below the tests are from `main` on 2026-11-08, except where they say Depth Studio:
 
 | Check | Result |
 | --- | --- |
 | Typecheck, lint, build | Pass |
-| Unit tests | 236 of 236 pass, in 15 files |
+| Unit tests | 254 of 254 pass, in 16 files (18 new, for the depth engine) |
+| Depth Studio bundle | Initial JavaScript unchanged at 172.8 KB. Viewport chunk 11.9 KB, controls chunk 3.9 KB, both on first open |
 | GitHub CI on `main` | Pass |
 | Browser, production build on port 3000 | Aurora Gradient in Live preview at 60 fps, 0 late, 0 skipped, continuous across Corporate Keynote's three screens. The cabinet library opens with the MG6S seed, the generic profiles and the specs form |
 | Bundle | Initial JavaScript 172.8 KB, unchanged by Sprint 1. Aurora added 1.6 KB to app chunks; see [PERFORMANCE](docs/development/PERFORMANCE.md#content-engineering) |

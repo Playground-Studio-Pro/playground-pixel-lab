@@ -4,7 +4,8 @@ import { create } from "zustand";
 import type { ContentFps, PatternId, PlaybackSpeed } from "@/domain/motion";
 import * as clock from "@/engines/motion/clock";
 
-export type CanvasMode = "mapping" | "live";
+/** `depth` is Depth Studio, which keeps its own playback state in `modules/depth-studio`. */
+export type CanvasMode = "mapping" | "live" | "depth";
 
 /**
  * Motion Lab playback state. Kept apart from the project store on purpose: nothing here is saved,

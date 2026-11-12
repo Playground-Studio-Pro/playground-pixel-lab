@@ -12,7 +12,15 @@ import { Explorer } from "./explorer";
 import { Inspector } from "./inspector";
 import { StartScreen } from "./start-screen";
 import { TopBar } from "./top-bar";
+import dynamic from "next/dynamic";
+import { useMotion } from "@/state/motion-store";
 import { CanvasArea } from "./canvas-area";
+
+// Depth Studio brings its own controls, which take the inspector's place while it is open.
+const DepthInspector = dynamic(() => import("@/modules/depth-studio/depth-inspector"), {
+  ssr: false,
+  loading: () => <aside className="min-h-0 border-l border-border bg-panel" aria-busy="true" />,
+});
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
@@ -62,6 +70,7 @@ export function App() {
   const startupError = useApp((s) => s.startupError);
   const hasProject = useApp((s) => s.project !== null);
   const init = useApp((s) => s.init);
+  const depthOpen = useMotion((s) => s.mode === "depth");
 
   useEffect(() => {
     void init();
@@ -101,7 +110,7 @@ export function App() {
           <TopBar />
           <Explorer />
           <CanvasArea />
-          <Inspector />
+          {depthOpen ? <DepthInspector /> : <Inspector />}
         </div>
       ) : (
         <StartScreen />

@@ -40,6 +40,7 @@ export function CanvasHeader() {
             <span aria-hidden className={cn("size-1.5 rounded-full", live && playing ? "bg-motion motion-safe:animate-pulse" : live ? "bg-motion" : "bg-muted-foreground/60")} />
             Live preview
           </TabsTrigger>
+          <TabsTrigger value="depth" className="rounded-sm px-2.5 text-xs" data-testid="depth-tab">Depth Studio</TabsTrigger>
         </TabsList>
       </Tabs>
 
