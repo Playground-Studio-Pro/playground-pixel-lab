@@ -70,8 +70,12 @@ interface FrameInput {
 interface FrameSource {
   id: string; name: string;
   draw(ctx: CanvasRenderingContext2D, input: FrameInput, options: { scale: number; fontFamily: string }): void;
+  /** Optional: calls onChange when settings or loaded media outside FrameInput change the drawing. */
+  subscribe?(onChange: () => void): () => void;
 }
 ```
+
+`subscribe` exists so a paused preview redraws when, for example, the test card's logo setting changes or its logo finishes loading. A consumer that exports frames must still wait for a source's media first: the calibration test card provides `prepareCalibrationSource()`.
 
 **How a frame reaches a screen.** This is how Motion Lab works today, and every consumer follows it:
 

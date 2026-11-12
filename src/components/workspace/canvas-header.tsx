@@ -39,8 +39,9 @@ export function CanvasHeader() {
   const motion = useMotion.getState();
   const live = mode === "live";
 
+  // Controls keep their size. When a source adds more than fits, the row scrolls sideways.
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-panel px-2" data-testid="canvas-header">
+    <div className="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-panel px-2 [scrollbar-width:thin] *:shrink-0" data-testid="canvas-header">
       <Tabs value={mode} onValueChange={(value) => motion.setMode(value as CanvasMode)}>
         <TabsList className="h-7 rounded p-0.5">
           <TabsTrigger value="mapping" className="rounded-sm px-2.5 text-xs">Mapping</TabsTrigger>
