@@ -1,21 +1,18 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Depth Studio milestone 1.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Sprint 3 foundation.
 
 ## Objective
 
-Development resumed on 2026-11-12 with **Depth Studio**, at the owner's request and ahead of Sprint 2. Milestone 1, the Emerald Chamber, is built on `feature/lead-architect` and not merged. Sprint 2, below, has not started and keeps its order. A short overview for anyone picking this up is in [HANDOFF](HANDOFF.md).
+**Sprint 3, Production Studio**, approved by the owner on 2026-11-12: Micro Environment Studio, calibration test card, processor intelligence, cabinet engineering and production exports. It supersedes the Sprint 2 list. Tasks, ownership, integration order, acceptance criteria and the four agent prompts are in [SPRINT_3](docs/agents/SPRINT_3.md).
 
-## Depth Studio
+## Where it stands
 
-A third canvas mode, next to Mapping and Live preview. Decisions are in [DECISIONS](docs/architecture/DECISIONS.md), numbers in [PERFORMANCE](docs/development/PERFORMANCE.md#depth-studio).
-
-- **Where:** pure maths in `src/engines/depth/` (config, window camera, seeded particles, targets). Renderer, shaders, store, viewport and controls in `src/modules/depth-studio/`. Shell changes: `CanvasMode` gains `depth`, plus the tab and two lazy imports.
-- **Works:** the Emerald Chamber scene, framed for the master canvas or any screen at its exact aspect ratio; depth, viewer, particle, light, fog, palette, loop and seed controls; play, pause, scrub; perspective guides; a deterministic 15-second loop by frame number.
-- **Checked in a browser** (dev server, port 3100, Corporate Keynote): depth reads with particles off; ultrawide master, 16:9 Main Wall and portrait side screen all frame without stretching; guides match the room; 60 fps preview on an M1 Max.
-- **Not built yet:** saving (waits for L2), full-screen output (waits for O2), frame export, a `FrameSource` adapter so the scene plays across mapped screens in Live preview, and automatic comparison of rendered pixels and of the loop seam.
-- **The pack:** `CLAUDE_MASTER_PROMPT.md`, `START_HERE.md` and `docs/features/depth-studio/` sit untracked in `app/`. They were read from there and not copied or changed. The owner decides when they are committed.
-- **Three.js:** not installed. The install was blocked in the session, and the scene didn't need it.
+- **PR #12** (`feature/lead-architect`, draft, not merged) carries Depth Studio milestone 1 and the Sprint 3 foundation: studio switch, module registry and catalog, `project.modules` at schema 2 with migration, frame context, the engineering contract, and the Depth Studio scene as a Live preview source. The owner merges it first; the lanes start from it.
+- **Depth Studio** now opens from the Content Studio. Content Engineering owns it from Sprint 3. Its settings still aren't saved: the module can now use `project.modules`.
+- **Lanes:** none started. The owner starts each agent with its prompt in SPRINT_3.
+- **The pack:** `CLAUDE_MASTER_PROMPT.md`, `START_HERE.md` and `docs/features/depth-studio/` sit untracked in `app/`, read there and not changed. The owner decides when they are committed.
+- **Logo:** none in the repository. Candidates are in `~/Play.Code/brandplayground/assets/`; Output Engineering asks the owner which to use.
 
 ## Verified current state
 
@@ -30,13 +27,13 @@ A third canvas mode, next to Mapping and Live preview. Decisions are in [DECISIO
   | `agents/led-engineering` | `feature/led-engineering` | 3103 |
   | `agents/output-engineering` | `feature/output-engineering` | 3104 |
 
-- **Baseline:** `main` is at `c81a17b`, the merge of PR #11. The four other agent worktrees are at that commit and clean. `feature/lead-architect` carries Depth Studio milestone 1 on top of it.
+- **Baseline:** `main` is at `c81a17b`, the merge of PR #11. The four other agent worktrees are at that commit and clean. `feature/lead-architect` carries PR #12 on top of it.
 - **Merged PRs:**
   - #1 Phase 0 foundation, #2 Phase 0 complete;
   - #3 undo and redo, #4 Motion Lab V1;
   - #5 agent briefs, #6 example gallery, #7 shared contracts and lanes, #8 folder layout;
   - #9 Aurora Gradient, #10 cabinet library.
-- **Open PRs:** none on `main`. PR #11, the handoff, is merged.
+- **Open PRs:** #12, draft, the Sprint 3 foundation.
 - **Agents:** none running. All five are stopped.
 
 ## Completed features
@@ -53,16 +50,15 @@ A third canvas mode, next to Mapping and Live preview. Decisions are in [DECISIO
 
 ## Last validation
 
-On `feature/lead-architect`, 2026-11-12. The browser and bundle rows below the tests are from `main` on 2026-11-08, except where they say Depth Studio:
+On `feature/lead-architect`, 2026-11-12, production build on port 3100, Chrome, M1 Max:
 
 | Check | Result |
 | --- | --- |
 | Typecheck, lint, build | Pass |
-| Unit tests | 254 of 254 pass, in 16 files (18 new, for the depth engine) |
-| Depth Studio bundle | Initial JavaScript unchanged at 172.8 KB. Viewport chunk 11.9 KB, controls chunk 3.9 KB, both on first open |
-| GitHub CI on `main` | Pass |
-| Browser, production build on port 3000 | Aurora Gradient in Live preview at 60 fps, 0 late, 0 skipped, continuous across Corporate Keynote's three screens. The cabinet library opens with the MG6S seed, the generic profiles and the specs form |
-| Bundle | Initial JavaScript 172.8 KB, unchanged by Sprint 1. Aurora added 1.6 KB to app chunks; see [PERFORMANCE](docs/development/PERFORMANCE.md#content-engineering) |
+| Unit tests | 264 of 264 pass, in 17 files |
+| Bundle | Initial JavaScript 172.8 KB gzip, unchanged; within every budget (`npm run perf:bundle -- --check`) |
+| Browser | Corporate Keynote: the studio switch opens Content (Depth Studio playing), Engineering and Output (empty states). In Mapping, Live preview plays the Depth Studio scene across the three screens at 60.0 fps, 0 late, 0 skipped. A project saved at schema 1 opened unchanged |
+| Not tested | The test card placeholder in the browser; context loss; venue-laptop performance |
 
 ## Important decisions
 
@@ -90,23 +86,7 @@ On `feature/lead-architect`, 2026-11-12. The browser and bundle rows below the t
 
 ## Pending tasks
 
-Task ids are defined in the agent briefs.
-- **Ready:**
-  - L1, module registry and studio switch;
-  - D1–D3, studio navigation spec, theme tokens, preferences store;
-  - C1, content templates per screen, canvas and output;
-  - O1, exports on the shared contract.
-- **Waiting on a dependency:** L2, D4–D7, C3, E3, E4, O3.
-- **Waiting on the user's approval:** O2 full-screen output, C2 content layouts, C4 mockups, E2 power and port calculations, O4 video encoding, O5 NDI, C5 video generation.
-
-## Recommended next sprint
-
-**Sprint 2:** visible features that build on Sprint 1, with the fewest collisions.
-1. **Output Engineering, O2:** full-screen output to a second display, at one output's exact size. This needs approval, which is recommended because it unblocks the NDI test.
-2. **Content Engineering, C1:** content templates per screen, canvas and output. This is a Phase 1 deliverable, already approved.
-3. **LED Engineering, E2:** power and weight per screen from the library specs. This needs approval to start Phase 4.
-
-In parallel, the Lead Architect does L1 and removes the dead library code.
+All in [SPRINT_3](docs/agents/SPRINT_3.md): D8–D9, C6, E5–E6, O6–O10, then L6, the end-to-end demo and QA. Lead cleanup still to do: remove `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary`; move Motion Lab patterns onto `FrameSource`.
 
 ## Resume
 

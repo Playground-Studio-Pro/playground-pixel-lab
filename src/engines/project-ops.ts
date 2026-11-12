@@ -95,6 +95,7 @@ export function createProject(meta: Pick<ProjectMeta, "name"> & Partial<Pick<Pro
       outputs: [{ id: ctx.newId(), name: "Output 1", sizing: { mode: "auto" } }],
       slices: [],
     },
+    modules: {},
   };
 }
 
@@ -111,6 +112,39 @@ export function duplicateProject(project: Project, ctx: OpContext, name?: string
 export function updateMeta(project: Project, patch: Partial<Pick<ProjectMeta, "name" | "client" | "venue" | "notes">>): Project {
   if (patch.name !== undefined) requireName(patch.name, "A project");
   return { ...project, meta: { ...project.meta, ...patch } };
+}
+
+// ─── Module data ───────────────────────────────────────────────────────────
+
+const MODULE_ID = /^[a-z][a-z0-9-]*$/;
+
+/** Stores one module's saved data, replacing what it had. `data` must be plain JSON. */
+export function setModuleData(project: Project, moduleId: string, version: number, data: unknown): Project {
+  if (!MODULE_ID.test(moduleId)) throw new DomainError(`"${moduleId}" isn't a valid module id.`);
+  if (!Number.isSafeInteger(version) || version < 1) throw new DomainError("A module data version must be a whole number of 1 or more.");
+  if (!isPlainJson(data)) throw new DomainError(`Data for module "${moduleId}" must be plain JSON.`);
+  return { ...project, modules: { ...project.modules, [moduleId]: { version, data } } };
+}
+
+export function removeModuleData(project: Project, moduleId: string): Project {
+  if (!(moduleId in project.modules)) return project;
+  const modules = { ...project.modules };
+  delete modules[moduleId];
+  return { ...project, modules };
+}
+
+/** True for values that survive `JSON.stringify` and `JSON.parse` unchanged. */
+export function isPlainJson(value: unknown, depth = 0): boolean {
+  if (depth > 64) return false;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every((v) => isPlainJson(v, depth + 1));
+  if (typeof value === "object") {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return false;
+    return Object.values(value as Record<string, unknown>).every((v) => v !== undefined && isPlainJson(v, depth + 1));
+  }
+  return false;
 }
 
 // ─── Cabinets ──────────────────────────────────────────────────────────────

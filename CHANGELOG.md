@@ -5,6 +5,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Studios: a switch between Mapping, Content, Engineering and Output. Content, Engineering and Output show their modules' panels, loaded on first use, or an empty state. Depth Studio now lives in the Content Studio.
+- Module sources in Live preview: the pattern menu also lists sources from modules. The Depth Studio scene plays across the mapped screens; a placeholder marks where the calibration test card will go.
+- Saved module data: projects gain a `modules` section (schema 2), so a module's settings can autosave, undo and travel in the project file. Older files upgrade on open.
+- Shared contracts for Sprint 3: the module registry, frame context and the engineering summary that reports read.
 - Depth Studio, first milestone: a third canvas mode next to Mapping and Live preview. The Emerald Chamber scene turns a canvas or screen into a window onto a deep room, with ribs of light, a luminous back wall, a polished floor, fog, a light sweep and drifting leaves. It is framed for the master canvas or any screen at its exact aspect ratio, using the screen's physical size when known. Controls: depth, viewer position, particles, light, fog, palette, loop length, content rate and seed, with play, pause and scrub. The 15-second loop is deterministic by frame number. Rendered with WebGL2 and no new dependency. Not yet: saving, full-screen output and export.
 - Aurora Gradient, a Live preview pattern: a moving multi-color field with palette presets, editable colors, flow speed and eight directions. It's deterministic by frame number and continuous across screens.
 - Cabinet library outside projects: create, edit, duplicate and delete profiles, with supplier, model and optional data-sheet specs (power, weight, LED refresh rate, indoor or outdoor). It starts with the Yestech MG6S P2.6 Indoor. Custom cabinets saved earlier are copied in once.

@@ -10,6 +10,8 @@ Five agents work at the same time, each in its own Git worktree and branch. This
 
 The shared contracts are in [CONTRACTS](../architecture/CONTRACTS.md). Read them before writing code.
 
+**Current sprint:** [SPRINT_3](SPRINT_3.md) has the tasks, ownership changes, integration order, acceptance criteria and a copy-paste prompt per agent. Where it differs from this page or a brief, it wins.
+
 ## Lanes
 
 | Agent | Studio | Brief | Worktree | Branch | Dev port |

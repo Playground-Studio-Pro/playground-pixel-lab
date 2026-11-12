@@ -1,4 +1,6 @@
+import type { Project } from "@/domain/model";
 import type { ContentFps, MotionScreen } from "@/domain/motion";
+import type { ResolvedMapping } from "@/engines/mapping";
 
 /**
  * Shared rendering contract for the Motion Lab preview engine. Types only: see docs/architecture/CONTRACTS.md.
@@ -14,6 +16,16 @@ export interface FrameInput {
   readonly height: number;
   /** Each screen's region on the master canvas, from `resolveMapping`. */
   readonly screens: readonly MotionScreen[];
+  /**
+   * The project and its resolved mapping, for sources that label what they draw: a test card prints
+   * each screen's name, resolution, output and port. Read-only. Absent in tests that don't need it.
+   */
+  readonly context?: FrameContext;
+}
+
+export interface FrameContext {
+  readonly project: Project;
+  readonly mapping: ResolvedMapping;
 }
 
 export interface DrawOptions {

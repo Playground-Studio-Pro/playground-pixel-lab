@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { StudioId } from "@/modules/contract";
 
 export type DialogName = "new-project" | "open-project" | "add-screen" | "new-cabinet" | "preview";
 
@@ -19,6 +20,9 @@ export interface ConfirmRequest {
 }
 
 interface UiState {
+  /** The open studio. Workspace state: not saved, and switching never changes the project. */
+  studio: StudioId;
+  setStudio(studio: StudioId): void;
   dialog: DialogName | null;
   confirm: ConfirmRequest | null;
   /** Set while New cabinet was opened from Add screen: holds the cabinet to preselect on return. */
@@ -32,6 +36,8 @@ interface UiState {
 }
 
 export const useUi = create<UiState>((set) => ({
+  studio: "mapping",
+  setStudio: (studio) => set({ studio }),
   dialog: null,
   confirm: null,
   addScreenCabinetId: null,

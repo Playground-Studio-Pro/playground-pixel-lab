@@ -8,10 +8,16 @@ import { CONTENT_FPS, PATTERNS, PLAYBACK_SPEEDS, type ContentFps, type PatternId
 import { cn } from "@/lib/utils";
 import { useMotion, type CanvasMode } from "@/state/motion-store";
 import { AuroraControls } from "@/modules/content/aurora-controls";
+import { MODULE_SOURCES } from "@/modules/catalog";
 import { SelectField } from "./fields";
 import { IconButton } from "./top-bar";
 
-const patternItems = PATTERNS.map((p) => ({ value: p.id, label: p.name }));
+// Motion Lab patterns first, then sources from modules. Module source values carry a prefix so the two can't collide.
+const SOURCE_PREFIX = "source:";
+const patternItems = [
+  ...PATTERNS.map((p) => ({ value: p.id as string, label: p.name })),
+  ...MODULE_SOURCES.map((s) => ({ value: SOURCE_PREFIX + s.id, label: s.name })),
+];
 const fpsItems = CONTENT_FPS.map((f) => ({ value: String(f), label: `${f} fps` }));
 const speedItems = PLAYBACK_SPEEDS.map((s) => ({ value: String(s), label: `${s}×` }));
 
@@ -24,6 +30,7 @@ export function CanvasHeader() {
   const mode = useMotion((s) => s.mode);
   const playing = useMotion((s) => s.clock.playing);
   const pattern = useMotion((s) => s.pattern);
+  const sourceId = useMotion((s) => s.sourceId);
   const fps = useMotion((s) => s.fps);
   const speed = useMotion((s) => s.speed);
   const showGuides = useMotion((s) => s.showGuides);
@@ -40,7 +47,6 @@ export function CanvasHeader() {
             <span aria-hidden className={cn("size-1.5 rounded-full", live && playing ? "bg-motion motion-safe:animate-pulse" : live ? "bg-motion" : "bg-muted-foreground/60")} />
             Live preview
           </TabsTrigger>
-          <TabsTrigger value="depth" className="rounded-sm px-2.5 text-xs" data-testid="depth-tab">Depth Studio</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -64,8 +70,14 @@ export function CanvasHeader() {
           </Tooltip>
           <IconButton label="Restart from frame 0" onClick={() => motion.restart()}><RotateCcw /></IconButton>
           <Divider />
-          <SelectField ariaLabel="Pattern" className="w-36" value={pattern} items={patternItems} onChange={(v) => motion.setPattern(v as PatternId)} />
-          {pattern === "aurora" && <AuroraControls />}
+          <SelectField
+            ariaLabel="Pattern"
+            className="w-44"
+            value={sourceId ? SOURCE_PREFIX + sourceId : pattern}
+            items={patternItems}
+            onChange={(v) => (v.startsWith(SOURCE_PREFIX) ? motion.setSource(v.slice(SOURCE_PREFIX.length)) : motion.setPattern(v as PatternId))}
+          />
+          {!sourceId && pattern === "aurora" && <AuroraControls />}
           <SelectField ariaLabel="Target content rate" className="w-[5.5rem]" value={String(fps)} items={fpsItems} onChange={(v) => motion.setFps(Number(v) as ContentFps)} />
           <SelectField ariaLabel="Playback speed" className="w-[4.5rem]" value={String(speed)} items={speedItems} onChange={(v) => motion.setSpeed(Number(v) as PlaybackSpeed)} />
           <Divider />
