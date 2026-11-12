@@ -1,6 +1,6 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Sprint 3 foundation.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, calibration test card integrated in Live preview (owner away; nothing merged).
 
 ## Objective
 
@@ -8,6 +8,14 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Spr
 
 ## Where it stands
 
+**Merge order for the owner:** #12, then #13, then mark #14 ready and merge it. All three are open and unmerged; `main` is untouched at `c81a17b`.
+
+- **PR #13** (`feature/product-design`, Product Design, not merged): screen identification and calibration frames in the Preview dialog, `src/components/shell/calibration/`. Logo `public/brand/playground-studio-outline-white.png` is a byte-identical copy of the existing brand file `playground-growth/01_BRAND/.../logo_horizontal_outline-white_web.png`.
+- **PR #14** (`integration/calibration-live-preview`, draft, not merged): #12 + #13 merged together, plus the calibration test card as the Output module's `FrameSource`, playing in Live preview. Commits:
+  - `54a1765` merge of #13 into `18b2d9f` (one conflict, `docs/development/PERFORMANCE.md`, both sections kept);
+  - `e2f1707` `src/modules/output/calibration-source.ts`, settings store, `FrameSource.subscribe?` contract addition, Live preview redraw on it;
+  - `54d0199` header selects (frame, logo), header controls no longer shrink, `tests/calibration-source.test.ts`, CONTRACTS and CHANGELOG notes;
+  - the commit holding this SESSION update, local only: not pushed, at the owner's request.
 - **PR #12** (`feature/lead-architect`, draft, not merged) carries Depth Studio milestone 1 and the Sprint 3 foundation: studio switch, module registry and catalog, `project.modules` at schema 2 with migration, frame context, the engineering contract, and the Depth Studio scene as a Live preview source. The owner merges it first; the lanes start from it.
 - **Depth Studio** now opens from the Content Studio. Content Engineering owns it from Sprint 3. Its settings still aren't saved: the module can now use `project.modules`.
 - **Lanes:** none started. The owner starts each agent with its prompt in SPRINT_3.
@@ -33,7 +41,7 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Spr
   - #3 undo and redo, #4 Motion Lab V1;
   - #5 agent briefs, #6 example gallery, #7 shared contracts and lanes, #8 folder layout;
   - #9 Aurora Gradient, #10 cabinet library.
-- **Open PRs:** #12, draft, the Sprint 3 foundation.
+- **Open PRs:** #12 (draft, Sprint 3 foundation), #13 (Product Design calibration frames), #14 (draft, integration of both plus the Live preview test card).
 - **Agents:** none running. All five are stopped.
 
 ## Completed features
@@ -50,15 +58,18 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, Spr
 
 ## Last validation
 
-On `feature/lead-architect`, 2026-11-12, production build on port 3100, Chrome, M1 Max:
+On `integration/calibration-live-preview` at `54d0199`, 2026-11-12, M1 Max:
 
 | Check | Result |
 | --- | --- |
 | Typecheck, lint, build | Pass |
-| Unit tests | 264 of 264 pass, in 17 files |
-| Bundle | Initial JavaScript 172.8 KB gzip, unchanged; within every budget (`npm run perf:bundle -- --check`) |
-| Browser | Corporate Keynote: the studio switch opens Content (Depth Studio playing), Engineering and Output (empty states). In Mapping, Live preview plays the Depth Studio scene across the three screens at 60.0 fps, 0 late, 0 skipped. A project saved at schema 1 opened unchanged |
-| Not tested | The test card placeholder in the browser; context loss; venue-laptop performance |
+| Unit tests | 288 of 288 pass, in 19 files |
+| Pixel accuracy | At scale 1 the Live preview source draws the Preview dialog's frame call for call, after one black master fill; every rectangle on whole master pixels (Corporate Keynote, 4224 × 1536) |
+| Bundle | Initial JavaScript 172.8 KB gzip, unchanged; within every budget |
+| Browser | Production build, headless Chrome 1440 × 900 driven over the DevTools protocol (the Chrome extension was not connected). Corporate Keynote, Live preview, Calibration test card: Identification with centered logo, watermark, Calibration; each mode keeps its own logo; switching while paused redraws; 60.0 fps preview, 0 late, 0 skipped; no console errors |
+| Not tested | Interactive Chrome, other widths, the 500-screen example, full-screen output and export of the test card, a real LED wall |
+
+Screenshots (local, temporary): `/private/tmp/claude-501/-Users-miguelgontran-Play-Code-playground-pixel-agents-lead-architect/e4ee782d-47d2-49d6-a50c-3b364dece18a/scratchpad/shots/`.
 
 ## Important decisions
 
@@ -69,6 +80,12 @@ On `feature/lead-architect`, 2026-11-12, production build on port 3100, Chrome, 
 - **Proposals:** [MODULES](docs/product/MODULES.md) is a proposal. Video encoding, NDI, Phase 4 calculations and anything needing a backend wait for approval.
 
 ## Known issues
+
+- **Calibration test card (for Product Design, D9):**
+  - At 1440 px the Live preview header is wider than the canvas area and scrolls sideways.
+  - The Live preview screen-guide labels cover the test card's top-left labels in Calibration mode; guides can be switched off.
+  - The pure calibration code (`frame.ts`, `tokens.ts`, `from-mapping.ts`) lives in `components/shell/calibration` but is used by a module; move it beside the engines later.
+- **Test card export:** a frame exported before the logo loads has no logo. Exporters must `await prepareCalibrationSource()` first (Output Engineering).
 
 - **Dead code:** `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary` in `state/store.ts` and `persistence/indexeddb.ts` are no longer used by the UI. The Lead Architect removes them in a cleanup.
 - **Aurora:**
@@ -90,7 +107,7 @@ All in [SPRINT_3](docs/agents/SPRINT_3.md): D8–D9, C6, E5–E6, O6–O10, then
 
 ## Resume
 
-1. **Check the baseline:** `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `ba4e5f4`, or the merge of the handoff PR.
+1. **Check the baseline:** `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `c81a17b` unless the owner has merged #12–#14 since.
 2. **Run the app:** `npm run build && npx next start -p 3000`.
 3. **Start agents** with the commands in [HANDOFF](HANDOFF.md#restart-each-agent). Each one runs `git merge origin/main` first, as [START](docs/agents/START.md) says.
 
@@ -103,4 +120,4 @@ Read:
 - docs/agents/README.md
 - docs/agents/lead-architect.md
 
-You are the Lead Architect. Continue from the verified current state. Ask the user which Sprint 2 items to approve before starting them. Don't re-audit completed work unless the repository contradicts SESSION.md.
+You are the Lead Architect. Continue from the verified current state. Sprint 3 is approved ([SPRINT_3](docs/agents/SPRINT_3.md)). First ask whether #12, #13 and #14 are merged; if the last SESSION commit on `integration/calibration-live-preview` isn't pushed yet, ask before pushing it. Don't re-audit completed work unless the repository contradicts SESSION.md.
