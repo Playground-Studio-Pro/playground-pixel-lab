@@ -77,3 +77,6 @@ After approval. This is also the recommended next Motion Lab step.
 ## Status
 
 H.264 infrastructure implemented independently under `src/modules/output/`; animated calibration demonstration and browser verification harness in `prototypes/output-video/`. The prototype has periodic scanning lines, optional frame counter, RGB references, center crosshair, a loop-phase indicator and configurable logo; real Chrome export/playback and ffprobe frame count are verified. No shared contracts or renderer duplicated. Calibration integration waits for the Lead Architect renderer and a frozen source snapshot. See [video encoding](../integrations/video-encoding.md) for verification and limits.
+
+
+Native Export V1: Electron-independent ProRes 422 / PNG sequence backend, reusable bounded RGBA frame adapter, capability detection, progress/cancellation, verification and tests implemented in `src/modules/output/native/`. Desktop integration contract, validation and limitations: [native-export.md](../integrations/native-export.md). No Desktop/IPC/UI/shared-contract edits; no HAP, alpha or tiled rendering.
