@@ -6,7 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 
 ### Added
 - Studios: a switch between Mapping, Content, Engineering and Output. Content, Engineering and Output show their modules' panels, loaded on first use, or an empty state. Depth Studio now lives in the Content Studio.
-- Module sources in Live preview: the pattern menu also lists sources from modules. The Depth Studio scene plays across the mapped screens; a placeholder marks where the calibration test card will go.
+- Module sources in Live preview: the pattern menu also lists sources from modules. The Depth Studio scene and the calibration test card play across the mapped screens.
+- Calibration test card in Live preview: Product Design's identification and calibration frames, built for the master canvas from the resolved mapping, with frame and logo (center, watermark, off) selects in the header.
 - Saved module data: projects gain a `modules` section (schema 2), so a module's settings can autosave, undo and travel in the project file. Older files upgrade on open.
 - Shared contracts for Sprint 3: the module registry, frame context and the engineering summary that reports read.
 - Depth Studio, first milestone: a third canvas mode next to Mapping and Live preview. The Emerald Chamber scene turns a canvas or screen into a window onto a deep room, with ribs of light, a luminous back wall, a polished floor, fog, a light sweep and drifting leaves. It is framed for the master canvas or any screen at its exact aspect ratio, using the screen's physical size when known. Controls: depth, viewer position, particles, light, fog, palette, loop length, content rate and seed, with play, pause and scrub. The 15-second loop is deterministic by frame number. Rendered with WebGL2 and no new dependency. Not yet: saving, full-screen output and export.

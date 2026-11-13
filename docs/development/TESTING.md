@@ -35,6 +35,7 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | `examples.test.ts` | Every gallery example matches its catalog entry, has no errors, builds identically each time and survives a file round trip. Festival Main Stage marks its shared band and matches the committed file in `examples/` |
 | `depth-engine.test.ts` | Depth Studio: config validation and clamping, exact loop frame counts and closure at every rate, the LED plane's edges landing on the image's edges for any shape and viewer, back-wall scale and vanishing point, seeded particles (same seed, stable when the count grows, back at the start after one loop at any speed, inside the room), and targets read from the mapping |
 | `store-history.test.ts` | Undo and redo through the real store and IndexedDB for every kind of edit, plus saving after undo, selection and project switching |
+| `design-calibration.test.ts` | Identification and calibration frames: targets read from the resolved mapping, whole-pixel geometry, border, crosshair, seams and grid at hand-worked positions, exact reference colors, labels never clipped or overlapping at 17 screen shapes and in every example, identifiers kept where screens share pixels, logo aspect ratio and placement |
 
 **Rules**
 - Engines and exports get unit tests, with values worked out by hand rather than copied from output.

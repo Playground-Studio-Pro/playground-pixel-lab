@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+// The calibration face: monospace, so label widths are exact. Not preloaded: only calibration frames use it.
+const calMono = JetBrains_Mono({ variable: "--font-cal-mono", subsets: ["latin"], preload: false });
 
 export const metadata: Metadata = {
   title: "Pixel Lab",
@@ -11,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${inter.variable} dark h-full antialiased`}>
+    <html lang="en" className={`${inter.variable} ${calMono.variable} dark h-full antialiased`}>
       <body className="h-full">{children}</body>
     </html>
   );

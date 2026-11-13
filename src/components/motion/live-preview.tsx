@@ -138,6 +138,15 @@ export default function LivePreviewPanel() {
     }
   }, [draw, playClock, scene, viewport, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
 
+  // A source can change without a new input (settings, a logo that just loaded): redraw when it says so.
+  useEffect(() => {
+    const source = sourceId ? findSource(sourceId) : null;
+    return source?.subscribe?.(() => {
+      live.current.dirty = true;
+      if (!useMotion.getState().clock.playing) draw(performance.now());
+    });
+  }, [sourceId, draw]);
+
   // Animation loop: only while playing and visible.
   useEffect(() => {
     if (!playing) return;
