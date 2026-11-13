@@ -1,26 +1,27 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, calibration test card integrated in Live preview (owner away; nothing merged).
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-13, in-app MP4 export verified (branch `feat/mp4-export-ui`, local, not pushed).
 
 ## Objective
 
-**Sprint 3, Production Studio**, approved by the owner on 2026-11-12: Micro Environment Studio, calibration test card, processor intelligence, cabinet engineering and production exports. It supersedes the Sprint 2 list. Tasks, ownership, integration order, acceptance criteria and the four agent prompts are in [SPRINT_3](docs/agents/SPRINT_3.md).
+**Immediate milestone: Calibration → Live preview → MP4 export.** Built and verified on `feat/mp4-export-ui`; it waits for the owner's approval to push and merge.
+
+**Sprint 3, Production Studio** ([SPRINT_3](docs/agents/SPRINT_3.md)) continues after it. **Direction approved 2026-11-13** (see [DECISIONS](docs/architecture/DECISIONS.md)): desktop-first and web-compatible, Electron later in an isolated proof of concept, FFmpeg after legal review, native ProRes or PNG masters plus per-output and per-screen exports, never downscaled. No Electron work has started.
 
 ## Where it stands
 
-**Merge order for the owner:** #12, then #13, then mark #14 ready and merge it. All three are open and unmerged; `main` is untouched at `c81a17b`.
-
-- **PR #13** (`feature/product-design`, Product Design, not merged): screen identification and calibration frames in the Preview dialog, `src/components/shell/calibration/`. Logo `public/brand/playground-studio-outline-white.png` is a byte-identical copy of the existing brand file `playground-growth/01_BRAND/.../logo_horizontal_outline-white_web.png`.
-- **PR #14** (`integration/calibration-live-preview`, draft, not merged): #12 + #13 merged together, plus the calibration test card as the Output module's `FrameSource`, playing in Live preview. Commits:
-  - `54a1765` merge of #13 into `18b2d9f` (one conflict, `docs/development/PERFORMANCE.md`, both sections kept);
-  - `e2f1707` `src/modules/output/calibration-source.ts`, settings store, `FrameSource.subscribe?` contract addition, Live preview redraw on it;
-  - `54d0199` header selects (frame, logo), header controls no longer shrink, `tests/calibration-source.test.ts`, CONTRACTS and CHANGELOG notes;
-  - the commit holding this SESSION update, local only: not pushed, at the owner's request.
-- **PR #12** (`feature/lead-architect`, draft, not merged) carries Depth Studio milestone 1 and the Sprint 3 foundation: studio switch, module registry and catalog, `project.modules` at schema 2 with migration, frame context, the engineering contract, and the Depth Studio scene as a Live preview source. The owner merges it first; the lanes start from it.
-- **Depth Studio** now opens from the Content Studio. Content Engineering owns it from Sprint 3. Its settings still aren't saved: the module can now use `project.modules`.
-- **Lanes:** none started. The owner starts each agent with its prompt in SPRINT_3.
-- **The pack:** `CLAUDE_MASTER_PROMPT.md`, `START_HERE.md` and `docs/features/depth-studio/` sit untracked in `app/`, read there and not changed. The owner decides when they are committed.
-- **Logo:** none in the repository. Candidates are in `~/Play.Code/brandplayground/assets/`; Output Engineering asks the owner which to use.
+- **Merged to `main` on 2026-11-13**, each with CI and local checks passing:
+  - #12 Sprint 3 foundation and Depth Studio, `73237b8`;
+  - #14 calibration test card in Live preview, `8641281`. It contained #13, which GitHub marked merged (`54a1765`): #13 alone conflicted with #12 in `PERFORMANCE.md`, and #14 carried that resolution, so the Product Design branch wasn't touched;
+  - #15 Output Engineering's browser H.264 exporter, `10f9f74`. Its branch was pushed unchanged (`d3f5b04`) and its PR opened by the Lead Architect.
+- **`feat/mp4-export-ui`** (Lead Architect worktree, from `10f9f74`, local only): Export MP4 in the Output Studio.
+  - Targets: the master canvas, each output and each screen, sized by `resolveMapping` (`engines/video-targets.ts`). Any too large for H.264 is listed with the reason.
+  - Outputs and screens are cut from the master frame at 1:1 (`modules/output/target-source.ts`).
+  - Calibration (`createCalibrationSource`) and Depth Studio (`createDepthSource`) sources are frozen when the export starts. An export showing the logo refuses to start if the logo didn't load.
+  - Frame rate, duration, progress, Cancel, download. Calls Output's `exportMp4` unchanged.
+- **Depth Studio:** works in the Content Studio and Live preview, and now exports through the same pipeline. Settings still aren't saved. Content Engineering hasn't started.
+- **Lanes:** Content Engineering and LED Engineering not started. Output Engineering's MP4 work is merged. Product Design has the follow-ups in Known issues.
+- **The pack:** `CLAUDE_MASTER_PROMPT.md`, `START_HERE.md` and `docs/features/depth-studio/` sit untracked in `app/`. The owner decides when they are committed.
 
 ## Verified current state
 
@@ -29,19 +30,20 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, cal
   | Path | Branch | Port |
   | --- | --- | --- |
   | `app/`: main worktree, integration checkout | `main` | 3000 |
-  | `agents/lead-architect` | `feature/lead-architect` | 3100 |
+  | `agents/lead-architect` | `feat/mp4-export-ui` now; lane branch `feature/lead-architect` | 3100 |
   | `agents/product-design` | `feature/product-design` | 3101 |
   | `agents/content-engineering` | `feature/content-engineering` | 3102 |
   | `agents/led-engineering` | `feature/led-engineering` | 3103 |
   | `agents/output-engineering` | `feature/output-engineering` | 3104 |
 
-- **Baseline:** `main` is at `c81a17b`, the merge of PR #11. The four other agent worktrees are at that commit and clean. `feature/lead-architect` carries PR #12 on top of it.
+- **Baseline:** `main` is at `10f9f74`, the merge of PR #15. The other agent worktrees are clean and haven't merged `main` since: `product-design` at `1c59d6f`, `output-engineering` at `d3f5b04`, the rest at `c81a17b`. The Lead Architect worktree is on `feat/mp4-export-ui`.
 - **Merged PRs:**
   - #1 Phase 0 foundation, #2 Phase 0 complete;
   - #3 undo and redo, #4 Motion Lab V1;
   - #5 agent briefs, #6 example gallery, #7 shared contracts and lanes, #8 folder layout;
-  - #9 Aurora Gradient, #10 cabinet library.
-- **Open PRs:** #12 (draft, Sprint 3 foundation), #13 (Product Design calibration frames), #14 (draft, integration of both plus the Live preview test card).
+  - #9 Aurora Gradient, #10 cabinet library;
+  - #12 Sprint 3 foundation, #13 calibration frames, #14 calibration in Live preview, #15 H.264 exporter.
+- **Open PRs:** none. #12–#15 are merged.
 - **Agents:** none running. All five are stopped.
 
 ## Completed features
@@ -58,18 +60,20 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, cal
 
 ## Last validation
 
-On `integration/calibration-live-preview` at `54d0199`, 2026-11-12, M1 Max:
+On `feat/mp4-export-ui`, 2026-11-13, M1 Max, production build on port 3100:
 
 | Check | Result |
 | --- | --- |
 | Typecheck, lint, build | Pass |
-| Unit tests | 288 of 288 pass, in 19 files |
-| Pixel accuracy | At scale 1 the Live preview source draws the Preview dialog's frame call for call, after one black master fill; every rectangle on whole master pixels (Corporate Keynote, 4224 × 1536) |
+| Unit tests | 302 of 302 pass, in 23 files |
 | Bundle | Initial JavaScript 172.8 KB gzip, unchanged; within every budget |
-| Browser | Production build, headless Chrome 1440 × 900 driven over the DevTools protocol (the Chrome extension was not connected). Corporate Keynote, Live preview, Calibration test card: Identification with centered logo, watermark, Calibration; each mode keeps its own logo; switching while paused redraws; 60.0 fps preview, 0 late, 0 skipped; no console errors |
-| Not tested | Interactive Chrome, other widths, the 500-screen example, full-screen output and export of the test card, a real LED wall |
+| Browser | Headless Chrome 157, driven over the DevTools protocol, Corporate Keynote, Output Studio, Main Wall 2688 × 1536 at 30 fps: Identification 5 s, Calibration 10 s, Depth Studio 5 s, then Cancel (no file, button restored). No console errors. The whole run took 45 s |
+| ffprobe | All three: H.264 High, yuv420p, 2688 × 1536, 30/1 fps, one stream, no audio. 150, 300 and 150 decoded frames; 5.000, 10.000 and 5.000 s; full FFmpeg decode without errors |
+| Animation | Calibration: 300 of 300 frames distinct, counter reads F 000150 at frame 150. Depth: 150 of 150 distinct, frame 0 vs 75 at 22.9 dB PSNR. Identification is a still frame: 54.5 dB between frames 0 and 149, encoder noise only |
+| Preview/export | Identification frame 0 vs the Preview dialog's PNG of the master, cropped at Main Wall (768, 0): 53.1 dB PSNR; the same crop one pixel off: 29.7 dB. No scaling, no offset |
+| Not tested | Interactive Chrome, Safari, other GPUs, Windows, odd-sized masters in the browser, very long exports (the compressed file stays in memory) |
 
-Screenshots (local, temporary): `/private/tmp/claude-501/-Users-miguelgontran-Play-Code-playground-pixel-agents-lead-architect/e4ee782d-47d2-49d6-a50c-3b364dece18a/scratchpad/shots/`.
+The red, green, blue, white and black patches in the Calibration frame are intended reference patches, not placeholder bars. Evidence lives in the session scratchpad and is temporary.
 
 ## Important decisions
 
@@ -81,6 +85,11 @@ Screenshots (local, temporary): `/private/tmp/claude-501/-Users-miguelgontran-Pl
 
 ## Known issues
 
+- **MP4 export:**
+  - Masters and outputs wider than 4096 px (Corporate Keynote's 4224 × 1536) can't be exported as H.264 whole. They wait for the desktop ProRes/PNG master.
+  - The whole compressed file is held in memory until download.
+  - The Live preview's own Motion Lab patterns aren't sources yet, so they can't be exported.
+  - `exportMp4` still has an optional logo overlay; the app doesn't use it. Output Engineering may remove it.
 - **Calibration test card (for Product Design, D9):**
   - At 1440 px the Live preview header is wider than the canvas area and scrolls sideways.
   - The Live preview screen-guide labels cover the test card's top-left labels in Calibration mode; guides can be switched off.
@@ -103,11 +112,15 @@ Screenshots (local, temporary): `/private/tmp/claude-501/-Users-miguelgontran-Pl
 
 ## Pending tasks
 
-All in [SPRINT_3](docs/agents/SPRINT_3.md): D8–D9, C6, E5–E6, O6–O10, then L6, the end-to-end demo and QA. Lead cleanup still to do: remove `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary`; move Motion Lab patterns onto `FrameSource`.
+1. **Owner:** approve pushing `feat/mp4-export-ui` and opening its PR; merge after CI.
+2. **Product Design:** the Live preview header layout and guide labels (Known issues); placement of the Output Studio export panel.
+3. **Sprint 3** in [SPRINT_3](docs/agents/SPRINT_3.md): D8–D9, C6, E5–E6, O6–O10, then L6. Agents merge `main` first.
+4. **Lead cleanup:** remove `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary`; move Motion Lab patterns onto `FrameSource`; move the pure calibration code beside the engines.
+5. **Later, approved direction:** the desktop proof of concept under `desktop/`, after this milestone ships.
 
 ## Resume
 
-1. **Check the baseline:** `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `c81a17b` unless the owner has merged #12–#14 since.
+1. **Check the baseline:** `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `10f9f74`, or later if the MP4 export PR has merged.
 2. **Run the app:** `npm run build && npx next start -p 3000`.
 3. **Start agents** with the commands in [HANDOFF](HANDOFF.md#restart-each-agent). Each one runs `git merge origin/main` first, as [START](docs/agents/START.md) says.
 
@@ -120,4 +133,4 @@ Read:
 - docs/agents/README.md
 - docs/agents/lead-architect.md
 
-You are the Lead Architect. Continue from the verified current state. Sprint 3 is approved ([SPRINT_3](docs/agents/SPRINT_3.md)). First ask whether #12, #13 and #14 are merged; if the last SESSION commit on `integration/calibration-live-preview` isn't pushed yet, ask before pushing it. Don't re-audit completed work unless the repository contradicts SESSION.md.
+You are the Lead Architect. Continue from the verified current state. Sprint 3 is approved ([SPRINT_3](docs/agents/SPRINT_3.md)), and so is the desktop direction (DECISIONS, 2026-11-13). First check whether `feat/mp4-export-ui` is pushed and merged; ask before pushing or merging. Don't re-audit completed work unless the repository contradicts SESSION.md.
