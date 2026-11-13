@@ -1,0 +1,32 @@
+appId: studio.playground.pixellab
+productName: Pixel Lab
+asar: true
+directories:
+  output: dist
+files:
+  - src/**/*
+  - package.json
+extraResources:
+  - from: web
+    to: web
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+  extraResources:
+    - from: resources/ffmpeg/darwin-arm64
+      to: ffmpeg
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  extraResources:
+    - from: resources/ffmpeg/win32-x64
+      to: ffmpeg
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+publish: null

@@ -1,0 +1,7 @@
+node_modules/
+.staging/
+web/
+dist/
+*.log
+resources/ffmpeg/**/ffmpeg
+resources/ffmpeg/**/ffmpeg.exe

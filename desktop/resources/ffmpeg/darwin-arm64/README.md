@@ -1,0 +1,1 @@
+Place the approved macOS arm64 executable here as `ffmpeg`, executable mode 0755. Include its license notices, source offer if applicable, build provenance and SHA-256 checksum. No binary is supplied. See ../../../docs/FFMPEG.md.
