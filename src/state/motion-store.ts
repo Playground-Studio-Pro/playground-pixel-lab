@@ -16,6 +16,8 @@ export type CanvasMode = "mapping" | "live";
 interface MotionState {
   mode: CanvasMode;
   pattern: PatternId;
+  /** A module's `FrameSource` playing instead of `pattern`, by id from `modules/catalog.ts`. Null plays the pattern. */
+  sourceId: string | null;
   fps: ContentFps;
   speed: PlaybackSpeed;
   clock: clock.PlaybackClock;
@@ -32,6 +34,7 @@ interface MotionState {
   togglePlay(): void;
   restart(): void;
   setPattern(pattern: PatternId): void;
+  setSource(sourceId: string | null): void;
   setFps(fps: ContentFps): void;
   setSpeed(speed: PlaybackSpeed): void;
   setShowGuides(show: boolean): void;
@@ -47,6 +50,7 @@ function prefersReducedMotion() {
 export const useMotion = create<MotionState>((set, get) => ({
   mode: "mapping",
   pattern: "flow",
+  sourceId: null,
   fps: 30,
   speed: 1,
   clock: clock.initialClock,
@@ -74,7 +78,10 @@ export const useMotion = create<MotionState>((set, get) => ({
     set((s) => ({ clock: clock.restart(s.clock, now()), statsEpoch: s.statsEpoch + 1 }));
   },
   setPattern(pattern) {
-    set({ pattern });
+    set({ pattern, sourceId: null });
+  },
+  setSource(sourceId) {
+    set({ sourceId });
   },
   setFps(fps) {
     // Keep the same moment in the content: the frame number changes, the content time doesn't.

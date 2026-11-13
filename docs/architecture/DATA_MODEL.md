@@ -29,10 +29,13 @@ Project
 │   ├── master    { mode: auto } or { mode: fixed, width, height }
 │   ├── canvases[] id, name, originX, originY
 │   └── regions[]  screenId, canvasId, x, y, allowOverlap
-└── output     OUTPUT MAPPING
-    ├── outputs[] id, name, sizing (as master)
-    └── slices[]  screenId, outputId, followsContent, x, y
+├── output     OUTPUT MAPPING
+│   ├── outputs[] id, name, sizing (as master)
+│   └── slices[]  screenId, outputId, followsContent, x, y
+└── modules    { [moduleId]: { version, data } }   saved module data, from schema 2
 ```
+
+**Module data.** Each module owns the format of its `data` and its own `version`. The project schema checks only the envelope; the module parses the rest, through `src/modules/module-data.ts`. Schema 1 projects upgrade on read with an empty `modules`.
 
 ## Derived values
 

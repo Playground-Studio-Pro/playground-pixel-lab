@@ -3,6 +3,7 @@ import type { Rect } from "@/domain/units";
 import { renderPattern, type PatternOptions } from "@/engines/motion/patterns";
 import type { OverlapKind, OverlapMark, PreviewRegion } from "@/engines/motion/regions";
 import type { Viewport } from "@/engines/viewport";
+import type { FrameContext, FrameSource } from "./contract";
 import { drawPattern } from "./draw-pattern";
 import { LABEL_HEIGHT, placeLabels, type LabelRequest } from "./label-layout";
 
@@ -32,6 +33,9 @@ export interface LiveFrame {
   readonly guides: boolean;
   readonly overlaps: boolean;
   readonly options?: PatternOptions;
+  /** A module's source, drawn instead of `pattern`. */
+  readonly source?: FrameSource | null;
+  readonly context?: FrameContext;
 }
 
 /** Largest side of the off-screen master image. Beyond it the preview is upscaled, never the export. */
@@ -106,8 +110,9 @@ export class LiveRenderer {
     const sh = Math.max(1, Math.ceil(scene.masterHeight * s));
     if (this.source.width !== sw) this.source.width = sw;
     if (this.source.height !== sh) this.source.height = sh;
-    const pattern = renderPattern(frame.pattern, { frame: frame.frame, fps: frame.fps, width: scene.masterWidth, height: scene.masterHeight, screens: scene.screens }, frame.options);
-    drawPattern(this.sourceCtx, pattern, s, this.fontFamily);
+    const input = { frame: frame.frame, fps: frame.fps, width: scene.masterWidth, height: scene.masterHeight, screens: scene.screens, context: frame.context };
+    if (frame.source) frame.source.draw(this.sourceCtx, input, { scale: s, fontFamily: this.fontFamily });
+    else drawPattern(this.sourceCtx, renderPattern(frame.pattern, input, frame.options), s, this.fontFamily);
 
     for (const r of scene.regions) {
       const dw = r.dest.width * vp.scale;

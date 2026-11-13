@@ -114,6 +114,45 @@ interface ExportEntry {
 - **No invented formats.** Every format is one we can generate and test. Resolume presets wait for [RESOLUME](../integrations/RESOLUME.md).
 - **Proof.** Moving an existing export onto the contract must give byte-identical files, checked by a test.
 
+## Sprint 3 additions
+
+Added 2026-11-12 in PR #12. The lane tasks that use them are in [SPRINT_3](../agents/SPRINT_3.md).
+
+**Studios and registry.**
+- `src/modules/catalog.ts` lists the four studios and every module source, as plain data. The shell imports only this, so the initial bundle doesn't grow.
+- `src/modules/registry.ts` lists the modules. It's imported only by code that loads on first use: the studio host and the Live preview.
+- Each lane declares its module in its own file: `depth-studio/module.ts`, `engineering/module.ts`, `output/module.ts`. Add panels, sources and exports there; nobody edits the registry. `tests/modules.test.ts` checks the catalog and the registry agree.
+- A studio shows its modules' panels in the canvas and inspector columns, or an empty state.
+
+**Saved module data.** `project.modules[id] = { version, data }`, from `SCHEMA_VERSION` 2.
+- The project schema checks the envelope. Each module parses its own `data`, upgrading older versions of its own format, through `readModuleData(project, id, parse)` in `src/modules/module-data.ts`. Unreadable data reads as `null`, and the module uses its defaults.
+- Write with `writeModuleData(id, version, data)`: it goes through `edit()`, so it autosaves and undoes. `data` must be plain JSON.
+- A module writes only its own id.
+
+**Frame context.** `FrameInput.context?: { project, mapping }`. Read-only. For sources that label what they draw, such as a test card printing names, resolutions and ports. The Live preview fills it.
+
+## Engineering contract
+
+`src/domain/engineering.ts`, types only. LED Engineering produces an `EngineeringSummary` with `summarizeEngineering(project, mapping)` in `src/engines/led/summary.ts`; the caller injects it into `ExportInput.engineering`, and reports only read it.
+
+```ts
+interface EngineeringSummary {
+  processors: ProcessorUsage[];   // per processor: outputs, load size, pixels used and capacity, ports
+  screens: ScreenEngineering[];   // per screen: cabinets, size, area, pixels, weight, power, voltage, refresh
+  totals: EngineeringTotals;      // null where any input is missing
+  findings: EngineeringFinding[]; // error, warning, info, with a stable code
+  assumptions: Assumption[];
+  sources: SourceRef[];           // manufacturer documents, with URL and the date read
+  disclaimer: string;
+}
+```
+
+**Rules.**
+- Every hardware value comes from a cited manufacturer source. `null` means not stated, never zero.
+- Integer units, named in each field: px, µm, mm², g, mW. Totals are null rather than partial.
+- Electrical values are estimates, never a certified design, and the disclaimer travels with them.
+- Pixel sizes come from `resolveMapping`, not from the summary's own arithmetic.
+
 ## Changing a contract
 
 1. Open an issue or a short PR against the contract file, naming every lane it affects.

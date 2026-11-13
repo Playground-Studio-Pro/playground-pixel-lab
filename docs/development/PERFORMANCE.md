@@ -230,3 +230,20 @@ Measured 2026-11-08: production build, Apple M1 Max, 32 GB, Chrome, Node 26, `np
 | Live preview chunk | 7.5 KB | 7.6 KB (+0.1) |
 
 **Preview, Festival Main Stage** (5120 × 1664 master, 6 screens, 13% zoom, a single run per setting, not the full harness): the browser preview read 59.9 to 60.0 fps with 0 late and 0 skipped frames at flow speeds 1× and 4×. Each frame draws one linear gradient and up to 16 additive radial glows on the off-screen master. This is browser preview FPS only; it says nothing about LED refresh. Venue laptops are unmeasured.
+
+## Depth Studio
+
+### Emerald Chamber (first milestone)
+
+Measured 2026-11-12: Apple M1 Max, 32 GB, Chrome, Node 26. Bundle from a production build with `npm run perf:bundle`; before is `main` at `c81a17b`.
+
+| | Before | After |
+| --- | --- | --- |
+| Initial JS | 172.8 KB | 172.8 KB (unchanged) |
+| Depth Studio viewport, renderer and engine | n/a | 11.9 KB gzip, its own chunk, on first open |
+| Depth Studio controls | n/a | 3.9 KB gzip, its own chunk, on first open |
+| New dependencies | n/a | none |
+
+**Preview, Corporate Keynote** (1,500 particles, default preset, a single reading per setting, not the full harness): the browser preview read 60.0 fps on the production build for the master canvas (4224 × 1536 target, rendered at 1032 × 375), and 60.0 fps on the development server for Main Wall (2688 × 1536 target, rendered at 1032 × 590). Treat both as smoke checks. It is browser preview FPS only and says nothing about LED refresh. Not yet measured: p95 frame time, other densities, full-resolution rendering, and any venue laptop or integrated GPU.
+
+Each frame is one draw of the room (under 200 triangles, shaded per pixel) and one instanced draw of the particles. The preview renders at the size it is shown, capped at twice the CSS size and never above the target's own resolution.

@@ -1,3 +1,4 @@
+import type { EngineeringSummary } from "@/domain/engineering";
 import type { Project } from "@/domain/model";
 import type { ResolvedMapping } from "@/engines/mapping";
 import type { ValidationIssue } from "@/engines/validation";
@@ -17,6 +18,11 @@ export interface ExportInput {
   readonly generatedAt: string;
   /** Browser rasterizer, injected so builders run in tests without a DOM. Today: `renderPng`. */
   readonly rasterize: (scene: PixelMapScene) => Promise<Blob>;
+  /**
+   * The Engineering Studio's summary of this project, from `summarizeEngineering`, injected by the caller.
+   * Absent or null when the project has no engineering plan; reports then say so instead of guessing.
+   */
+  readonly engineering?: EngineeringSummary | null;
 }
 
 /** One file in a download. Several files are zipped by the caller. */

@@ -2,7 +2,8 @@ import type { PixelSpace, Px, Um } from "./units";
 
 export type Id = string;
 
-export const SCHEMA_VERSION = 1 as const;
+/** 2 adds `modules`. Older files are upgraded on read by `persistence/schema.ts`. */
+export const SCHEMA_VERSION = 2 as const;
 
 /** A reusable LED cabinet definition. Copied into a project when used, so editing the library never alters a saved show. */
 export interface CabinetProfile {
@@ -120,6 +121,18 @@ export interface Project {
   readonly physical: PhysicalLayout;
   readonly content: ContentLayout;
   readonly output: OutputMapping;
+  /**
+   * Saved data of each module that keeps some, by module id. The envelope is checked by the project
+   * schema; each module checks its own `data` when it reads it (`modules/module-data.ts`).
+   */
+  readonly modules: Readonly<Record<string, ModuleData>>;
+}
+
+/** One module's saved data. `version` is the module's own format version, independent of `SCHEMA_VERSION`. */
+export interface ModuleData {
+  readonly version: number;
+  /** Plain JSON: objects, arrays, strings, finite numbers, booleans and null. */
+  readonly data: unknown;
 }
 
 export interface ProjectSummary {

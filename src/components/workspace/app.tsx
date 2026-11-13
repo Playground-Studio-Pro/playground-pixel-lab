@@ -12,7 +12,15 @@ import { Explorer } from "./explorer";
 import { Inspector } from "./inspector";
 import { StartScreen } from "./start-screen";
 import { TopBar } from "./top-bar";
+import dynamic from "next/dynamic";
 import { CanvasArea } from "./canvas-area";
+import { StudioBar } from "./studio-bar";
+
+// The other studios and their modules load on first use, so the editor doesn't pay for them.
+const StudioHost = dynamic(() => import("./studio-host"), {
+  ssr: false,
+  loading: () => <main className="col-span-2 min-h-0 bg-stage" aria-busy="true" />,
+});
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
@@ -62,6 +70,7 @@ export function App() {
   const startupError = useApp((s) => s.startupError);
   const hasProject = useApp((s) => s.project !== null);
   const init = useApp((s) => s.init);
+  const studio = useUi((s) => s.studio);
 
   useEffect(() => {
     void init();
@@ -97,11 +106,18 @@ export function App() {
   return (
     <TooltipProvider delay={400}>
       {hasProject ? (
-        <div className="grid h-full grid-cols-[256px_minmax(0,1fr)_288px] grid-rows-[auto_minmax(0,1fr)]">
+        <div className="grid h-full grid-cols-[256px_minmax(0,1fr)_288px] grid-rows-[auto_auto_minmax(0,1fr)]">
           <TopBar />
+          <StudioBar />
           <Explorer />
-          <CanvasArea />
-          <Inspector />
+          {studio === "mapping" ? (
+            <>
+              <CanvasArea />
+              <Inspector />
+            </>
+          ) : (
+            <StudioHost studio={studio} />
+          )}
         </div>
       ) : (
         <StartScreen />

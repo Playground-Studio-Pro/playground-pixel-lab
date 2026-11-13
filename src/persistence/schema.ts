@@ -80,6 +80,7 @@ const project = z.object({
       }),
     ),
   }),
+  modules: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/), z.object({ version: positiveInt, data: z.unknown() })),
 });
 
 export class ProjectFormatError extends Error {}
@@ -92,7 +93,10 @@ function migrate(raw: unknown): unknown {
   if (typeof version === "number" && version > SCHEMA_VERSION) {
     throw new ProjectFormatError(`This project was saved by a newer version of Pixel Lab (schema ${version}). Update the app to open it.`);
   }
-  return raw;
+  let doc = raw;
+  // 1 → 2: projects gain a `modules` section, empty for files written before modules could save data.
+  if (version === 1 && typeof doc === "object" && doc !== null) doc = { ...doc, schemaVersion: 2, modules: {} };
+  return doc;
 }
 
 /** Validates an unknown value as a Project, or throws an error naming the first bad fields. */

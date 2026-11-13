@@ -9,6 +9,8 @@ import { screenToWorld } from "@/engines/viewport";
 import { LiveRenderer, type LiveScene } from "@/preview/live-renderer";
 import { useMotion } from "@/state/motion-store";
 import { useAurora } from "@/modules/content/aurora-store";
+import { MODULE_SOURCES } from "@/modules/catalog";
+import { findSource } from "@/modules/registry";
 import { selectedScreenIds, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { buildViewModel } from "@/state/view-model";
@@ -37,6 +39,7 @@ export default function LivePreviewPanel() {
   const viewport = useApp((s) => s.viewports[s.view]);
   const size = useApp((s) => s.canvasSize);
   const pattern = useMotion((s) => s.pattern);
+  const sourceId = useMotion((s) => s.sourceId);
   const fps = useMotion((s) => s.fps);
   const playClock = useMotion((s) => s.clock);
   const playing = playClock.playing;
@@ -73,12 +76,14 @@ export default function LivePreviewPanel() {
 
   // The latest values, for the animation loop, which must not restart on every change.
   // `resync` is set when the preview becomes visible again, so time spent hidden isn't counted as late or skipped.
-  const live = useRef({ scene, viewport, dirty: true, visible: true, resync: false, lastFrame: -1 });
+  const context = useMemo(() => ({ project, mapping }), [project, mapping]);
+  const live = useRef({ scene, viewport, context, dirty: true, visible: true, resync: false, lastFrame: -1 });
   useEffect(() => {
     live.current.scene = scene;
     live.current.viewport = viewport;
+    live.current.context = context;
     live.current.dirty = true;
-  }, [scene, viewport, size, pattern, fps, showGuides, showOverlaps, aurora]);
+  }, [scene, viewport, context, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -105,7 +110,16 @@ export default function LivePreviewPanel() {
     const state = live.current;
     const renderer = rendererRef.current;
     if (renderer && state.viewport && (state.dirty || frame !== state.lastFrame)) {
-      renderer.render(state.scene, state.viewport, { pattern: motion.pattern, frame, fps: motion.fps, guides: motion.showGuides, overlaps: motion.showOverlaps, options: { aurora: useAurora.getState().settings } });
+      renderer.render(state.scene, state.viewport, {
+        pattern: motion.pattern,
+        source: motion.sourceId ? findSource(motion.sourceId) : null,
+        context: state.context,
+        frame,
+        fps: motion.fps,
+        guides: motion.showGuides,
+        overlaps: motion.showOverlaps,
+        options: { aurora: useAurora.getState().settings },
+      });
       state.dirty = false;
       if (frame !== state.lastFrame) {
         if (frameText.current) frameText.current.textContent = String(frame).padStart(6, "0");
@@ -122,7 +136,7 @@ export default function LivePreviewPanel() {
       live.current.dirty = true;
       draw(performance.now());
     }
-  }, [draw, playClock, scene, viewport, size, pattern, fps, showGuides, showOverlaps, aurora]);
+  }, [draw, playClock, scene, viewport, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
 
   // Animation loop: only while playing and visible.
   useEffect(() => {
@@ -227,7 +241,7 @@ export default function LivePreviewPanel() {
     useApp.getState().select(hit ? { kind: "screens", ids: [hit.screenId] } : { kind: "none" });
   };
 
-  const info = PATTERNS.find((p) => p.id === pattern)!;
+  const info = (sourceId && MODULE_SOURCES.find((s) => s.id === sourceId)) || PATTERNS.find((p) => p.id === pattern)!;
   const empty = mapping.screens.length === 0;
 
   return (

@@ -95,3 +95,27 @@ DATE: 2026-11-07
 DECISION: The preview draws each content frame once onto an off-screen master image and copies each screen's `masterRect` into the rectangle its view already uses. It loads on first use, in its own 7 KB gzip chunk.
 WHY: One image per frame keeps shared regions identical and content continuous by construction, with no second mapping engine. Lazy loading keeps the editor's load unchanged.
 IMPACT: The off-screen image is capped at 4096 px a side, so a very large master is upscaled in the preview when zoomed in. Exports are unaffected.
+
+---
+DATE: 2026-11-12
+DECISION: Depth Studio starts before the Sprint 2 items (full-screen output, content templates, module registry). It is built as an isolated, lazy-loaded module: pure maths in `src/engines/depth/`, the renderer and interface in `src/modules/depth-studio/`. Its only shell change is a third canvas mode, `depth`, next to Mapping and Live preview.
+WHY: Product priority set by the owner, with an implementation pack the owner supplied. The pack is not in the repository yet: it sits untracked in the `app/` worktree, under `docs/features/depth-studio/`. None of the Sprint 2 items had started, so there was nothing to collide with, and the module touches no mapping, persistence or export code.
+IMPACT: Sprint 2 keeps its order and its files. Depth Studio reads canvas and screen sizes from `resolveMapping` and stores none. Its settings are module state and aren't saved until the `modules[id]` project section exists (L2). Full-screen output of a depth scene waits for O2, and frame export for the export milestone.
+
+---
+DATE: 2026-11-12
+DECISION: The first Depth Studio scene renders with WebGL2 directly, without Three.js. The renderer sits behind three calls: `setScene`, `resize` and `renderFrame`.
+WHY: The pack names Three.js, but the scene is a box, a few ribs and one instanced draw, all shaded analytically, which needs no scene graph. Adding the dependency was also not approved in this session: the install was blocked. Measured cost of the module as built: 11.9 KB gzip for the viewport, renderer and engine, and 3.9 KB for the controls, both loaded on first use, with initial JavaScript unchanged at 172.8 KB. Three.js itself was not measured, because it was never installed.
+IMPACT: No new dependency. If a later scene needs imported 3D assets (the pack's Floating Product Chamber), Three.js can replace the renderer behind the same three calls, with a measured bundle cost recorded here first. The config, camera, particle and loop maths don't depend on the renderer.
+
+---
+DATE: 2026-11-12
+DECISION: A depth scene is projected off-axis, through the four edges of the LED plane, from one eye position. Every animated term completes a whole number of turns per loop, and a frame is a function of the config and the frame number alone.
+WHY: The off-axis frustum is what makes the wall a window: the plane's edges land exactly on the image's edges at any aspect ratio and any viewer offset, so nothing is stretched. Whole turns close the loop exactly at any speed, and frame-number input makes the preview, a scrub and a future export draw the same pixels.
+IMPACT: This is frontal, single-plane perspective, correct for one viewing position. It is not anamorphic calibration across several planes, and the interface says so. Physical wall size is used when the target is a single screen; a canvas or the master uses a nominal 3 m height at the right aspect ratio.
+
+---
+DATE: 2026-11-12
+DECISION: Sprint 3 contracts. Studios switch from a light catalog (`modules/catalog.ts`) and load modules from a static registry (`modules/registry.ts`) only on first use; each lane declares its module in its own `module.ts`. Saved module data lives in `project.modules[id]` as `{ version, data }` at `SCHEMA_VERSION` 2, with each module parsing its own data. Reports read an `EngineeringSummary` injected into `ExportInput`. Depth Studio moves from a canvas tab into the Content Studio, and plays in Live preview as a `FrameSource`.
+WHY: Four lanes start in parallel on the owner's Sprint 3 brief. One registry line per module, written once by the Lead Architect, means no lane edits a shared file to plug in. The schema checks only the envelope, so modules add saved data without a schema bump each time. The report needs engineering values without depending on how LED Engineering computes them.
+IMPACT: Initial JavaScript unchanged at 172.8 KB gzip. Schema 1 files upgrade on read with an empty `modules`; `tests/fixtures/festival-main-stage.schema-1.pixellab.json` keeps a schema 1 file for that test. Motion Lab patterns still draw through their own path; only module sources go through `FrameSource`. The studio switch is minimal; Product Design owns its final form.

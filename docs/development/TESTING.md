@@ -33,6 +33,7 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | `motion-store.test.ts` | Motion Lab playback never changes the project, its history or save state; playback starts when the preview is ready |
 | `label-layout.test.ts` | Live preview labels never cover each other, stay inside their screen or overlap, and are dropped rather than stacked when there's no room |
 | `examples.test.ts` | Every gallery example matches its catalog entry, has no errors, builds identically each time and survives a file round trip. Festival Main Stage marks its shared band and matches the committed file in `examples/` |
+| `depth-engine.test.ts` | Depth Studio: config validation and clamping, exact loop frame counts and closure at every rate, the LED plane's edges landing on the image's edges for any shape and viewer, back-wall scale and vanishing point, seeded particles (same seed, stable when the count grows, back at the start after one loop at any speed, inside the room), and targets read from the mapping |
 | `store-history.test.ts` | Undo and redo through the real store and IndexedDB for every kind of edit, plus saving after undo, selection and project switching |
 
 **Rules**
@@ -47,6 +48,7 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | --- | --- |
 | Konva canvas, gestures, dialogs, keyboard shortcuts | Manual acceptance run |
 | PNG pixels in a real browser | Manual acceptance run |
+| Depth Studio shaders and WebGL rendering | Looked at in a real browser: depth with particles off, 16:9, ultrawide and portrait framing, guides matching the room. Rendered pixels aren't compared automatically yet |
 | Resolume behaviour | [Not yet tested](../integrations/RESOLUME.md#first-real-world-check) |
 
 Automated browser tests are a [Phase 1](../product/ROADMAP.md#phase-1-mapping-studio) decision. They'd add a dependency, so they need a stated reason first.
