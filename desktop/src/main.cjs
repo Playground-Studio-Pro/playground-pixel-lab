@@ -2,8 +2,9 @@ const { app, BrowserWindow, protocol, net, ipcMain, dialog, session } = require(
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
-const { assertSender, trustedURL, validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, debugAccessViolations } = require('./security.cjs');
+const { validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, debugAccessViolations } = require('./security.cjs');
 const { probeFFmpeg } = require('./native.cjs');
+const { createWindowRegistry, trustedURLForRole } = require('./windows.cjs');
 // Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
 // Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
 if (app.isPackaged) {
@@ -19,12 +20,13 @@ const devURL = !app.isPackaged && process.env.PIXEL_LAB_DEV_URL;
 if (devURL && !/^http:\/\/127\.0\.0\.1:\d+\/$/.test(devURL)) throw new Error('Development URL must be a numeric loopback origin');
 const origin = devURL || 'app://pixellab/';
 const smoke = !app.isPackaged && process.argv.includes('--smoke-test');
-let window;
+const windows = createWindowRegistry(origin);
+const CONTROL = Object.freeze({ kind: 'control' });
 let fileBusy = false;
 app.setPath('userData', path.join(app.getPath('appData'), smoke ? 'Pixel Lab Desktop Smoke' : 'Pixel Lab Desktop'));
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
+  app.on('second-instance', () => { const window = windows.control; if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
   app.whenReady().then(async () => {
     if (!devURL) {
       const root = app.isPackaged ? path.join(process.resourcesPath, 'web') : path.join(__dirname, '..', 'web');
@@ -41,24 +43,26 @@ else {
       done({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } });
     });
     function createWindow() {
-      window = new BrowserWindow({ width: 1440, height: 960, minWidth: 960, minHeight: 640, show: false, backgroundColor: '#07080F', webPreferences: {
+      const window = new BrowserWindow({ width: 1440, height: 960, minWidth: 960, minHeight: 640, show: false, backgroundColor: '#07080F', webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, webviewTag: false,
       } });
       window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-      window.webContents.on('will-navigate', (event, url) => { if (!trustedURL(url, origin)) event.preventDefault(); });
+      window.webContents.on('will-navigate', (event, url) => { if (!trustedURLForRole(url, origin, 'control')) event.preventDefault(); });
+      window.webContents.on('will-redirect', (event, url) => { if (!trustedURLForRole(url, origin, 'control')) event.preventDefault(); });
       window.webContents.on('will-attach-webview', event => event.preventDefault());
       window.once('ready-to-show', () => window.show());
-      window.on('closed', () => { window = null; });
+      windows.setControl(window);
+      window.on('closed', () => windows.clearControl(window));
       return window.loadURL(origin);
     }
     const handler = (channel, fn) => ipcMain.handle(channel, async (event, ...args) => {
-      if (!window) throw new Error('No desktop window');
-      assertSender(event, window.webContents, origin);
+      if (!windows.control) throw new Error('No desktop window');
+      windows.assertSender(event, CONTROL);
       return fn(...args);
     });
     const withFileDialog = async fn => { if (fileBusy) throw new Error('A file dialog is already open'); fileBusy = true; try { return await fn(); } finally { fileBusy = false; } };
     handler('project:open', () => withFileDialog(async () => {
-      const result = await dialog.showOpenDialog(window, { properties: ['openFile'], filters: [{ name: 'Pixel Lab project', extensions: ['json'] }] });
+      const result = await dialog.showOpenDialog(windows.control, { properties: ['openFile'], filters: [{ name: 'Pixel Lab project', extensions: ['json'] }] });
       if (result.canceled) return null;
       const file = await fs.open(result.filePaths[0], 'r');
       try {
@@ -72,7 +76,7 @@ else {
     handler('project:save', payload => withFileDialog(async () => {
       const text = validateText(payload?.text);
       const name = safeName(payload?.suggestedName);
-      const result = await dialog.showSaveDialog(window, { defaultPath: name, filters: [{ name: 'Pixel Lab project', extensions: ['json'] }] });
+      const result = await dialog.showSaveDialog(windows.control, { defaultPath: name, filters: [{ name: 'Pixel Lab project', extensions: ['json'] }] });
       if (result.canceled || !result.filePath) return null;
       await fs.writeFile(result.filePath, text, 'utf8');
       return { name: path.basename(result.filePath) };
@@ -84,12 +88,12 @@ else {
     });
     // Existing Blob downloads keep their native Save As flow without changing UI.
     session.defaultSession.on('will-download', (event, item, contents) => {
-      if (!window || contents !== window.webContents || !trustedURL(contents.getURL(), origin) || !item.getURL().startsWith('blob:')) { event.preventDefault(); return; }
+      if (!windows.control || windows.roleOf(contents)?.kind !== 'control' || !trustedURLForRole(contents.getURL(), origin, 'control') || !item.getURL().startsWith('blob:')) { event.preventDefault(); return; }
       item.setSaveDialogOptions({ title: 'Export Pixel Lab file' });
     });
     await createWindow();
-    app.on('activate', () => { if (!window) createWindow().catch(fail); });
-    if (smoke) await require('./smoke.cjs')(window, app);
+    app.on('activate', () => { if (!windows.control) createWindow().catch(fail); });
+    if (smoke) await require('./smoke.cjs')(windows.control, app);
   }).catch(fail);
 }
 function fail(error) { console.error(error); if (!smoke) dialog.showErrorBox('Pixel Lab desktop startup failed', String(error.message || error)); app.exit(1); }
