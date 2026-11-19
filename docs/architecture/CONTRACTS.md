@@ -157,6 +157,13 @@ interface EngineeringSummary {
 - Electrical values are estimates, never a certified design, and the disclaimer travels with them.
 - Pixel sizes come from `resolveMapping`, not from the summary's own arithmetic.
 
+## Physical output contract
+
+`src/domain/physical-output.ts`, types and closed lists only. It's the shared vocabulary between Desktop Engineering (displays, output windows, IPC in `desktop/src/`) and Output Engineering (the output page and its report). The design, rules and acceptance criteria are in [PHYSICAL_OUTPUT](PHYSICAL_OUTPUT.md); the file follows it.
+
+- Desktop's main process is CommonJS and validates these shapes by hand. A test keeps its error codes, states and channel names equal to the lists in this file.
+- `MAX_OUTPUTS` is 1 in Alpha 0.1. The types already describe several outputs, so raising it changes no API.
+
 ## Changing a contract
 
 1. Open an issue or a short PR against the contract file, naming every lane it affects.
