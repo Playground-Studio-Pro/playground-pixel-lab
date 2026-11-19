@@ -103,6 +103,7 @@ export function calibrationFrameFor(input: FrameInput, settings: CalibrationSett
     mode: settings.mode,
     logo: { mode: settings.logo, aspect: CAL_LOGO_ASSET.width / CAL_LOGO_ASSET.height },
     fps: input.fps,
+    motion: true,
   });
   cache = { key, frame };
   return frame;

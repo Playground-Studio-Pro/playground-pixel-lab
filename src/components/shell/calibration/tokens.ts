@@ -57,6 +57,37 @@ export const CAL_ADVANCE = 0.6;
 /** Baseline below the top of a text box, as a share of the font size. */
 export const CAL_BASELINE = 0.78;
 
+/**
+ * Cabinet labels: row letter and column number (`A1`, `B12`, `AA3`), centered in each cabinet. Text is `ratio`
+ * of the cabinet's shorter side, at most `max` px. When it doesn't fit at `CAL_MIN_TEXT` inside the cabinet
+ * (less its seam pixel and `margin` of the text size on each side) the label is dropped, never shrunk below
+ * it: at 9 px that needs a cabinet of at least 17 × 15 px for `A1` and 23 × 15 px for `A12`
+ * (`cabinetLabelSize` in frame.ts is the rule).
+ */
+export const CAL_CABINET = { ratio: 0.28, max: 96, margin: 0.15 } as const;
+
+/**
+ * Identification field: each cabinet takes one of two tones of the screen's color, alternating like a
+ * checkerboard, so every cabinet stands apart at a glance. Shares of the color mixed into black.
+ */
+export const CAL_CHECKER = { light: 0.58, dark: 0.3 } as const;
+
+/**
+ * Motion on a moving test card, one period of `seconds` for everything, which divides every export duration
+ * (5 to 60 s) so a file loops without a jump:
+ * - a white vertical bar crosses the whole master canvas (each step is ⌊w/p⌋ or ⌈w/p⌉ px), so continuity
+ *   between screens shows, a skipped or repeated frame shows as a jump and tearing as a broken bar. Its width
+ *   is `width.ratio` of the master, at least `width.min` px so it reads on a wall at distance, and never more
+ *   than `width.maxShare` of the master; always even.
+ * - an edge marker runs once around the inside of every screen, `edge.inset` px in from its outer pixel, so
+ *   a file or output of one screen always moves even when the bar is elsewhere on the master.
+ */
+export const CAL_SWEEP = {
+  seconds: 5,
+  width: { ratio: 1 / 100, min: 8, maxShare: 0.02 },
+  edge: { inset: 2, thickness: { ratio: 1 / 48, min: 4, max: 24 }, lengthShare: 1 / 20 },
+} as const;
+
 /** Logo height as a share of the frame's shorter side. */
 export const CAL_LOGO = {
   center: { height: 0.18, maxWidth: 0.5, opacity: 1 },
@@ -98,6 +129,12 @@ function luminance([r, g, b]: readonly number[]): number {
  * The accent a screen is drawn with: its project color, lifted toward white until it reads on a
  * dark field (contrast of at least 4.5:1 against black). Falls back to the palette by index.
  */
+/** Black or white, whichever reads better on `hex` (WCAG contrast). */
+export function readableOn(hex: string): "#000000" | "#FFFFFF" {
+  const l = luminance(channels(hex) ?? [0, 0, 0]);
+  return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? "#000000" : "#FFFFFF";
+}
+
 export function screenAccent(color: string | undefined, index: number): string {
   let rgb = (color && channels(color)) || channels(CAL_ACCENTS[index % CAL_ACCENTS.length])!;
   for (let step = 0; step < 20 && (luminance(rgb) + 0.05) / 0.05 < 4.5; step++) {

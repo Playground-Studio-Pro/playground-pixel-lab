@@ -119,9 +119,7 @@ export default function OutputStudioPanel() {
         : `The scene loops every ${depthConfig.durationSeconds} s, so a ${seconds} s file won't loop seamlessly.`
       : sourceId === PIXEL_GRID_SOURCE_ID
         ? "The motion marker steps 4 px per frame across each screen, so the file loops seamlessly only when the frame count fits every screen's width."
-        : calibrationMode === "calibration"
-        ? "The frame counter and timecode count up, so the file doesn't loop seamlessly."
-        : "Identification is a still frame, so the file loops seamlessly.";
+        : "A bar sweeps across the master canvas and a marker runs around each screen's edge every 5 s, so the picture loops seamlessly. The frame counter and timecode count up and restart at 0 when the file loops.";
 
   async function start() {
     if (!target || !master || !project) return;

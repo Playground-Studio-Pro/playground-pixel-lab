@@ -35,6 +35,7 @@ export function calibrationTargets(mapping: ResolvedMapping): CalibrationTarget[
       canvasY: screen.masterRect.y,
       output: outputIndex >= 0 ? { label: `OUT ${outputIndex + 1}`, name: mapping.outputs[outputIndex].name } : undefined,
       cabinet: { pixelsX: screen.cabinet.pixelsX, pixelsY: screen.cabinet.pixelsY, columns: screen.columns, rows: screen.rows },
+      physical: { widthUm: screen.stage.width, heightUm: screen.stage.height },
       accent: screenAccent(screen.color, index),
     };
   };

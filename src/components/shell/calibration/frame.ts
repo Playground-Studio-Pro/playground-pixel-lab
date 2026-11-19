@@ -1,7 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
 import { timecode } from "@/engines/motion/clock";
-import { CAL_ADVANCE, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_TINT, tint } from "./tokens";
+import { CAL_ADVANCE, CAL_CABINET, CAL_CHECKER, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_SWEEP, CAL_TINT, readableOn, tint } from "./tokens";
 
 /**
  * Screen identification and calibration frames, as drawing primitives in exact integer pixels.
@@ -28,6 +28,8 @@ export interface CalibrationScreen {
   readonly canvasY: number;
   readonly output?: { readonly label: string; readonly name: string };
   readonly cabinet?: { readonly pixelsX: number; readonly pixelsY: number; readonly columns: number; readonly rows: number };
+  /** Physical size in integer micrometres, from `resolveMapping` (the screen's stage rectangle). */
+  readonly physical?: { readonly widthUm: number; readonly heightUm: number };
   /** Accent color, already checked for contrast on a dark field (`screenAccent`). */
   readonly accent: string;
 }
@@ -53,6 +55,11 @@ export interface CalibrationInput {
   readonly elements?: Partial<CalibrationElements>;
   /** Content rate the frame counter is labelled with. Not a browser or panel rate. */
   readonly fps: ContentFps;
+  /**
+   * A moving card: a sweep bar crosses the master (`CAL_SWEEP`), and identification mode shows the frame
+   * counter and timecode too. Off for still frames such as the Preview dialog's PNG.
+   */
+  readonly motion?: boolean;
 }
 
 export type CounterField = "frame" | "timecode";
@@ -77,6 +84,109 @@ export type CalNode =
   | ({ readonly kind: "counter"; readonly field: CounterField } & TextStyle)
   | { readonly kind: "logo"; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly opacity: number };
 
+/** A bar `barWidth` wide crossing `width` once every `period` frames, wrapping at the right edge. */
+export interface Sweep {
+  readonly width: number;
+  readonly barWidth: number;
+  readonly period: number;
+  /** The screens it is drawn on. Master pixels no screen covers stay black. */
+  readonly areas: readonly Box[];
+  /** One edge marker per screen large enough for it (`edgeMarkerRects`). */
+  readonly edges: readonly EdgeTrack[];
+  readonly fill: string;
+}
+
+/**
+ * A marker running clockwise around the inside of a screen from its top-left: a band `thickness` px wide,
+ * `inset` px in from the screen's outer pixel, `length` px long, once per period.
+ */
+export interface EdgeTrack {
+  readonly box: Box;
+  readonly inset: number;
+  readonly thickness: number;
+  readonly length: number;
+}
+
+const even = (n: number) => n - (n % 2);
+
+/** Bar width for a master `width` px wide: `CAL_SWEEP.width`, even, at least 2. */
+export function sweepBarWidth(width: number): number {
+  const rule = CAL_SWEEP.width;
+  return Math.max(2, even(Math.min(Math.max(Math.round(width * rule.ratio), rule.min), Math.floor(width * rule.maxShare))));
+}
+
+/** The edge track of a screen, or null when it is too small to carry one beside its border. */
+export function edgeTrack(box: Box): EdgeTrack | null {
+  const rule = CAL_SWEEP.edge;
+  const m = Math.min(box.width, box.height);
+  const thickness = clamp(Math.round(m * rule.thickness.ratio), rule.thickness.min, rule.thickness.max);
+  const inner = m - 2 * rule.inset - thickness;
+  if (m < 24 || inner < thickness) return null;
+  const perimeter = 2 * (box.width - 2 * rule.inset - thickness) + 2 * (box.height - 2 * rule.inset - thickness);
+  return { box, inset: rule.inset, thickness, length: Math.max(2 * thickness, Math.round(perimeter * rule.lengthShare)) };
+}
+
+/** The sweep for a frame `width` px wide at `fps`: one crossing per `CAL_SWEEP.seconds`. */
+export function sweepFor(width: number, fps: ContentFps, areas: readonly Box[]): Sweep {
+  return { width, barWidth: sweepBarWidth(width), period: CAL_SWEEP.seconds * fps, areas, edges: areas.flatMap((a) => edgeTrack(a) ?? []), fill: CAL_COLORS.white };
+}
+
+/**
+ * The edge marker's rectangles at `frame`. Its head is at `floor(phase × perimeter / period)` along the
+ * clockwise track (top, right, bottom, left); the part past the end wraps to the start, so one period later
+ * it is back where it began. Pure.
+ */
+export function edgeMarkerRects(track: EdgeTrack, period: number, frame: number): Box[] {
+  const { box, inset: d, thickness: t } = track;
+  const a = box.width - 2 * d - t;
+  const b = box.height - 2 * d - t;
+  const perimeter = 2 * a + 2 * b;
+  const phase = ((frame % period) + period) % period;
+  const start = Math.floor((phase * perimeter) / period);
+  const spans: [number, number][] = start + track.length <= perimeter ? [[start, start + track.length]] : [[start, perimeter], [0, start + track.length - perimeter]];
+  const edges: [number, number, (u: number, v: number) => Box][] = [
+    [0, a, (u, v) => ({ x: box.x + d + u, y: box.y + d, width: v - u + t, height: t })],
+    [a, a + b, (u, v) => ({ x: box.x + box.width - d - t, y: box.y + d + u - a, width: t, height: v - u + t })],
+    [a + b, 2 * a + b, (u, v) => ({ x: box.x + box.width - d - t - (v - a - b), y: box.y + box.height - d - t, width: v - u + t, height: t })],
+    [2 * a + b, perimeter, (u, v) => ({ x: box.x + d, y: box.y + box.height - d - t - (v - 2 * a - b), width: t, height: v - u + t })],
+  ];
+  const out: Box[] = [];
+  for (const [s0, s1] of spans) {
+    for (const [e0, e1, rect] of edges) {
+      const u = Math.max(s0, e0);
+      const v = Math.min(s1, e1);
+      if (v > u) out.push(rect(u, v));
+    }
+  }
+  return out;
+}
+
+/** Left edge of the bar at `frame`: `floor(phase × width / period)`, so each step is ⌊w/p⌋ or ⌈w/p⌉ px. */
+export function sweepLeft(sweep: Sweep, frame: number): number {
+  const phase = ((frame % sweep.period) + sweep.period) % sweep.period;
+  return Math.floor((phase * sweep.width) / sweep.period);
+}
+
+/**
+ * The bar's rectangles at `frame`, clipped to each screen. The part past the right edge wraps to the left, and
+ * one period later the bar is back where it started, so the bar is always visible and the last frame of a
+ * period leads into the first. Pure: same sweep and frame, same rectangles.
+ */
+export function sweepRects(sweep: Sweep, frame: number): Box[] {
+  const left = sweepLeft(sweep, frame);
+  const spans: [number, number][] = [[left, Math.min(left + sweep.barWidth, sweep.width)]];
+  if (left + sweep.barWidth > sweep.width) spans.push([0, left + sweep.barWidth - sweep.width]);
+  const out: Box[] = [];
+  for (const [x0, x1] of spans) {
+    for (const r of sweep.areas) {
+      const cx0 = Math.max(x0, r.x);
+      const cx1 = Math.min(x1, r.x + r.width);
+      if (cx1 > cx0 && r.height > 0) out.push({ x: cx0, y: r.y, width: cx1 - cx0, height: r.height });
+    }
+  }
+  return out;
+}
+
 export interface CalibrationFrame {
   readonly width: number;
   readonly height: number;
@@ -84,6 +194,11 @@ export interface CalibrationFrame {
   readonly nodes: readonly CalNode[];
   /** Area kept clear around a centered logo. Null in watermark and off modes. */
   readonly logoKeepOut: Box | null;
+  /**
+   * The sweep bar of a moving card, or null. Where it is depends on the frame number (`sweepRects`). It is
+   * drawn just before `nodes[sweep.before]`: over the field and grid, under lines, plates, marks, logo and text.
+   */
+  readonly sweep: (Sweep & { readonly before: number }) | null;
 }
 
 /** Fixed-width text for a counter: `F 000123` or a non-drop timecode. */
@@ -201,13 +316,135 @@ interface ScreenContext {
   readonly mode: CalibrationMode;
   readonly elements: CalibrationElements;
   readonly fps: ContentFps;
+  readonly motion: boolean;
   /** Areas this screen's labels and marks must stay out of: the logo, and overlaps another screen owns. */
   readonly obstacles: Box[];
   readonly logoKeepOut: Box | null;
   /** Label plates already placed anywhere in the frame. */
   readonly placed: Box[];
   readonly layers: Layers;
+  /** Work to run after every screen has placed its own labels: cabinet labels, which give way to all of them. */
+  readonly deferred: (() => void)[];
 }
+
+/** One cabinet's position in its screen: 1-based row and column, and its number counted left to right, top to bottom. */
+export interface CabinetCell {
+  readonly row: number;
+  readonly column: number;
+  readonly number: number;
+  /** The cabinet's pixels, in the frame's space. */
+  readonly box: Box;
+}
+
+/**
+ * Every cabinet of a screen, from its top-left corner: rows top to bottom, columns left to right, numbered
+ * in reading order from 1. Read from the screen's cabinet grid (`resolveMapping`); nothing is computed beyond
+ * multiplying it out. Not a data-cabling order: the model has no cabling.
+ */
+export function cabinetCells(s: CalibrationScreen): CabinetCell[] {
+  const cab = s.cabinet;
+  if (!cab || cab.columns < 1 || cab.rows < 1 || cab.pixelsX < 1 || cab.pixelsY < 1) return [];
+  const cells: CabinetCell[] = [];
+  for (let r = 0; r < cab.rows; r++) {
+    for (let col = 0; col < cab.columns; col++) {
+      const box = intersect({ x: s.rect.x + col * cab.pixelsX, y: s.rect.y + r * cab.pixelsY, width: cab.pixelsX, height: cab.pixelsY }, s.rect);
+      if (area(box) > 0) cells.push({ row: r + 1, column: col + 1, number: r * cab.columns + col + 1, box });
+    }
+  }
+  return cells;
+}
+
+/** Row letters: 1 → A, 26 → Z, 27 → AA, 28 → AB. */
+export function rowLetters(row: number): string {
+  let n = row;
+  let out = "";
+  while (n > 0) {
+    const r = (n - 1) % 26;
+    out = String.fromCharCode(65 + r) + out;
+    n = Math.floor((n - 1) / 26);
+  }
+  return out;
+}
+
+/** A cabinet's label: its row letter and column number, `A1`, `B12`. */
+export function cabinetLabelText(cell: CabinetCell): string {
+  return `${rowLetters(cell.row)}${cell.column}`;
+}
+
+/** Margin inside a cabinet around its label: the seam pixel, then a share of the text size. */
+const cabinetMargin = (size: number) => 1 + Math.max(2, Math.round(size * CAL_CABINET.margin));
+
+/** The text size a cabinet label gets in a `width` × `height` cabinet, or null if it doesn't fit at the minimum. */
+export function cabinetLabelSize(width: number, height: number, text: string): number | null {
+  const fits = (size: number) => textWidth(text.length, size) <= width - 2 * cabinetMargin(size) && size <= height - 2 * cabinetMargin(size);
+  for (let size = clamp(Math.round(Math.min(width, height) * CAL_CABINET.ratio), CAL_MIN_TEXT, CAL_CABINET.max); size >= CAL_MIN_TEXT; size--) if (fits(size)) return size;
+  return null;
+}
+
+/** Micrometres as metres with three decimals, `16.200m`, rounded to the millimetre in integers. */
+export function metres(um: number): string {
+  const mm = Math.round(um / 1000);
+  const sign = mm < 0 ? "-" : "";
+  const abs = Math.abs(mm);
+  return `${sign}${Math.floor(abs / 1000)}.${String(abs % 1000).padStart(3, "0")}m`;
+}
+
+/**
+ * A corner-to-corner diagonal of `box`, `thickness` px across, as whole-pixel runs: one run per step along the
+ * shorter side, so it has no anti-aliasing and the same pixels on every canvas. `anti` runs from the top-right
+ * corner to the bottom-left one.
+ */
+export function diagonalRuns(box: Box, thickness: number, anti: boolean): Box[] {
+  const { x, y, width: w, height: h } = box;
+  const out: Box[] = [];
+  const half = Math.floor(thickness / 2);
+  if (w >= h) {
+    for (let i = 0; i < h; i++) {
+      const a = Math.floor((i * w) / h);
+      const len = Math.max(1, Math.floor(((i + 1) * w) / h) - a);
+      const left = anti ? w - a - len : a;
+      const top = clamp(i - half, 0, h - thickness);
+      out.push({ x: x + left, y: y + top, width: len, height: Math.min(thickness, h) });
+    }
+  } else {
+    for (let j = 0; j < w; j++) {
+      const a = Math.floor((j * h) / w);
+      const len = Math.max(1, Math.floor(((j + 1) * h) / w) - a);
+      const col = anti ? w - 1 - j : j;
+      out.push({ x: x + clamp(col - half, 0, w - thickness), y: y + a, width: Math.min(thickness, w), height: len });
+    }
+  }
+  return out;
+}
+
+/**
+ * A circle ring of outer radius `r` and `thickness` px, centered on (cx, cy) in pixel-edge coordinates, as two
+ * whole-pixel runs per row. Pure integer layout from `Math.sqrt`, which is exact-rounded in every engine.
+ */
+export function ringRuns(cx: number, cy: number, r: number, thickness: number): Box[] {
+  const out: Box[] = [];
+  const inner = Math.max(0, r - thickness);
+  for (let row = -r; row < r; row++) {
+    const yc = row + 0.5;
+    const ox = Math.floor(Math.sqrt(Math.max(0, r * r - yc * yc)) + 0.5);
+    if (ox <= 0) continue;
+    const ix = Math.abs(yc) < inner ? Math.floor(Math.sqrt(inner * inner - yc * yc) + 0.5) : 0;
+    const y = cy + row;
+    if (ix <= 0) out.push({ x: cx - ox, y, width: 2 * ox, height: 1 });
+    else out.push({ x: cx - ox, y, width: ox - ix, height: 1 }, { x: cx + ix, y, width: ox - ix, height: 1 });
+  }
+  return out;
+}
+
+/** Plate around a cabinet label: just enough to keep the sweep bar and grid lines off its glyphs. */
+const CABINET_PLATE_PAD = 2;
+
+/** Frame counter, timecode and content rate, as a corner block. */
+const counterLines = (title: number, base: number, fps: ContentFps): Line[] => [
+  { size: title, weight: 700, parts: [{ text: "0".repeat(COUNTER_CHARS.frame), fill: CAL_COLORS.white, counter: "frame" }] },
+  { size: base, weight: 600, parts: [{ text: "0".repeat(COUNTER_CHARS.timecode), fill: CAL_COLORS.white, counter: "timecode" }] },
+  { size: base, weight: 500, parts: [{ text: `CONTENT ${fps} FPS`, fill: CAL_COLORS.muted }] },
+];
 
 function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const { x, y, width: w, height: h } = s.rect;
@@ -215,13 +452,18 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const { layers, obstacles, placed } = c;
   const cal = c.mode === "calibration";
   const m = Math.min(w, h);
-  const fieldColor = cal ? CAL_COLORS.black : tint(s.accent, CAL_TINT.field);
+  const fieldColor = cal ? CAL_COLORS.black : tint(s.accent, CAL_CHECKER.dark);
+  const cells = cabinetCells(s);
+  /** The tone under a cabinet: identification alternates two tones of the screen's color, like a checkerboard. */
+  const toneOf = (cell: CabinetCell) => (cal ? CAL_COLORS.black : tint(s.accent, (cell.row + cell.column) % 2 === 0 ? CAL_CHECKER.light : CAL_CHECKER.dark));
 
   layers.field.push(rectNode(x, y, w, h, fieldColor));
+  if (!cal) for (const cell of cells) layers.field.push(rectNode(cell.box.x, cell.box.y, cell.box.width, cell.box.height, toneOf(cell)));
 
-  // Cabinet seams: 2 px straddling each seam, the last pixel of one cabinet and the first of the next.
+  // Cabinet seams: 2 px straddling each seam, the last pixel of one cabinet and the first of the next. Black
+  // between identification's two tones, so every cabinet edge reads.
   const cab = s.cabinet;
-  const seamColor = tint(s.accent, cal ? CAL_TINT.gridSeam : CAL_TINT.seamOnField);
+  const seamColor = cal ? tint(s.accent, CAL_TINT.gridSeam) : CAL_COLORS.black;
   const showGrid = cal ? c.elements.grid : true;
   const pitchX = minorPitch(cab?.pixelsX);
   const pitchY = minorPitch(cab?.pixelsY);
@@ -265,12 +507,13 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const blocked = (box: Box) => obstacles.some((o) => hits(o, box)) || placed.some((p) => hits(p, box));
 
   /** Reserves a label's plate if it's inside the screen and clear of everything placed so far. */
-  const reserve = (box: Box): boolean => {
+  // Label plates are black: identification's field has two tones, and white text reads on black.
+  const reserve = (box: Box, pad = platePad, fill: string = CAL_COLORS.black): boolean => {
     if (!inside(box, safe)) return false;
-    const plate = intersect(expand(box, platePad), safe);
+    const plate = intersect(expand(box, pad), safe);
     if (blocked(plate)) return false;
     placed.push(plate);
-    layers.plates.push(rectNode(plate.x, plate.y, plate.width, plate.height, fieldColor));
+    layers.plates.push(rectNode(plate.x, plate.y, plate.width, plate.height, fill));
     return true;
   };
 
@@ -292,6 +535,41 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
 
   /** Fits lines to a width, dropping any that can't be shortened to fit. */
   const fitted = (lines: readonly Line[], maxWidth: number) => lines.flatMap((line) => fitLine(line, maxWidth) ?? []);
+
+  // Cabinet labels: row letter and column number, centered in every cabinet, in both modes. They run after
+  // every screen's own labels (`deferred`), so they never take the room of a plate, identifier or counter, and
+  // are dropped where they would cover a label, a corner mark, the logo or a shared area. Their plate is the
+  // cabinet's own tone: it only keeps lines and the sweep off the glyphs.
+  const markBoxes: Box[] = [];
+  c.deferred.push(() => {
+    for (const cell of cells) {
+      const text = cabinetLabelText(cell);
+      const size = cabinetLabelSize(cell.box.width, cell.box.height, text);
+      if (size === null) continue;
+      const tone = toneOf(cell);
+      const line: Line = { size, weight: 700, parts: [{ text, fill: cal ? CAL_COLORS.muted : readableOn(tone) }] };
+      const bw = lineWidth(line);
+      const b = cell.box;
+      // Centered; where a corner mark or origin square is in the way, nudged a quarter of the cabinet down,
+      // right, or both, and still inside the cabinet.
+      const cx0 = b.x + Math.floor((b.width - bw) / 2);
+      const cy0 = b.y + Math.floor((b.height - size) / 2);
+      const qx = Math.floor(b.width / 4);
+      const qy = Math.floor(b.height / 4);
+      for (const [dx, dy] of [[0, 0], [0, qy], [qx, 0], [qx, qy]]) {
+        const box = { x: cx0 + dx, y: cy0 + dy, width: bw, height: size };
+        if (!inside(expand(box, cabinetMargin(size) - 1), b)) continue;
+        if (markBoxes.some((mb) => hits(mb, expand(box, 1)))) continue;
+        // A tight plate: the screen's own pad would reach into the neighbouring cabinet.
+        if (reserve(box, CABINET_PLATE_PAD, tone)) {
+          emit([line], box.x, box.y, bw, "left");
+          break;
+        }
+        // Blocked by a label or the logo, not a mark: the cabinet goes without, so labels never wander.
+        if (dx === 0 && dy === 0 && !markBoxes.some((mb) => hits(mb, expand(box, 1)))) break;
+      }
+    }
+  });
 
   /** Places a block centered on a point, kept inside `within`. */
   const placeCentered = (lines: readonly Line[], cx: number, cy: number, within: Box): boolean => {
@@ -381,6 +659,10 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
     },
   ];
   for (const corner of corners) if (!obstacles.some((o) => hits(o, corner.box))) layers.marks.push(...corner.nodes);
+  // Cabinet labels stay off the marks themselves (their lines and origin square), not the whole corner box,
+  // so the first cabinet still gets its A1.
+  for (const corner of corners) for (const n of corner.nodes) if (n.kind === "rect") markBoxes.push(n);
+  markBoxes.push(arrowBox);
   layers.marks.push(...border);
 
   const tv = centered(stroke, w);
@@ -392,80 +674,59 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const output = s.output ? `${s.output.label} · ${s.output.name.toUpperCase()}` : null;
   const name = s.name.toUpperCase();
 
-  if (compact && !cal) {
-    const inner: Box = { x: x + off, y: Math.max(y + off, arrowBox.y + arrowH + gap), width: w - 2 * off, height: 0 };
-    const within = obstacles.reduce((left, o) => largestRemainder(left, expand(o, gap)), { ...inner, height: y + h - off - inner.y });
-    // A ribbon reads as one line: identifier, name, resolution, position.
-    const rowSize = Math.min(clamp(Math.round(m * 0.36), CAL_MIN_TEXT, 64), within.height);
-    if (w >= 4 * h && rowSize >= CAL_MIN_TEXT) {
-      const parts: Part[] = [{ text: s.label, fill: s.accent }];
-      if (c.elements.metadata) parts.push({ text: name, fill: CAL_COLORS.white }, { text: resolution, fill: CAL_COLORS.white }, { text: position, fill: CAL_COLORS.muted });
-      const row = fitLine({ size: rowSize, weight: 600, parts }, within.width);
-      if (row && row.parts[0].text === s.label && placeCentered([row], x + w / 2, y + h / 2, within)) return;
-    }
-    const idSize = Math.min(clamp(Math.round(m * 0.2), CAL_MIN_TEXT, 40), Math.floor(within.width / (s.label.length * CAL_ADVANCE)));
-    if (idSize >= CAL_MIN_TEXT) {
-      const sub = Math.max(CAL_MIN_TEXT, Math.round(idSize * 0.6));
-      const lines: Line[] = [{ size: idSize, weight: 700, parts: [{ text: s.label, fill: s.accent }] }];
-      if (c.elements.metadata) {
-        lines.push({ size: sub, weight: 600, parts: [{ text: name, fill: CAL_COLORS.white }] }, { size: sub, weight: 600, parts: [{ text: resolution, fill: CAL_COLORS.white }] }, { size: sub, weight: 500, parts: [{ text: position, fill: CAL_COLORS.muted }] });
-      }
-      for (let n = lines.length; n >= 1; n--) {
-        if (placeCentered(fitted(lines.slice(0, n), within.width), x + w / 2, y + h / 2, within)) break;
-      }
-    }
-    return;
-  }
-
   if (!cal) {
-    // Identification: the identifier above center, the technical data below, and the center left
-    // free for a small center mark or the logo.
-    const markArm = clamp(Math.round(m / 48), 3, 24);
-    const markBox: Box = { x: centerX - markArm, y: centerY - markArm, width: tv + 2 * markArm, height: th + 2 * markArm };
-    if (!blocked(markBox)) {
-      layers.marks.push(rectNode(centerX, centerY - markArm, tv, th + 2 * markArm, CAL_COLORS.white), rectNode(centerX - markArm, centerY, tv + 2 * markArm, th, CAL_COLORS.white));
-      obstacles.push(markBox);
+    // Identification, as on a stage test card: corner-to-corner diagonals and two concentric circles in thin
+    // white lines over the checkerboard, and one black plate in the middle with the screen's name, resolution
+    // and physical size.
+    const line = Math.max(2, stroke);
+    const cx = x + Math.floor(w / 2);
+    const cy = y + Math.floor(h / 2);
+    for (const r of [...diagonalRuns(s.rect, line, false), ...diagonalRuns(s.rect, line, true)]) layers.lines.push(rectNode(r.x, r.y, r.width, r.height, CAL_COLORS.white));
+    for (const radius of [Math.floor(m * 0.45), Math.floor(m * 0.25)]) {
+      if (radius > 2 * line) for (const r of ringRuns(cx, cy, radius, line)) layers.lines.push(rectNode(r.x, r.y, r.width, r.height, CAL_COLORS.white));
     }
-    const centerGap = markArm + 2 * gap;
-    const innerX = x + off;
-    const innerW = w - 2 * off;
-    const upperTop = topReserve;
-    const upper: Box = { x: innerX, y: upperTop, width: innerW, height: centerY - centerGap - upperTop };
-    const lowerTop = centerY + th + centerGap;
-    const lower: Box = { x: innerX, y: lowerTop, width: innerW, height: y + h - off - lowerTop };
-    const clear = (from: Box) => obstacles.reduce((left, o) => largestRemainder(left, expand(o, gap)), from);
 
-    const upperArea = clear(upper);
-    const idCap = sized(CAL_SCALE.id, t);
-    const idWidthCap = Math.floor(upperArea.width / (s.label.length * CAL_ADVANCE));
-    const idLines = (size: number, withName: boolean): Line[] => {
-      const lines: Line[] = [{ size, weight: 700, parts: [{ text: s.label, fill: s.accent }] }];
-      const nameSize = Math.round(size * 0.34);
-      if (withName && c.elements.metadata && nameSize >= CAL_MIN_TEXT) lines.push({ size: nameSize, weight: 600, parts: [{ text: name, fill: CAL_COLORS.white }] });
-      return fitted(lines, upperArea.width);
+    const size = s.physical ? `W ${metres(s.physical.widthUm)} x H ${metres(s.physical.heightUm)}` : null;
+    const res = `W ${w} x H ${h}`;
+    const inner: Box = { x: x + off, y: Math.max(topReserve, arrowBox.y + arrowH + gap), width: w - 2 * off, height: 0 };
+    const within = obstacles.reduce((left, o) => largestRemainder(left, expand(o, gap)), { ...inner, height: y + h - off - inner.y });
+    const plateLines = (title: number): Line[] => {
+      const sub = Math.max(CAL_MIN_TEXT, Math.round(title * 0.5));
+      const lines: Line[] = [
+        { size: Math.max(CAL_MIN_TEXT, Math.round(title * 0.42)), weight: 700, parts: [{ text: s.label, fill: s.accent }] },
+        { size: title, weight: 700, parts: [{ text: name, fill: CAL_COLORS.white }] },
+      ];
+      if (c.elements.metadata) {
+        lines.push({ size: sub, weight: 600, parts: [{ text: res, fill: CAL_COLORS.white }] });
+        if (size) lines.push({ size: sub, weight: 500, parts: [{ text: size, fill: CAL_COLORS.muted }] });
+      }
+      return lines;
     };
-    for (const withName of [true, false]) {
-      let size = Math.min(idCap, idWidthCap, Math.floor(upperArea.height / (withName ? 1.5 : 1)));
-      while (size >= CAL_MIN_TEXT && blockHeight(idLines(size, withName)) > upperArea.height) size--;
-      if (size < CAL_MIN_TEXT) continue;
-      if (placeCentered(idLines(size, withName), upper.x + upper.width / 2, upper.y + upper.height / 2, upperArea)) break;
+    let placedPlate = false;
+    // A ribbon reads as one line: identifier, name, resolution, size.
+    if (compact && w >= 4 * h) {
+      const rowSize = Math.min(clamp(Math.round(m * 0.36), CAL_MIN_TEXT, 64), within.height);
+      const parts: Part[] = [{ text: s.label, fill: s.accent }, { text: name, fill: CAL_COLORS.white }];
+      if (c.elements.metadata) parts.push({ text: res, fill: CAL_COLORS.white }, ...(size ? [{ text: size, fill: CAL_COLORS.muted }] : []));
+      const row = rowSize >= CAL_MIN_TEXT ? fitLine({ size: rowSize, weight: 600, parts }, within.width - 2 * platePad) : null;
+      placedPlate = !!row && row.parts[0].text === s.label && placeCentered([row], cx, cy, within);
     }
-
-    if (c.elements.metadata) {
-      const lowerArea = clear(lower);
-      const metaSize = Math.min(sized(CAL_SCALE.idMeta, t), Math.floor(lowerArea.width / (Math.max(resolution.length, position.length) * CAL_ADVANCE)));
-      if (metaSize >= CAL_MIN_TEXT) {
-        const meta: Line[] = [
-          { size: metaSize, weight: 600, parts: [{ text: resolution, fill: CAL_COLORS.white }] },
-          { size: metaSize, weight: 500, parts: [{ text: position, fill: CAL_COLORS.muted }] },
-        ];
-        if (output) meta.push({ size: metaSize, weight: 500, parts: [{ text: output, fill: CAL_COLORS.muted }] });
-        const lines = fitted(meta, lowerArea.width);
-        for (let n = lines.length; n >= 1; n--) {
-          if (placeCentered(lines.slice(0, n), lower.x + lower.width / 2, lower.y + lower.height / 2, lowerArea)) break;
+    if (!placedPlate) {
+      // The name as large as the plate allows, up to the identifier size; shrunk before it is shortened.
+      const maxW = Math.min(within.width, Math.floor(w * 0.8)) - 2 * platePad;
+      // Every line first, at the largest size that fits; a line is dropped only when none fits at 9 px.
+      const count = plateLines(CAL_MIN_TEXT).length;
+      for (let n = count; n >= 1 && !placedPlate; n--) {
+        for (let title = Math.min(sized(CAL_SCALE.id, t), within.height); title >= CAL_MIN_TEXT && !placedPlate; title--) {
+          const lines = plateLines(title).slice(0, n);
+          if (blockWidth(lines) > maxW && title > CAL_MIN_TEXT) continue;
+          const set = fitted(lines, maxW);
+          if (set.length === n && blockHeight(set) + 2 * platePad <= within.height) placedPlate = placeCentered(set, cx, cy, within);
         }
       }
     }
+    // A moving card counts frames in identification too, in a corner, after the plate has its room.
+    if (c.motion && c.elements.frameCounter) placeInCorners(counterLines(Math.round(base * 1.5), base, c.fps), ["tr", "bl", "br"]);
     return;
   }
 
@@ -541,14 +802,7 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
     }
   }
 
-  if (c.elements.frameCounter) {
-    const counter: Line[] = [
-      { size: title, weight: 700, parts: [{ text: "0".repeat(COUNTER_CHARS.frame), fill: CAL_COLORS.white, counter: "frame" }] },
-      { size: base, weight: 600, parts: [{ text: "0".repeat(COUNTER_CHARS.timecode), fill: CAL_COLORS.white, counter: "timecode" }] },
-      { size: base, weight: 500, parts: [{ text: `CONTENT ${c.fps} FPS`, fill: CAL_COLORS.muted }] },
-    ];
-    placeInCorners(counter, ["tr", "bl", "br"]);
-  }
+  if (c.elements.frameCounter) placeInCorners(counterLines(title, base, c.fps), ["tr", "bl", "br"]);
 
   if (c.elements.metadata) {
     // Bottom-right: the screen's last pixel on the master canvas.
@@ -572,19 +826,25 @@ export function buildCalibrationFrame(input: CalibrationInput): CalibrationFrame
   // area and the larger one keeps its labels out of it.
   const order = screens.map((screen, index) => ({ screen, index })).sort((a, b) => area(b.screen.rect) - area(a.screen.rect) || a.index - b.index);
   const placed: Box[] = [];
+  const deferred: (() => void)[] = [];
   order.forEach(({ screen, index }, rank) => {
     const obstacles: Box[] = keepOut ? [keepOut] : [];
     for (const other of order.slice(rank + 1)) {
       const shared = intersect(screen.rect, other.screen.rect);
       if (area(shared) > 0) obstacles.push(shared);
     }
-    layoutScreen(screen, { index, mode, elements, fps: input.fps, obstacles, logoKeepOut: keepOut, placed, layers });
+    layoutScreen(screen, { index, mode, elements, fps: input.fps, motion: input.motion === true, obstacles, logoKeepOut: keepOut, placed, layers, deferred });
   });
+  for (const run of deferred) run();
 
   const nodes: CalNode[] = [rectNode(0, 0, width, height, CAL_COLORS.black), ...layers.field, ...layers.grid];
+  // The sweep goes over the field and grid, under lines, label plates, marks, the logo and text: it never
+  // hides what a screen is.
+  const sweep = input.motion ? { ...sweepFor(width, input.fps, screens.map((sc) => sc.rect)), before: nodes.length } : null;
   if (logo && input.logo.mode === "watermark") nodes.push({ kind: "logo", ...logo, opacity: CAL_LOGO.watermark.opacity });
-  nodes.push(...layers.lines, ...layers.plates, ...layers.marks);
+  // Appended in loops: a large wall has tens of thousands of line runs, more than a spread call takes.
+  for (const layer of [layers.lines, layers.plates, layers.marks]) for (const n of layer) nodes.push(n);
   if (logo && keepOut) nodes.push(rectNode(keepOut.x, keepOut.y, keepOut.width, keepOut.height, CAL_COLORS.black), { kind: "logo", ...logo, opacity: CAL_LOGO.center.opacity });
-  nodes.push(...layers.text);
-  return { width, height, mode, nodes, logoKeepOut: keepOut };
+  for (const n of layers.text) nodes.push(n);
+  return { width, height, mode, nodes, logoKeepOut: keepOut, sweep };
 }
