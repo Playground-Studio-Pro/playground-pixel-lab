@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { drawCalibration } from "@/components/shell/calibration/draw";
-import { buildCalibrationFrame, sweepFor, sweepLeft, sweepRects, type CalibrationFrame, type CalibrationMode, type CalNode, type LogoMode } from "@/components/shell/calibration/frame";
+import { buildCalibrationFrame, edgeMarkerRects, edgeTrack, sweepBarWidth, sweepFor, sweepLeft, sweepRects, type CalibrationFrame, type CalibrationMode, type CalNode, type LogoMode } from "@/components/shell/calibration/frame";
 import { calibrationTargets } from "@/components/shell/calibration/from-mapping";
 import { CAL_LOGO_ASSET, CAL_SWEEP } from "@/components/shell/calibration/tokens";
 import { CONTENT_FPS } from "@/domain/motion";
@@ -100,6 +100,56 @@ describe("sweep bar (moving test card)", () => {
         for (const [i, n] of frame.nodes.entries()) if (n.kind !== "rect") expect(i, `${mode}/${logo} ${n.kind}`).toBeGreaterThanOrEqual(frame.sweep!.before);
       }
     }
+  });
+});
+
+describe("bar width and per-screen edge marker", () => {
+  it("the bar is 1 % of the master, at least 8 px, at most 2 %, even", () => {
+    expect(sweepBarWidth(1920)).toBe(18);
+    expect(sweepBarWidth(4224)).toBe(42);
+    expect(sweepBarWidth(641)).toBe(8);
+    expect(sweepBarWidth(300)).toBe(6);
+    for (const w of [100, 641, 1920, 4224, 7680, 16384]) {
+      const b = sweepBarWidth(w);
+      expect(b % 2).toBe(0);
+      expect(b).toBeLessThanOrEqual(Math.max(2, w * 0.02));
+    }
+  });
+
+  it("Corporate Keynote: every screen has a marker that moves on every frame, loops, and stays inside its edge band", () => {
+    const { target } = master("keynote");
+    for (const s of target.screens) {
+      const track = edgeTrack(s.rect)!;
+      expect(track, s.label).not.toBeNull();
+      const period = 150;
+      const at = (f: number) => edgeMarkerRects(track, period, f);
+      for (let f = 0; f < period; f++) {
+        const rs = at(f);
+        expect(rs.length).toBeGreaterThan(0);
+        expect(at(f + 1)).not.toEqual(rs);
+        for (const r of rs) {
+          for (const n of [r.x, r.y, r.width, r.height]) expect(Number.isSafeInteger(n)).toBe(true);
+          // Inside the screen, clear of its white outer pixel and the gap beside it.
+          expect(r.x >= s.rect.x + 2 && r.y >= s.rect.y + 2 && r.x + r.width <= s.rect.x + s.rect.width - 2 && r.y + r.height <= s.rect.y + s.rect.height - 2, `${s.label} f${f}`).toBe(true);
+          // In the band along an edge, never across the middle.
+          const nearEdge = r.x <= s.rect.x + 2 + track.thickness || r.y <= s.rect.y + 2 + track.thickness || r.x + r.width >= s.rect.x + s.rect.width - 2 - track.thickness || r.y + r.height >= s.rect.y + s.rect.height - 2 - track.thickness;
+          expect(nearEdge).toBe(true);
+        }
+      }
+      expect(at(period + 7)).toEqual(at(7));
+      expect(at(0)[0]).toMatchObject({ x: s.rect.x + 2, y: s.rect.y + 2 });
+    }
+  });
+
+  it("the moving card draws one marker per screen, under labels like the bar", () => {
+    const frame = build("festival", "identification", "center", true);
+    const { target } = master("festival");
+    expect(frame.sweep!.edges.length).toBe(target.screens.filter((s) => Math.min(s.rect.width, s.rect.height) >= 24).length);
+    // Any single screen changes between consecutive frames, so a one-screen file always moves.
+    const left = build("keynote", "identification", "center", true);
+    const leftSide = master("keynote").target.screens[0].rect;
+    const inLeft = (calls: number[][]) => calls.filter(([x, y, w, h]) => x >= leftSide.x && y >= leftSide.y && x + w <= leftSide.x + leftSide.width && y + h <= leftSide.y + leftSide.height);
+    for (const f of [0, 40, 41, 120, 149]) expect(inLeft(rectsDrawn(left, f))).not.toEqual(inLeft(rectsDrawn(left, f + 1)));
   });
 });
 
