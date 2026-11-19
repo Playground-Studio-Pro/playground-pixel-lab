@@ -4,7 +4,9 @@ const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const { validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, debugAccessViolations } = require('./security.cjs');
 const { probeFFmpeg } = require('./native.cjs');
-const { createWindowRegistry, trustedURLForRole } = require('./windows.cjs');
+const { createWindowRegistry, trustedURLForRole, outputURL } = require('./windows.cjs');
+const { createOutputWindow } = require('./output-window.cjs');
+const { validateReport, OUTPUT_CHANNELS } = require('./output-ipc.cjs');
 const { toDisplayInfo, debounce, DISPLAY_EVENT_DEBOUNCE_MS } = require('./displays.cjs');
 // Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
 // Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
@@ -112,7 +114,41 @@ else {
     for (const name of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(name, pushDisplays);
     await createWindow();
     app.on('activate', () => { if (!windows.control) createWindow().catch(fail); });
-    if (smoke) await require('./smoke.cjs')(windows.control, app);
+    // Output windows (Phase C D4): created only here, registered under their outputId before the page can talk.
+    // D5 adds placement on a display, full screen, Esc, the state machine and the control-window channels.
+    const outputRecords = new Map();   // outputId → { ready, report, reportAt }
+    const MIN_REPORT_INTERVAL_MS = 450; // contract: at most 2 reports per second
+    function openOutputWindow(outputId, bounds) {
+      const window = createOutputWindow(BrowserWindow, { bounds, origin, isPackaged: app.isPackaged });
+      try { windows.addOutput(outputId, window); } catch (error) { window.destroy(); throw error; }
+      outputRecords.set(outputId, { ready: false, report: null, reportAt: 0 });
+      window.on('closed', () => { windows.removeOutput(outputId, window); outputRecords.delete(outputId); });
+      return window;
+    }
+    // Messages from output windows. ipcMain.on can't answer, so an untrusted sender or a bad payload is dropped.
+    const fromOutput = (channel, fn) => ipcMain.on(channel, (event, payload) => {
+      const role = windows.roleOf(event.sender);
+      if (role?.kind !== 'output') return;
+      try { windows.assertSender(event, role); } catch { return; }
+      const record = outputRecords.get(role.outputId);
+      if (record) fn(record, payload, role.outputId);
+    });
+    fromOutput(OUTPUT_CHANNELS.ready, record => { record.ready = true; });
+    fromOutput(OUTPUT_CHANNELS.report, (record, payload) => {
+      const now = Date.now();
+      if (now - record.reportAt < MIN_REPORT_INTERVAL_MS) return;
+      try { record.report = validateReport(payload); record.reportAt = now; } catch { /* malformed report dropped */ }
+    });
+    if (smoke) {
+      const webRoot = path.join(__dirname, '..', 'web');
+      await require('./smoke.cjs')(windows.control, app, {
+        windows, openOutputWindow, outputRecord: id => outputRecords.get(id) || null, outputURL: outputURL(origin),
+        outputPageAvailable: async () => {
+          if (!devURL) return fs.access(path.join(webRoot, 'output.html')).then(() => true, () => false);
+          try { return (await net.fetch(outputURL(origin))).status === 200; } catch { return false; }
+        },
+      });
+    }
   }).catch(fail);
 }
 function fail(error) { console.error(error); if (!smoke) dialog.showErrorBox('Pixel Lab desktop startup failed', String(error.message || error)); app.exit(1); }
