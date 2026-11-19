@@ -1,0 +1,161 @@
+{
+  "format": "playground-pixel-lab/project",
+  "project": {
+    "schemaVersion": 2,
+    "id": "pixel-1",
+    "meta": {
+      "name": "Pixel test",
+      "client": "Playground Studio",
+      "venue": "Test bench",
+      "notes": "",
+      "createdAt": "2026-11-07T00:00:00.000Z",
+      "updatedAt": "2026-11-07T00:00:00.000Z",
+      "revision": 0
+    },
+    "cabinets": [
+      {
+        "id": "builtin-500x500-p391",
+        "name": "Generic 500×500 P3.91",
+        "widthUm": 500000,
+        "heightUm": 500000,
+        "pixelsX": 128,
+        "pixelsY": 128,
+        "nominalPitchUm": 3910,
+        "source": "builtin"
+      },
+      {
+        "id": "builtin-500x500-p26",
+        "name": "Generic 500×500 P2.6",
+        "widthUm": 500000,
+        "heightUm": 500000,
+        "pixelsX": 192,
+        "pixelsY": 192,
+        "nominalPitchUm": 2604,
+        "source": "builtin"
+      },
+      {
+        "id": "builtin-1000x500-p595",
+        "name": "Generic 1000×500 P5.95",
+        "widthUm": 1000000,
+        "heightUm": 500000,
+        "pixelsX": 168,
+        "pixelsY": 84,
+        "nominalPitchUm": 5950,
+        "source": "builtin"
+      }
+    ],
+    "physical": {
+      "screens": [
+        {
+          "id": "pixel-4",
+          "name": "Wall A",
+          "cabinetId": "builtin-500x500-p391",
+          "columns": 6,
+          "rows": 4,
+          "groupId": null,
+          "color": "#2F6FE4",
+          "stageX": 0,
+          "stageY": 0
+        },
+        {
+          "id": "pixel-5",
+          "name": "Wall B",
+          "cabinetId": "builtin-500x500-p26",
+          "columns": 4,
+          "rows": 2,
+          "groupId": null,
+          "color": "#17A398",
+          "stageX": 4000000,
+          "stageY": 0
+        },
+        {
+          "id": "pixel-6",
+          "name": "Strip C",
+          "cabinetId": "builtin-1000x500-p595",
+          "columns": 6,
+          "rows": 2,
+          "groupId": null,
+          "color": "#7A5FE8",
+          "stageX": 0,
+          "stageY": 3000000
+        }
+      ],
+      "groups": []
+    },
+    "content": {
+      "master": {
+        "mode": "fixed",
+        "width": 1920,
+        "height": 1080
+      },
+      "canvases": [
+        {
+          "id": "pixel-2",
+          "name": "Main canvas",
+          "originX": 0,
+          "originY": 0
+        }
+      ],
+      "regions": [
+        {
+          "screenId": "pixel-4",
+          "canvasId": "pixel-2",
+          "x": 101,
+          "y": 37,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "pixel-5",
+          "canvasId": "pixel-2",
+          "x": 1003,
+          "y": 37,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "pixel-6",
+          "canvasId": "pixel-2",
+          "x": 101,
+          "y": 777,
+          "allowOverlap": false
+        }
+      ]
+    },
+    "output": {
+      "outputs": [
+        {
+          "id": "pixel-3",
+          "name": "OUT 1",
+          "sizing": {
+            "mode": "fixed",
+            "width": 1920,
+            "height": 1080
+          }
+        }
+      ],
+      "slices": [
+        {
+          "screenId": "pixel-4",
+          "outputId": "pixel-3",
+          "followsContent": false,
+          "x": 13,
+          "y": 7
+        },
+        {
+          "screenId": "pixel-5",
+          "outputId": "pixel-3",
+          "followsContent": false,
+          "x": 901,
+          "y": 7
+        },
+        {
+          "screenId": "pixel-6",
+          "outputId": "pixel-3",
+          "followsContent": false,
+          "x": 455,
+          "y": 899
+        }
+      ]
+    },
+    "modules": {}
+  }
+}
