@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, net, ipcMain, dialog, session, screen } = require('electron');
+const { app, BrowserWindow, protocol, net, ipcMain, dialog, session, screen, powerSaveBlocker } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
@@ -6,7 +6,8 @@ const { validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, de
 const { probeFFmpeg } = require('./native.cjs');
 const { createWindowRegistry, trustedURLForRole, outputURL } = require('./windows.cjs');
 const { createOutputWindow } = require('./output-window.cjs');
-const { validateReport, OUTPUT_CHANNELS } = require('./output-ipc.cjs');
+const { OUTPUT_CHANNELS, OutputIpcError } = require('./output-ipc.cjs');
+const { createOutputController, outputKeyAction } = require('./output-controller.cjs');
 const { toDisplayInfo, debounce, DISPLAY_EVENT_DEBOUNCE_MS } = require('./displays.cjs');
 // Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
 // Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
@@ -94,6 +95,40 @@ else {
       if (!windows.control || windows.roleOf(contents)?.kind !== 'control' || !trustedURLForRole(contents.getURL(), origin, 'control') || !item.getURL().startsWith('blob:')) { event.preventDefault(); return; }
       item.setSaveDialogOptions({ title: 'Export Pixel Lab file' });
     });
+    function openOutputWindow(outputId, display) {
+      const window = createOutputWindow(BrowserWindow, { bounds: display.boundsDip, origin, isPackaged: app.isPackaged });
+      try { windows.addOutput(outputId, window); } catch (error) { window.destroy(); throw error; }
+      const contents = window.webContents;
+      window.on('closed', () => { windows.removeOutput(outputId, window); outputs.onClosed(outputId); });
+      contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) outputs.onLoadFailed(outputId, description); });
+      // Esc runs here, in main, so it works even while the output renderer is hung (section 2).
+      contents.on('before-input-event', (event, input) => {
+        const action = outputKeyAction(input);
+        if (!action) return;
+        event.preventDefault();
+        if (action === 'close') outputs.close(outputId);
+      });
+    }
+    function showOutputWindow(outputId, display) {
+      const window = windows.output(outputId);
+      if (!window || window.isDestroyed()) return;
+      window.setBounds(display.boundsDip);
+      window.setAlwaysOnTop(true, 'screen-saver');
+      // skipTransformProcessType: without it macOS briefly hides the app's windows and Dock icon on every call.
+      window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+      if (!window.isVisible()) window.showInactive();   // never takes focus: the control window keeps the keyboard
+      if (process.platform === 'darwin') window.setSimpleFullScreen(true);   // native vs simple is decided in D6
+      else window.setFullScreen(true);
+    }
+    const outputs = createOutputController({
+      listDisplays: () => listDisplays(),
+      openWindow: openOutputWindow,
+      showWindow: showOutputWindow,
+      closeWindow: outputId => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.destroy(); },
+      sendSession: (outputId, value) => windows.output(outputId)?.webContents.send(OUTPUT_CHANNELS.session, value),
+      pushStatus: status => { const control = windows.control; if (control && !control.isDestroyed()) control.webContents.send(OUTPUT_CHANNELS.status, status); },
+      blocker: powerSaveBlocker,
+    });
     // Displays (Phase C D2). Renderers never see raw Display objects; the control window gets DisplayInfo only.
     const listDisplays = () => {
       const control = windows.control && !windows.control.isDestroyed() ? windows.control : null;
@@ -101,7 +136,7 @@ else {
         platform: process.platform,
         primaryId: screen.getPrimaryDisplay().id,
         controlBounds: control ? control.getBounds() : null,
-        outputOnDisplay: new Map(),   // filled once output windows exist (D5)
+        outputOnDisplay: outputs.outputOnDisplay(),
         dipToScreenRect: process.platform === 'win32' ? rect => screen.dipToScreenRect(null, rect) : undefined,
       };
       return screen.getAllDisplays().map(display => toDisplayInfo(display, context));
@@ -114,35 +149,33 @@ else {
     for (const name of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(name, pushDisplays);
     await createWindow();
     app.on('activate', () => { if (!windows.control) createWindow().catch(fail); });
-    // Output windows (Phase C D4): created only here, registered under their outputId before the page can talk.
-    // D5 adds placement on a display, full screen, Esc, the state machine and the control-window channels.
-    const outputRecords = new Map();   // outputId → { ready, report, reportAt }
-    const MIN_REPORT_INTERVAL_MS = 450; // contract: at most 2 reports per second
-    function openOutputWindow(outputId, bounds) {
-      const window = createOutputWindow(BrowserWindow, { bounds, origin, isPackaged: app.isPackaged });
-      try { windows.addOutput(outputId, window); } catch (error) { window.destroy(); throw error; }
-      outputRecords.set(outputId, { ready: false, report: null, reportAt: 0 });
-      window.on('closed', () => { windows.removeOutput(outputId, window); outputRecords.delete(outputId); });
-      return window;
-    }
+    // Output windows (Phase C D4, D5). Created only here, from validated control-window IPC, and registered under their
+    // outputId before the page can talk. The state machine lives in output-controller.cjs.
+    const outputHandler = (channel, fn) => handler(channel, async (...args) => {
+      try { return await fn(...args); }
+      catch (error) {
+        // The renderer only sees the message of a rejected invoke, so it carries the section 3 code first.
+        if (error instanceof OutputIpcError) throw new Error(`${error.code}: ${error.message}`);
+        throw error;
+      }
+    });
+    outputHandler(OUTPUT_CHANNELS.open, payload => outputs.open(payload));
+    outputHandler(OUTPUT_CHANNELS.close, target => { outputs.close(target); });
+    outputHandler(OUTPUT_CHANNELS.statusAll, () => outputs.statusAll());
     // Messages from output windows. ipcMain.on can't answer, so an untrusted sender or a bad payload is dropped.
     const fromOutput = (channel, fn) => ipcMain.on(channel, (event, payload) => {
       const role = windows.roleOf(event.sender);
       if (role?.kind !== 'output') return;
       try { windows.assertSender(event, role); } catch { return; }
-      const record = outputRecords.get(role.outputId);
-      if (record) fn(record, payload, role.outputId);
+      fn(role.outputId, payload);
     });
-    fromOutput(OUTPUT_CHANNELS.ready, record => { record.ready = true; });
-    fromOutput(OUTPUT_CHANNELS.report, (record, payload) => {
-      const now = Date.now();
-      if (now - record.reportAt < MIN_REPORT_INTERVAL_MS) return;
-      try { record.report = validateReport(payload); record.reportAt = now; } catch { /* malformed report dropped */ }
-    });
+    fromOutput(OUTPUT_CHANNELS.ready, outputId => outputs.onReady(outputId));
+    fromOutput(OUTPUT_CHANNELS.report, (outputId, payload) => outputs.onReport(outputId, payload));
+    app.on('before-quit', () => outputs.close('*'));
     if (smoke) {
       const webRoot = path.join(__dirname, '..', 'web');
       await require('./smoke.cjs')(windows.control, app, {
-        windows, openOutputWindow, outputRecord: id => outputRecords.get(id) || null, outputURL: outputURL(origin),
+        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin),
         outputPageAvailable: async () => {
           if (!devURL) return fs.access(path.join(webRoot, 'output.html')).then(() => true, () => false);
           try { return (await net.fetch(outputURL(origin))).status === 200; } catch { return false; }

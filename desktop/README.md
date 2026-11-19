@@ -71,7 +71,7 @@ Desktop dependencies are isolated from the web bundle. Electron provides the nat
 - **macOS only.** Windows packaging is configured but has never run; no Windows support is claimed.
 - **Unsigned.** `pack:mac` produces a 301 MB `.app` with only an ad-hoc signature and the default Electron icon. It runs on the Mac that built it; on another Mac, Gatekeeper blocks it until it's signed and notarized.
 - **MP4** goes through WebCodecs, which here used Chromium's software OpenH264 encoder. Verified for one 3072 × 1920 test card; speed on long animated exports isn't measured. FFmpeg is only an availability probe; nothing native encodes.
-- **No full-screen output** on an external monitor yet (Alpha 0.1 Phase C).
+- **Full-screen output** opens and closes on the built-in display only, with no editor UI yet; external monitors, disconnects and failure handling are still to come (Phase C, D6–D8).
 - Browser and desktop data are separate; move projects with the project file.
 
 See [test results](docs/TEST-RESULTS.md) for what was and wasn't tested.
