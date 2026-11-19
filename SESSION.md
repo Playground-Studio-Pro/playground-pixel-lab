@@ -1,96 +1,69 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alpha 0.1 Phase A (protection and integration) done.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alpha 0.1 Phase C (physical output) started.
 
 ## Objective
 
-**Pixel Lab Alpha 0.1:** a desktop app (Electron) that completes one real flow, offline: **Mapping → Test card → Output → external monitor → Resolume Arena.** Nothing outside that flow starts until Alpha 0.1 passes a field test with a laptop, an external monitor, Resolume Arena and a real LED project.
-
-Phases, each approved separately by the owner:
+**Pixel Lab Alpha 0.1:** a desktop app (Electron) that completes one real flow, offline: **Mapping → Test card → Output → external monitor → Resolume Arena.** Alpha 0.1 isn't done until the physical tests with a real external monitor and Resolume Arena pass.
 
 | Phase | Owner | Status |
 | --- | --- | --- |
-| **A.** Protection and integration | Lead Architect | **Done** 2026-11-18 |
-| **B.** Electron build and run on macOS: first validation gate | Desktop Engineering | Approved, not started |
-| **C.** Physical output on external monitors | Output Engineering, with Desktop | Waits for Phase B to pass. Desktop and Output agree the contract before implementing |
+| **A.** Protection and integration | Lead Architect | Done |
+| **B.** Electron on macOS | Desktop Engineering | Done: #19. Launches, offline, persistence, MP4, unsigned `.app`, remote debugging refused when packaged |
+| **C.** Physical output | Desktop + Output Engineering | **In progress.** Contract approved and merged (#20). Shared types in #21, open, waiting for the owner's approval to merge. Automated tests first, then one session with a real external monitor |
 
-Sprint 3 ([SPRINT_3](docs/agents/SPRINT_3.md)) is paused. Product Design, Content Engineering and LED Engineering stay stopped.
+Product Design, Content Engineering and LED Engineering stay stopped.
 
 ## Alpha 0.1 requirements
 
-✅ verified · 🟡 partial or unverified · ❌ not built
+✅ verified · 🟡 partial · ❌ not built
 
-| # | Requirement | Web | Electron |
+| # | Requirement | Status |
+| --- | --- | --- |
+| 1 | Desktop app | ✅ macOS (Electron, #19). Windows not claimed until tested on a real Windows 11 machine |
+| 2 | Offline | ✅ simulated (DNS blocked). One run with Wi-Fi physically off still to do |
+| 3 | Mapping | ✅ in Electron |
+| 4 | Test card | ✅ in Electron |
+| 5 | Full screen on an external monitor | ❌ Phase C |
+| 6 | MP4 export | ✅ in Electron (OpenH264 software encoder; speed on long or 4K animated exports unmeasured) |
+| 7 | Project persistence | ✅ in Electron (relaunch, export and import) |
+| 8 | Resolume Arena import and playback | ❌ procedure written ([PHYSICAL_OUTPUT](docs/architecture/PHYSICAL_OUTPUT.md) 8.11), never run |
+
+## Phase C
+
+Design, decisions and acceptance criteria: [PHYSICAL_OUTPUT](docs/architecture/PHYSICAL_OUTPUT.md). Shared types: `src/domain/physical-output.ts`. Implementation order: its section 9.
+
+Owner decisions, 2026-11-18: the 14 draft positions are approved, except:
+- **D-2:** a reconnected monitor is detected automatically and the window comes back only on a reliable match, **paused** (`held`), with the operator notified; playback resumes only on explicit confirmation.
+- **O-1:** whole master then cut for Alpha, measured on Festival Main Stage (5120 px); source, composer and presenter stay decoupled; region rendering documented, not built.
+- **D9:** multi-monitor clock sync is backlog, not an Alpha criterion. One active output.
+
+| Lane | Worktree | Branch for Phase C | Owns |
 | --- | --- | --- | --- |
-| 1 | Works offline | ❌ needs a server | 🟡 static `app://` build designed, never built |
-| 2 | macOS and Windows | n/a | 🟡 macOS never launched. Windows: don't claim support until tested on a real Windows 11 machine |
-| 3 | Screens and resolutions | ✅ | 🟡 |
-| 4 | Test cards | ✅ | 🟡 |
-| 5 | Full-screen output on an external monitor, no UI | ❌ | ❌ |
-| 6 | MP4 export | ✅ headless Chrome, ffprobe-checked (#16) | 🟡 WebCodecs H.264 unverified |
-| 7 | Reliable save and recovery | ✅ IndexedDB autosave + project file | 🟡 |
-| 8 | Resolume workflow | 🟡 package built, never followed in Arena | 🟡 |
+| Desktop | `agents/desktop-engineering` | `feature/desktop-engineering`, a short branch per PR | D1–D8, D10, D11: window registry, displays, IPC validation, output preload, open and close, failures, reconnect |
+| Output | `agents/output-engineering` | `feature/output-physical` (new, from `main`). `feature/output-engineering` holds ProRes and stays out of Alpha | O1–O11: output layout and cadence, pixel grid, frozen sources, output page, pixel tests, output = MP4, limits |
+| Lead | `agents/lead-architect` | short `docs/` and contract branches | Contracts, dependencies, PR review, main stability, SESSION and HANDOFF. No new features |
+
+**Rules.** Each PR is small and states what it implements, tests passed, what wasn't tested, what needs external hardware and remaining risks. No merge to `main` without the Lead Architect's review and CI. No force push, no rebase, no deleting branches or worktrees. Out of scope: ProRes, several simultaneous outputs, Engineering Studio, new Content Studio features, export changes beyond keeping MP4 and output consistent. A change to `src/domain/physical-output.ts` or another shared contract stops and goes through the Lead Architect first.
+
+**Physical test session** (after the automated tests pass, owner organises it): full screen, physical resolution, Retina scaling, pixel correspondence, reconnect, 30-minute stability, Resolume Arena export and playback.
 
 ## Where it stands
 
-- **`main` is at `cb084ab`**, the merge of PR #16 (Export MP4 in the Output Studio), merged 2026-11-18 at its reviewed head `faf6d90` with CI passing. The local `app/` checkout was fast-forwarded to it.
-- **Backed up on GitHub, not merged:**
-  - `feature/desktop-engineering` at `a4d3302`: the Electron foundation. Based on `10f9f74`, so it doesn't contain #16 yet. Its tests ran in a sandbox without network: Electron itself was never downloaded or launched.
-  - `feature/output-engineering` at `ff5c24b`: a Node-only ProRes 422 and PNG sequence service, not wired to any UI or IPC. **Out of Alpha 0.1.**
-- **Open PRs:** #17, the Depth Studio implementation pack under `docs/features/depth-studio/`; the PR for this handoff.
-- **Local only, kept intact on purpose:**
-  - `~/Play.Code/playground.pixel/desktop/`: the original Electron copy. Its source is identical to the branch; its docs are older. Keep it until the owner confirms the backup, then archive, never delete without approval.
-  - `Playground_Depth_Studio_Implementation_Pack.zip` and `CLAUDE_MASTER_PROMPT.md` at the parent folder, and the untracked pack copies in `app/` (identical to #17).
-- **Agents:** none running.
-
-### Worktrees
-
-Everything lives in `~/Play.Code/playground.pixel/`, which isn't itself a Git repository.
-
-| Path | Branch | Port |
-| --- | --- | --- |
-| `app/`: main worktree | `main` | 3000 |
-| `agents/lead-architect` | `docs/alpha-0.1-phase-a` now; lane branch `feature/lead-architect` | 3100 |
-| `agents/desktop-engineering` | `feature/desktop-engineering` | 3210 (Electron dev server) |
-| `agents/output-engineering` | `feature/output-engineering` (ProRes, frozen) | 3104 |
-| `agents/product-design`, `content-engineering`, `led-engineering` | their lane branches, paused | 3101–3103 |
-
-## Phase B checklist (Desktop Engineering)
-
-Work in `agents/desktop-engineering` on `feature/desktop-engineering`. Approved: download Electron and install dependencies, unsigned builds, local fonts.
-
-1. `git fetch origin && git merge origin/main`. Stop and report on any conflict.
-2. `npm ci` at the root and `npm --prefix desktop ci`, with the real Electron runtime installed.
-3. **Local fonts:** replace `next/font/google` in `src/app/layout.tsx` with `next/font/local` and committed Inter and JetBrains Mono `woff2` files (both SIL Open Font License; keep the licence text beside them). No new npm dependency. The build must pass with no network.
-4. `npm run typecheck && npm run lint && npm test && npm run build` at the root; `npm --prefix desktop test`.
-5. `npm --prefix desktop run build:web`, then launch Electron on macOS (dev and static). Run the smoke test.
-6. In Electron, with the network off: open the examples, create and edit a project, Mapping, Content and Depth Studio, Output test card, Live preview.
-7. Persistence: quit and relaunch, the project is still there; export the project file and import it again.
-8. MP4: export the test card for one output; check it with ffprobe and play it.
-9. `npm --prefix desktop run pack:mac`, unsigned; launch the `.app` from a path with spaces.
-10. Record evidence (commands, results, screenshots) in `desktop/docs/TEST-RESULTS.md`, refresh `desktop/README.md` (it still points to the sibling folder), open a PR. Report what failed or wasn't tested.
-
-Out of scope for Phase B: full-screen output, ProRes, FFmpeg, signing, Windows claims, any new feature.
-
-## Important decisions
-
-Recorded in [DECISIONS](docs/architecture/DECISIONS.md), 2026-11-18: Alpha 0.1 scope, unsigned builds, local fonts, ProRes out of Alpha, and output windows as independent Electron windows designed for several monitors.
-
-Earlier decisions still hold: contracts as types, saved module data in `project.modules[id]` at schema 2, lanes merge `main` and never rebase or force-push, and no PR merges without CI and the owner's approval.
+- **`main`** at `87bf339`, the merge of #20 (contract), after #19 (Electron). **#21** (shared types, `src/domain/physical-output.ts`) is open with CI green; D3 and O4 need it merged first.
+- **Branches kept:** `feature/desktop-engineering`, `feature/output-engineering` (ProRes, not merged, out of Alpha), `docs/phase-c-output-contract`, and every merged branch.
+- **Local backups, keep until Alpha 0.1 passes:** `~/Play.Code/playground.pixel/_backups/` (Depth Studio pack copies) and the original `~/Play.Code/playground.pixel/desktop/` folder.
 
 ## Known issues
 
-- **Electron:** never launched. Every Electron cell above is unverified until Phase B.
-- **Output:** no full-screen output exists. The Live preview caps its master image at 4096 px a side (Festival Main Stage is 5120 px wide), so physical output must render each output at native size, not cut it from the preview.
-- **MP4 export:** H.264 over 4096 px a side can't be exported whole (Corporate Keynote's 4224 × 1536); per-output and per-screen files instead. The whole file is held in memory until download. Motion Lab patterns aren't export sources yet.
-- **Resolume:** the guide has never been followed in Arena. No preset files are generated, by design ([RESOLUME](docs/integrations/RESOLUME.md)).
-- **Persistence:** browser and Electron data are separate; move projects with the project file. Undo isn't kept across reloads.
-- **Calibration test card:** at 1440 px the Live preview header scrolls sideways; screen-guide labels cover the card's top-left labels.
-- **Settings:** Aurora settings aren't saved.
-- **Dead code:** `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary` are unused. Cleanup after Alpha.
-- **Audit:** `npm audit` reports findings in dev tooling only.
+- **MP4:** H.264 over 4096 px a side isn't exported whole; per-output files instead. Software encoder in Electron.
+- **Packaged app:** unsigned, default icon, 301 MB; Gatekeeper blocks it on another Mac until signed. `desktop/tests/font-response.cjs` is an unused leftover.
+- **Resolume:** never tested in Arena.
+- **Engineering Studio:** placeholder; stays so in Alpha.
+- **Settings:** Depth Studio and Aurora settings aren't saved in the project.
+- **Dead code:** `useApp.library`, `saveToLibrary`, `IndexedDbCabinetLibrary`. Cleanup after Alpha.
 
 ## Resume
 
-1. `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `cb084ab` or later.
-2. Start the next approved phase with the command in [HANDOFF](HANDOFF.md#start-the-next-agent).
+1. `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`.
+2. Check open PRs from `feature/desktop-engineering` and `feature/output-physical`; review in section 9 order.
