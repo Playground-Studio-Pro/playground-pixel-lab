@@ -1,6 +1,6 @@
 # Physical Output Contract
 
-**Status: design draft, not approved.** Alpha 0.1 Phase C. Nothing here is implemented. Desktop Engineering wrote sections 1–7 (displays, windows, IPC, clock, scaling, tasks). Output Engineering wrote section 8 (rendering, sources, cadence, pixel tests, Resolume procedure) and reviewed sections 1–7 in 8.12; Desktop reviews section 8. The owner approves before any production code.
+**Status: design agreed by Desktop and Output, waiting for the owner's approval.** Alpha 0.1 Phase C. Nothing here is implemented. Desktop Engineering wrote sections 1–7 (displays, windows, IPC, clock, scaling, tasks). Output Engineering wrote section 8 (rendering, sources, cadence, pixel tests, Resolume procedure) and reviewed sections 1–7 in 8.12. Desktop reviewed section 8 and answered 8.12 in 8.13; the accepted changes are applied in sections 1–7. Section 9 gives one implementation order for both lanes. The owner approves before any production code.
 
 Scope: one Pixel Lab **output** (an `VideoOutput`, for example "OUT 1 · Processor A · 3072 × 1920") shown full screen, 1:1, with no interface, on a chosen **display** (a monitor or the input of an LED processor), from the Electron app. Built so several outputs on several displays can run at once, even though Alpha ships one.
 
@@ -96,27 +96,18 @@ new BrowserWindow({
 
 ### State machine (one output)
 
-```
-           output:open
- closed ───────────────▶ opening ──(page ready, session sent, first frame)──▶ live
-   ▲                        │                                                 │
-   │                        └──(load failed, timeout 10 s)──▶ failed          │
-   │                                                            │             │
-   │                                                            │             │
-   ├──────────────── output:close, Esc, app quit ◀──────────────┴─────────────┤
-   │                                                                           │
-   │                    display removed ┌──────────────────────┐               │
-   │              ┌────────────────────▶│ waiting-display      │◀──────────────┘
-   │              │                     │ window hidden, black │
-   │              │                     └──────────┬───────────┘
-   │              │   same display back (key match)│ → re-place, show → live
-   │              │                                │ output:close → closed
-   │                                               
-   │   renderer gone / unresponsive 5 s
-   └──────── failed ◀───────────────── live
-              window black, never hidden behind the desktop; control window told
-              output:retry → opening (one renderer reload, session re-sent)
-```
+| From | Event | To | Notes |
+| --- | --- | --- | --- |
+| closed | `output:open` accepted | opening | Window created hidden, fixed URL loaded |
+| opening | `output:ready`, session sent, report with `firstFrameDrawn: true` | live | Window shown inactive, full screen; sleep blocker held |
+| opening | Load failure, no `output:ready` within 10 s, or a report with `errorCode` and `firstFrameDrawn: false` | failed | `LOAD_FAILED` / `OPEN_TIMEOUT`; window black |
+| live | Report with `errorCode` after an `output:update` | live | Previous session keeps playing; `error` set |
+| live | Display removed | waiting-display | Window hidden at once, renderer kept |
+| waiting-display | Same display back (key match) | live | Re-placed, full screen again, `output:display` sent (D-2) |
+| live | `render-process-gone`, or `unresponsive` for 5 s | failed | Window kept black and on its display; control window told |
+| failed | `responsive` (after a hang) | live | |
+| failed | `output:retry` | opening | One reload of the fixed URL, latest session re-sent |
+| any | `output:close`, Esc in the output window, app quit | closed | Window destroyed; sleep blocker released with the last live output |
 
 ```ts
 type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'failed';
@@ -126,7 +117,7 @@ type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'failed';
 
 - **Display removed.** Main hides the window at once (`hide()`) and moves to `waiting-display`. Otherwise macOS and Windows move orphaned windows to the primary display, which would cover the operator's screen with a full-screen test card. The window and its renderer are kept, so nothing reloads.
 - **Display back.** When a display arrives whose key matches (section 1), main re-places the window, re-applies full screen, shows it inactive and returns to `live`. Automatic resume vs waiting for the operator is owner decision D-2; the draft assumes automatic, since a flickering cable shouldn't need someone at the laptop.
-- **Metrics changed** (resolution, scale or rotation of the display in use). Main re-places the window to the new bounds and reports the new `devicePx`. If the output no longer matches it adds the `sizeMatch` warning. It never rescales content.
+- **Metrics changed** (resolution, scale or rotation of the display in use). Main re-places the window to the new bounds, sends the new `DisplayInfo` to the output window on `output:display` (the page re-lays out its canvas without rebuilding the source) and reports the new `devicePx` to the control window. If the output no longer matches it updates `sizeMatch`. It never rescales content. A reconnect (above) sends `output:display` too.
 
 ### Renderer failure
 
@@ -136,6 +127,8 @@ type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'failed';
 | `unresponsive` for 5 s | State `failed`; Esc and Close still work (main-side) | Last frame, frozen | `RENDERER_UNRESPONSIVE` |
 | `responsive` after that | Back to `live` | Animation resumes | Cleared |
 | Page fails to load or never reports ready within 10 s | `failed` | Black | `LOAD_FAILED` / `OPEN_TIMEOUT` |
+| During `opening`, a report with `errorCode` and `firstFrameDrawn: false` (the first session couldn't be prepared) | `failed` | Black | `LOAD_FAILED`, with the page's code (`SOURCE_SETTINGS_INVALID`, `MASTER_TOO_LARGE`, …) in `render.errorCode` |
+| During `live`, a report with `errorCode` (an `output:update` couldn't be prepared) | Stays `live`: the previous session keeps playing | Previous session | `error` set from the report; cleared by the next good report |
 | `output:retry` | One reload of the fixed URL, session re-sent | Black, then content | `opening`, then `live` |
 
 A failed output stays as a black full-screen window instead of closing, because closing would reveal the desktop on the LED wall. Owner decision D-1.
@@ -143,6 +136,8 @@ A failed output stays as a black full-screen window instead of closing, because 
 ## 3. IPC
 
 Channels are fixed strings. Every handler checks the sender like today's `assertSender`: exact `WebContents`, main frame only, and URL equal to the allowed URL **for that window's role**. Control channels accept only the control window. Output channels accept only the output window registered under that `outputId`. Payloads are validated in main with hand-written checks (desktop code has no schema library): unknown keys rejected, strings bounded, integers checked with `Number.isSafeInteger`.
+
+**What main can and can't validate.** Main is plain CommonJS and doesn't load the app's TypeScript, so it can't run `parseProjectFile`, `validateProject` or a source's settings parser. It checks the envelope (as `validateText` does for project files today: size, JSON, `format`), that `outputId` appears in `project.output.outputs`, and the shape and bounds of everything else. The control window runs `validateProject` before sending, and the output page parses and validates again and is authoritative; its refusals come back as report error codes (section 2, "Renderer failure").
 
 ```ts
 // ── Control window → main (invoke / handle) ───────────────────────────────
@@ -158,7 +153,7 @@ interface OutputSession {
   revision: number;               // increments on every output:update
   projectText: string;            // serializeProject(project), ≤ 16 MiB, checked like project files today
   outputId: OutputId;             // must equal the request's outputId and exist in the project
-  source: { id: string; settings: JsonValue };  // registry source id + its frozen settings, ≤ 1 MiB
+  source: { id: string; settings: JsonValue };  // output source id (section 8.5) + its frozen settings, ≤ 1 MiB
   clock: OutputClock;
 }
 type JsonValue = null | boolean | number | string | JsonValue[] | { [k: string]: JsonValue };
@@ -180,9 +175,12 @@ interface OutputStatus {
   state: OutputState;
   display: DisplayInfo | null;
   sessionRevision: number | null;
-  sizeMatch: 'exact' | 'smaller-than-display' | 'larger-than-display' | 'unknown';
+  sizeMatch: 'exact' | 'smaller-than-display' | 'larger-than-display' | 'mixed' | 'unknown';
+  // Per axis, from the page's layout (8.3): output px past the display edge, display px past the output edge.
+  croppedPx: { right: number; bottom: number } | null;
+  blackPx: { right: number; bottom: number } | null;
   render: OutputRenderReport | null;    // last report from the output window
-  error: { code: OutputErrorCode; message: string } | null;
+  error: { code: OutputErrorCode | OutputRenderErrorCode; message: string } | null;  // render codes: 8.4
 }
 
 // ── Main → output window (send / on) ──────────────────────────────────────
@@ -192,6 +190,7 @@ interface OutputWindowSession extends OutputSession { display: DisplayInfo }
 interface OutputApi {    // window.pixelLabOutput, output preload
   onSession(cb: (s: OutputWindowSession) => void): void;   // output:session
   onClock(cb: (c: OutputClock) => void): void;       // output:clock
+  onDisplay(cb: (d: DisplayInfo) => void): void;     // output:display (metrics change, reconnect; no session rebuild)
   ready(): void;                                     // output:ready  (page loaded, listening)
   report(r: OutputRenderReport): void;               // output:report (≤ 2 per second)
 }
@@ -207,7 +206,15 @@ interface OutputRenderReport {
   outputPx: Size;                      // VideoOutput size drawn at scale 1
   browserFps: number;                  // measured rAF rate, browser metric, never LED refresh
   lateFrames: number; skippedFrames: number;
-  error?: string;                      // source or draw failure, short text
+  error?: string;                      // source or draw failure, short text, ≤ 500 chars
+  // Optional, filled by Output (8.4). Validated in main: sizes as safe positive integers, strings ≤ 200 chars,
+  // cadence.pattern ≤ 240 entries, errorCode from the closed list in 8.4.
+  contentBoxDevicePx?: Size | null;    // ResizeObserver device-pixel-content-box
+  masterPx?: Size;
+  sourceId?: string;
+  errorCode?: OutputRenderErrorCode;
+  cadence?: OutputCadence;             // 8.6
+  limits?: { maxCanvasSide: number; maxCanvasArea: number; maxTextureSize: number; depthMaxSize: number | null };
 }
 ```
 
@@ -221,7 +228,7 @@ type OutputErrorCode =
   | 'CONTROL_DISPLAY'        // the control window's display, without allowControlDisplay
   | 'ALREADY_OPEN'           // output:open for an output that isn't closed
   | 'TOO_MANY_OUTPUTS'       // over the configured limit (1 in Alpha)
-  | 'PROJECT_INVALID'        // projectText fails parseProjectFile / validateProject
+  | 'PROJECT_INVALID'        // envelope check fails in main (deep validation: control window and page)
   | 'LOAD_FAILED' | 'OPEN_TIMEOUT'
   | 'RENDERER_GONE' | 'RENDERER_UNRESPONSIVE'
   | 'NOT_ONE_TO_ONE';        // report shows devicePixelRatio or canvas size off (section 4)
@@ -231,17 +238,18 @@ type OutputErrorCode =
 | --- | --- | --- | --- |
 | BAD_REQUEST, UNTRUSTED_SENDER | Validation in main | Unchanged | Logged; the UI shows "Output request rejected" |
 | UNKNOWN_OUTPUT, PROJECT_INVALID | Before creating a window | closed | "Fix the mapping first", with the validation issue |
+| Page codes in `render.errorCode`: SOURCE_UNKNOWN, SOURCE_SETTINGS_INVALID, ASSET_MISSING, GPU_UNAVAILABLE, MASTER_TOO_LARGE, DRAW_FAILED, and the page's own PROJECT_INVALID / UNKNOWN_OUTPUT | Output window reports | `failed` if no frame was drawn yet, else unchanged | Shown like PROJECT_INVALID, with the page's message |
 | DISPLAY_NOT_FOUND | Display gone between list and open | closed | Display list refreshed |
 | DISPLAY_BUSY, CONTROL_DISPLAY, ALREADY_OPEN, TOO_MANY_OUTPUTS | Before creating a window | Unchanged | Reason next to the display picker |
 | LOAD_FAILED, OPEN_TIMEOUT | During `opening` | failed, black | Retry / Close |
 | RENDERER_GONE, RENDERER_UNRESPONSIVE | During `live` | failed, black or frozen | Retry / Close |
-| NOT_ONE_TO_ONE | First report after `live` | live, with error set | Warning with measured vs expected sizes; content keeps running |
+| NOT_ONE_TO_ONE | First report after `live` (and after each `output:display`) | live, with error set | Warning with measured vs expected sizes; content keeps running |
 
-`output:update` replaces the session of a live output; the output window swaps at the next frame. Main keeps the latest session per output, so a retry or a reconnect re-sends it without asking the control window.
+`output:update` replaces the session of a live output. The output window prepares the new session to the side and swaps at the next frame only once it's fully prepared; if preparing fails, the previous session keeps playing and the report carries the error. A first session that fails leaves the window black (`opening` → `failed`). Main keeps the latest session per output, so a retry re-sends it without asking the control window; `OutputStatus.sessionRevision` is the revision the page reports drawing, not the last one sent.
 
 ## 4. Data, sources and clock
 
-**Session.** The output window receives `projectText` and parses it with the shared `parseProjectFile`, then `resolveMapping`, exactly as the editor does. No second mapping path. The source is looked up by id in the module registry, and `settings` is that source's frozen settings (for the test card: pattern and logo; for Depth Studio: its `project.modules` entry is already in the project). Which settings each source needs is Output's part (section 8). Desktop only carries them, bounded and as JSON.
+**Session.** The output window receives `projectText` and parses it with the shared `parseProjectFile`, then `resolveMapping`, exactly as the editor does. No second mapping path. The source is created by id from its frozen settings (`createOutputSource`, section 8.5), not looked up in the module registry, whose sources read the editor's live stores. For the test card the settings are mode and logo; for Depth Studio they're the whole `DepthSceneConfig`, because Depth Studio's config isn't saved in the project yet (`depth-store.ts` waits for its `modules[id]` section). Which settings each source needs is Output's part (8.5). Desktop only carries them, bounded and as JSON.
 
 **Edits don't go live by themselves.** The session is a snapshot. The control window sends `output:update` when the operator presses "Update output", so a half-edited mapping never reaches the wall. Owner decision D-4: explicit update (draft) vs live follow.
 
@@ -253,7 +261,8 @@ type OutputClock =
   | { state: 'paused'; frame: number };
 // In the output window, every requestAnimationFrame:
 //   frame = startFrame + Math.floor((now() - epochMs) * fps / 1000)
-// now() = performance.timeOrigin + performance.now(), in every process.
+// now(): a timestamp on the performance.timeOrigin + performance.now() clock, the same in every process.
+// Output windows use the rAF callback's timestamp on that clock, quantized to the refresh grid (8.6).
 ```
 
 Main stamps `epochMs` when the operator presses play, and sends the clock in the session and on every play, pause or seek. Each output window then computes its frame from the same formula. There is no per-frame message.
@@ -274,8 +283,9 @@ What Desktop guarantees:
 
 1. The window's bounds equal `display.bounds` in DIP, so its content covers the whole framebuffer, `devicePx`.
 2. Zoom is fixed at 1 and can't be changed by keys or pinch, so CSS px × `devicePixelRatio` = device px, with `devicePixelRatio === display.scaleFactor`.
-3. `DisplayInfo.devicePx`, `scaleFactor` and `devicePxExact` reach the output window in `OutputWindowSession.display`, and again on every metrics change, so Output doesn't guess them.
-4. Main compares the first `OutputRenderReport` with the display: `devicePixelRatio === scaleFactor` and `round(viewportCss × devicePixelRatio) === devicePx`. Anything else raises `NOT_ONE_TO_ONE` with both values.
+3. `DisplayInfo.devicePx`, `scaleFactor` and `devicePxExact` reach the output window in `OutputWindowSession.display`, and again on `output:display` after every metrics change or reconnect, so Output doesn't guess them.
+4. Main compares the first report (and the first after each `output:display`) with the display. All of these must hold: `devicePixelRatio === scaleFactor`, `canvasPx === devicePx`, `contentBoxDevicePx === devicePx` (once the page has observed it; `null` means not yet), and `round(viewportCss × devicePixelRatio) === devicePx`. When `devicePxExact` is true any difference raises `NOT_ONE_TO_ONE` with the measured and expected values. When it's false (fractional Windows scale), a difference of ±1 px per axis is a warning, and more than 1 px is `NOT_ONE_TO_ONE`.
+5. **No switch can change the scale in a distributed build.** `--force-device-scale-factor` is added to the packaged build's refusal list (next to the debugging switches), so it exists only in the unpackaged test runner (O-9, 8.8). `capturePage()` for the pixel tests lives in the test harness only, behind `!app.isPackaged` and a test flag; no IPC channel exposes captures.
 
 What Output must do (section 8): size the canvas backing store to `devicePx` exactly (not `innerWidth × devicePixelRatio`, which can be fractional), set its CSS size to `devicePx / devicePixelRatio`, draw the output at scale 1 at the top-left with smoothing off, and paint the rest black. No `setZoomFactor` tricks: zoom stays 1, and the canvas absorbs the ratio.
 
@@ -287,6 +297,7 @@ What Output must do (section 8): size the canvas backing store to `devicePx` exa
 | Windows 100 % / 125 % / 150 % / 175 % | Exact when `devicePxExact`; ±1 px at the edge otherwise | **Windows only, not claimed** |
 | Output smaller than the display | Drawn 1:1 at top-left, black elsewhere, `sizeMatch: smaller-than-display` | Either |
 | Output larger than the display | Cropped at right and bottom, never scaled, `sizeMatch: larger-than-display` | Either |
+| Larger on one axis, smaller on the other | Cropped on one side, black on the other, `sizeMatch: mixed`, with `croppedPx` and `blackPx` per axis | Either |
 
 ## 6. Several outputs, and no preview cap
 
@@ -303,14 +314,14 @@ Small, in order. Each one ends with `npm --prefix desktop test`, `npm run typech
 | --- | --- | --- |
 | D1 | **Window registry.** Replace the single `window` in `main.cjs` with a control window plus a `Map` of output windows; `assertSender` takes a role (`control` / `output:<id>`) and the allowed URL for it | Unit tests: control channels reject an output window's sender and vice versa; existing IPC tests pass unchanged; app behaves as today with no output open |
 | D2 | **Displays.** `displays.cjs`: pure `toDisplayInfo(display, platform, dipToScreenRect?)` and `matchDisplay(key, list)`; `output:list-displays`, `output:displays-changed` with 250 ms debounce | Unit tests with fixtures: 1× and 2× macOS, Windows 125 % on 1920 × 1080 (exact 1920 × 1080) and 1366 × 768 (`devicePxExact: false`), rotation 90; key matching including the identical-twins case. Listing returns the built-in display on the dev Mac |
-| D3 | **IPC validation.** `output-ipc.cjs`: pure validators for `OutputOpenRequest`, `OutputSession`, `OutputClock`, ids and sizes; error codes as in section 3 | Unit tests for each error code and each bound (16 MiB project, 1 MiB settings, id pattern, safe integers, unknown keys) |
-| D4 | **Output preload and route plumbing.** `output-preload.cjs` with `window.pixelLabOutput` only; allowlisted URL per mode; `assetPath` serves `/output.html` | Smoke test extended: the output page has no `pixelLabDesktop`, no Node globals, sandbox and isolation on; navigating it elsewhere is blocked; a stub `output.html` loads under `app://` |
+| D3 | **IPC validation.** `output-ipc.cjs`: pure validators for `OutputOpenRequest`, `OutputSession`, `OutputClock`, `OutputRenderReport` (including the optional 8.4 fields), ids and sizes; the 1:1 comparison of section 5 as a pure function; error codes as in section 3. Add `--force-device-scale-factor` to the packaged refusal list | Unit tests for each error code and each bound (16 MiB project, 1 MiB settings, id pattern, safe integers, unknown keys, report field bounds); 1:1 cases: exact, ±1 with `devicePxExact` false (warning), ±1 with it true (error), `contentBoxDevicePx: null` (pending); packaged refusal test for the new switch |
+| D4 | **Output preload and route plumbing.** `output-preload.cjs` with `window.pixelLabOutput` only (`onSession`, `onClock`, `onDisplay`, `ready`, `report`); allowlisted URL per mode; `assetPath` serves `/output.html` | Smoke test extended: the output page has no `pixelLabDesktop`, no Node globals, sandbox and isolation on; navigating it elsewhere is blocked; a stub `output.html` loads under `app://` |
 | D5 | **Open and close on the built-in display** (with `allowControlDisplay`) | `output:open` → `live` within 2 s with a stub page; Esc closes it from main even while the page runs `while(true){}`; Close from the control window works; `powerSaveBlocker` active only while live (asserted with `isStarted`); window never steals focus |
 | D6 | **Full screen on an external display** [monitor físico] | Window covers the display exactly (`getBounds()` equals display bounds); no menu bar, Dock or title bar visible on that display; compared native vs simple full screen with "Displays have separate Spaces" on and off; the decision recorded |
 | D7 | **Disconnect and reconnect** [monitor físico] | Unplugging hides the window within 500 ms and nothing appears on the laptop screen; replugging the same monitor restores `live` on it within 2 s; a different monitor doesn't take it over |
 | D8 | **Failure handling** | Killing the output renderer (`process.crash()` in a dev-only hook) → `failed`, black window, status pushed within 1 s; a hung page → `RENDERER_UNRESPONSIVE` after 5 s; `output:retry` returns to `live` |
 | D9 | **Clock relay** | Two output windows (`MAX_OUTPUTS` raised in a test build, on two displays, one of them can be the control display with `allowControlDisplay`) [monitor físico] report the same frame number at the same timestamp within 1 frame at 30 fps over 10 minutes; pause and seek reach both within 100 ms |
-| D10 | **1:1 check** [monitor físico] | `NOT_ONE_TO_ONE` raised when a stub reports a wrong ratio; on the real external display at scale 1 and at scale 2, the report matches `devicePx` and the pixel-grid card (section 8) shows no resampling in a close-up photo |
+| D10 | **1:1 check** [monitor físico], after O2, run together with O10 in the same monitor session | `NOT_ONE_TO_ONE` raised when a stub reports a wrong ratio; on the real external display at scale 1 and at scale 2, the report's `canvasPx` and `contentBoxDevicePx` match `devicePx`, and O10's pixel-grid photos pass |
 | D11 | **Field rehearsal** [monitor físico] | Laptop + external monitor or processor input: open, run 30 minutes with no display sleep, Esc, reopen, unplug and replug. Results with photos in TEST-RESULTS |
 
 **Risks.**
@@ -725,3 +736,55 @@ Resolume hasn't been tested with Pixel Lab yet. Nothing below assumes a result: 
 10. **D10 and O5/O10 overlap.** D10's close-up photo uses the pixel-grid card from O2; D10 should be scheduled after O2 and run together with O10, one session with the monitor.
 11. **Rehearsal on the laptop.** O5's automated tests rely on `allowControlDisplay` (D-5); Output agrees with Desktop's draft (explicit toggle, off by default).
 12. **Static export.** Section 2 states `assetPath` must serve `/output.html`; agreed. Output's page lives at `src/app/output/page.tsx` and inherits the root layout (fonts only); no other route or rewrite is needed.
+
+### 8.13 Desktop response to 8.12
+
+All twelve points accepted and applied to sections 1–7. No disagreement left.
+
+| # | Point | Answer | Reason, and where it's applied |
+| --- | --- | --- | --- |
+| 1 | Depth settings aren't in the project | Accepted | Correct: `depth-store.ts` doesn't save yet. Section 4 now says the whole `DepthSceneConfig` travels in `source.settings` |
+| 2 | Sources created from frozen settings, not the registry | Accepted | Registry sources read live stores that don't exist in the output window. Section 4 and the `OutputSession.source` comment |
+| 3 | A display-update message | Accepted, `onDisplay` / `output:display` | Re-sending the session would rebuild the source for nothing. Added to `OutputApi`, to "Disconnect and reconnect" and to section 5 |
+| 4 | Optional report fields | Accepted | The validator rejects unknown keys, so they belong in the contract now. Added to `OutputRenderReport` with bounds; D3 validates them |
+| 5 | Stronger 1:1 check, ±1 as a warning when inexact | Accepted | `contentBoxDevicePx` is the best in-renderer evidence. Section 5 item 4; D3 tests it as a pure function |
+| 6 | `sizeMatch: 'mixed'` and per-axis numbers | Accepted | Real case (wide, short output). `OutputStatus` gains `croppedPx` / `blackPx`; new row in section 5's table |
+| 7 | Clock sampled from the rAF timestamp, quantized | Accepted | Same clock, better sample; formula unchanged. Section 4 comment |
+| 8 | Swap only when fully prepared; failed first session → `failed` | Accepted | Never shows a half-built session. State machine, "Renderer failure" table and the `output:update` paragraph |
+| 9 | Source errors validated and reported by the page | Accepted | Main can't load the app's parsers. Error table row for page codes; `OutputStatus.error.code` accepts them |
+| 10 | D10 after O2, together with O10 | Accepted | Same photos, one monitor session. D10 updated; section 9 schedules them together |
+| 11 | `allowControlDisplay` off by default | Accepted | Already the draft for D-5 |
+| 12 | `output.html` served by `assetPath`, no other route | Accepted | Already in section 2 and D4 |
+
+**Desktop review of section 8.** Agreed, with three clarifications, all now in sections 1–7 and none a disagreement:
+
+- **8.1, "Main checks the same before opening".** Main can't run `parseProjectFile` or `resolveMapping`: it checks the envelope and that the output id exists. The control window validates before sending and the page is authoritative, which 8.1 already provides. Section 3 now says so.
+- **8.8, `--force-device-scale-factor=1`.** Fine in the unpackaged test runner. The packaged build will refuse it like the debugging switches, so it can't break 1:1 in a show (section 5 item 5, task D3).
+- **8.8, `capturePage()`.** Test harness only, behind `!app.isPackaged` and a test flag; no IPC channel returns captures (section 5 item 5).
+
+Shell-side, the rest of section 8 needs nothing new: one canvas, no extra preload functions, no network, no `nodeIntegration`, CSS `cursor: none`, reports at 2 per second, which fits the `output:report` limit.
+
+## 9. Implementation order (Desktop and Output)
+
+One order for both lanes. Steps on the same line can run in parallel. Nothing starts before the owner approves this document and decides D-1…D-5 and O-1…O-9.
+
+| Step | Task | Lane | Needs | Where |
+| --- | --- | --- | --- | --- |
+| 1 | D1 Window registry | Desktop | — | Dev Mac |
+| 1 | O1 Layout and cadence, pure | Output | — | Dev Mac |
+| 2 | D2 Displays | Desktop | D1 | Dev Mac |
+| 2 | O2 Pixel-grid card + "Pixel test" fixture | Output | — | Dev Mac |
+| 3 | D3 IPC validation (report fields, 1:1 check, scale-switch refusal) | Desktop | D1 | Dev Mac |
+| 3 | O3 Frozen source table | Output | O2 | Dev Mac |
+| 4 | D4 Output preload, allowlisted route, `output.html` in `assetPath` | Desktop | D1, D3 | Dev Mac |
+| 5 | O4 Output page | Output | O1, O3, D4 | Dev Mac |
+| 5 | D5 Open and close on the built-in display (stub page first, then O4's page) | Desktop | D2, D3, D4 | Dev Mac |
+| 6 | D8 Failure handling | Desktop | D5 | Dev Mac |
+| 6 | O5 Electron pixel tests, 1× and 2× | Output | O4, D5 | Dev Mac |
+| 7 | O6 Output = MP4 | Output | O5 | Dev Mac |
+| 7 | O7 Depth Studio on the output | Output | O4 | Dev Mac |
+| 8 | O8 Measured limits | Output | O4, O7 | Dev Mac |
+| 9 | **One session with the external monitor**, in this order: D6 full screen (decides native vs simple full screen) → D7 disconnect / reconnect → D10 + O10 1:1 photos at scale 1, scale 2 and one scaled mode → O9 cadence (240 fps video) → D9 clock across two displays → O11 Resolume Arena procedure → D11 30-minute field rehearsal | Both | Steps 1–8; D6 first, since every later check needs the window in place | [monitor físico] |
+
+D9 needs two displays, so it moves into the monitor session (the built-in display plus the external one with `allowControlDisplay`). If the monitor session finds a problem in D6, D7 or D10, the fix goes back to the dev Mac and the session repeats from D6.
+
