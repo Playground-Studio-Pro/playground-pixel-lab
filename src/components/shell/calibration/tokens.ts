@@ -58,6 +58,15 @@ export const CAL_ADVANCE = 0.6;
 export const CAL_BASELINE = 0.78;
 
 /**
+ * Cabinet labels: `R{row} C{column}` over `#{n}` in each cabinet. Text is `ratio` of the cabinet's shorter
+ * side, at most `max` px; when the block doesn't fit at `CAL_MIN_TEXT` inside the cabinet (less its seam pixel
+ * and `margin` of the text size on each side) the label is dropped, never shrunk below it. At 9 px that needs a
+ * cabinet of at least 35 × 30 px with single digits (`R1 C1`), 46 × 30 px with two (`R01 C01`).
+ * `cabinetLabelSize` in frame.ts is the rule.
+ */
+export const CAL_CABINET = { ratio: 0.12, max: 32, margin: 0.3 } as const;
+
+/**
  * The sweep bar of a moving test card: a white vertical bar that crosses the whole master canvas at an even pace
  * (each step is ⌊w/p⌋ or ⌈w/p⌉ px), so a skipped or repeated frame shows as a jump and tearing as a broken bar.
  * One crossing takes `seconds`, which divides every export duration (5 to 60 s), so a file loops without a jump.

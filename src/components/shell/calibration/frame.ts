@@ -1,7 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
 import { timecode } from "@/engines/motion/clock";
-import { CAL_ADVANCE, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_SWEEP, CAL_TINT, tint } from "./tokens";
+import { CAL_ADVANCE, CAL_CABINET, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_SWEEP, CAL_TINT, tint } from "./tokens";
 
 /**
  * Screen identification and calibration frames, as drawing primitives in exact integer pixels.
@@ -260,7 +260,57 @@ interface ScreenContext {
   /** Label plates already placed anywhere in the frame. */
   readonly placed: Box[];
   readonly layers: Layers;
+  /** Work to run after every screen has placed its own labels: cabinet labels, which give way to all of them. */
+  readonly deferred: (() => void)[];
 }
+
+/** One cabinet's position in its screen: 1-based row and column, and its number counted left to right, top to bottom. */
+export interface CabinetCell {
+  readonly row: number;
+  readonly column: number;
+  readonly number: number;
+  /** The cabinet's pixels, in the frame's space. */
+  readonly box: Box;
+}
+
+/**
+ * Every cabinet of a screen, from its top-left corner: rows top to bottom, columns left to right, numbered
+ * in reading order from 1. Read from the screen's cabinet grid (`resolveMapping`); nothing is computed beyond
+ * multiplying it out. Not a data-cabling order: the model has no cabling.
+ */
+export function cabinetCells(s: CalibrationScreen): CabinetCell[] {
+  const cab = s.cabinet;
+  if (!cab || cab.columns < 1 || cab.rows < 1 || cab.pixelsX < 1 || cab.pixelsY < 1) return [];
+  const cells: CabinetCell[] = [];
+  for (let r = 0; r < cab.rows; r++) {
+    for (let col = 0; col < cab.columns; col++) {
+      const box = intersect({ x: s.rect.x + col * cab.pixelsX, y: s.rect.y + r * cab.pixelsY, width: cab.pixelsX, height: cab.pixelsY }, s.rect);
+      if (area(box) > 0) cells.push({ row: r + 1, column: col + 1, number: r * cab.columns + col + 1, box });
+    }
+  }
+  return cells;
+}
+
+/** `R01 C03` and `#12`: two digits for rows and columns once either reaches 10, as many as needed for the number. */
+export function cabinetLabelText(cell: CabinetCell, rows: number, columns: number): [string, string] {
+  const rc = String(Math.max(rows, columns)).length > 1 ? Math.max(2, String(Math.max(rows, columns)).length) : 1;
+  const n = String(rows * columns).length;
+  return [`R${String(cell.row).padStart(rc, "0")} C${String(cell.column).padStart(rc, "0")}`, `#${String(cell.number).padStart(n, "0")}`];
+}
+
+/** The text size a cabinet label gets in a `width` × `height` cabinet, or null if it doesn't fit at the minimum. */
+export function cabinetLabelSize(width: number, height: number, lines: readonly [string, string]): number | null {
+  const fits = (size: number) => {
+    const margin = 1 + Math.max(2, Math.round(size * CAL_CABINET.margin));
+    const chars = Math.max(lines[0].length, lines[1].length);
+    return textWidth(chars, size) <= width - 2 * margin && 2 * size + lineGap({ size, weight: 600, parts: [] }) <= height - 2 * margin;
+  };
+  for (let size = clamp(Math.round(Math.min(width, height) * CAL_CABINET.ratio), CAL_MIN_TEXT, CAL_CABINET.max); size >= CAL_MIN_TEXT; size--) if (fits(size)) return size;
+  return null;
+}
+
+/** Plate around a cabinet label: just enough to keep the sweep bar and grid lines off its glyphs. */
+const CABINET_PLATE_PAD = 2;
 
 /** Frame counter, timecode and content rate, as a corner block. */
 const counterLines = (title: number, base: number, fps: ContentFps): Line[] => [
@@ -325,9 +375,9 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const blocked = (box: Box) => obstacles.some((o) => hits(o, box)) || placed.some((p) => hits(p, box));
 
   /** Reserves a label's plate if it's inside the screen and clear of everything placed so far. */
-  const reserve = (box: Box): boolean => {
+  const reserve = (box: Box, pad = platePad): boolean => {
     if (!inside(box, safe)) return false;
-    const plate = intersect(expand(box, platePad), safe);
+    const plate = intersect(expand(box, pad), safe);
     if (blocked(plate)) return false;
     placed.push(plate);
     layers.plates.push(rectNode(plate.x, plate.y, plate.width, plate.height, fieldColor));
@@ -352,6 +402,45 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
 
   /** Fits lines to a width, dropping any that can't be shortened to fit. */
   const fitted = (lines: readonly Line[], maxWidth: number) => lines.flatMap((line) => fitLine(line, maxWidth) ?? []);
+
+  // Cabinet labels: R/C and number in every cabinet, in both modes. They run after every screen's own
+  // labels (`deferred`), so they never take the room of an identifier, data or counter. Each tries the
+  // cabinet's corners, inside its seam pixel, and is dropped where it would cover a label, a corner or center
+  // mark, the logo or a shared area.
+  const markBoxes: Box[] = [];
+  c.deferred.push(() => {
+    const cab = s.cabinet;
+    if (!cab) return;
+    for (const cell of cabinetCells(s)) {
+      const text = cabinetLabelText(cell, cab.rows, cab.columns);
+      const size = cabinetLabelSize(cell.box.width, cell.box.height, text);
+      if (size === null) continue;
+      const lines: Line[] = [
+        { size, weight: 600, parts: [{ text: text[0], fill: CAL_COLORS.muted }] },
+        { size, weight: 700, parts: [{ text: text[1], fill: CAL_COLORS.white }] },
+      ];
+      const bw = blockWidth(lines);
+      const bh = blockHeight(lines);
+      const margin = 1 + Math.max(2, Math.round(size * CAL_CABINET.margin));
+      const b = cell.box;
+      const spots: [number, number, "left" | "right"][] = [
+        [b.x + margin, b.y + margin, "left"],
+        [b.x + b.width - margin - bw, b.y + margin, "right"],
+        [b.x + margin, b.y + b.height - margin - bh, "left"],
+        [b.x + b.width - margin - bw, b.y + b.height - margin - bh, "right"],
+      ];
+      for (const [bx, by, align] of spots) {
+        const box = { x: bx, y: by, width: bw, height: bh };
+        if (markBoxes.some((m) => hits(m, expand(box, 1)))) continue;
+        if (!inside(expand(box, 1), b)) continue;
+        // A tight plate: the screen's own pad would reach into the neighbouring cabinet's label.
+        if (reserve(box, CABINET_PLATE_PAD)) {
+          emit(lines, bx, by, bw, align);
+          break;
+        }
+      }
+    }
+  });
 
   /** Places a block centered on a point, kept inside `within`. */
   const placeCentered = (lines: readonly Line[], cx: number, cy: number, within: Box): boolean => {
@@ -441,6 +530,7 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
     },
   ];
   for (const corner of corners) if (!obstacles.some((o) => hits(o, corner.box))) layers.marks.push(...corner.nodes);
+  markBoxes.push(...corners.map((corner) => corner.box), arrowBox);
   layers.marks.push(...border);
 
   const tv = centered(stroke, w);
@@ -628,14 +718,16 @@ export function buildCalibrationFrame(input: CalibrationInput): CalibrationFrame
   // area and the larger one keeps its labels out of it.
   const order = screens.map((screen, index) => ({ screen, index })).sort((a, b) => area(b.screen.rect) - area(a.screen.rect) || a.index - b.index);
   const placed: Box[] = [];
+  const deferred: (() => void)[] = [];
   order.forEach(({ screen, index }, rank) => {
     const obstacles: Box[] = keepOut ? [keepOut] : [];
     for (const other of order.slice(rank + 1)) {
       const shared = intersect(screen.rect, other.screen.rect);
       if (area(shared) > 0) obstacles.push(shared);
     }
-    layoutScreen(screen, { index, mode, elements, fps: input.fps, motion: input.motion === true, obstacles, logoKeepOut: keepOut, placed, layers });
+    layoutScreen(screen, { index, mode, elements, fps: input.fps, motion: input.motion === true, obstacles, logoKeepOut: keepOut, placed, layers, deferred });
   });
+  for (const run of deferred) run();
 
   const nodes: CalNode[] = [rectNode(0, 0, width, height, CAL_COLORS.black), ...layers.field, ...layers.grid];
   // The sweep goes over the field and grid, under lines, label plates, marks, the logo and text: it never
