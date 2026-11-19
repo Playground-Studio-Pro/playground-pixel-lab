@@ -8,6 +8,7 @@ const { createWindowRegistry, trustedURLForRole, outputURL } = require('./window
 const { createOutputWindow } = require('./output-window.cjs');
 const { OUTPUT_CHANNELS, OutputIpcError } = require('./output-ipc.cjs');
 const { createOutputController, outputKeyAction } = require('./output-controller.cjs');
+const { smokeMode, virtualDisplay, VIRTUAL_DISPLAY_ID } = require('./smoke-mode.cjs');
 const { toDisplayInfo, debounce, DISPLAY_EVENT_DEBOUNCE_MS } = require('./displays.cjs');
 // Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
 // Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
@@ -24,6 +25,21 @@ const devURL = !app.isPackaged && process.env.PIXEL_LAB_DEV_URL;
 if (devURL && !/^http:\/\/127\.0\.0\.1:\d+\/$/.test(devURL)) throw new Error('Development URL must be a numeric loopback origin');
 const origin = devURL || 'app://pixellab/';
 const smoke = !app.isPackaged && process.argv.includes('--smoke-test');
+// Smoke runs only: whether output windows may be shown (two explicit keys) or stay hidden (default). null otherwise.
+const smokeOutput = smokeMode({ isPackaged: app.isPackaged, argv: process.argv, env: process.env });
+const hiddenSmoke = Boolean(smokeOutput && !smokeOutput.visible);
+// Hidden smoke runs show no window at all: any window that appears is hidden again and fails the run.
+const smokeViolations = [];
+if (hiddenSmoke) {
+  app.on('browser-window-created', (_event, window) => window.on('show', () => {
+    smokeViolations.push(`a window was shown (${window.getTitle() || 'untitled'})`);
+    if (!window.isDestroyed()) window.hide();
+  }));
+}
+if (smokeOutput && smokeOutput.missingKey) {
+  console.error('Visible output smoke refused: it needs both --smoke-output-visible and PIXELLAB_ALLOW_VISIBLE_OUTPUT=1, and the owner\'s permission. Run `npm run test:smoke` for the hidden run.');
+  process.exit(1);
+}
 const windows = createWindowRegistry(origin);
 const CONTROL = Object.freeze({ kind: 'control' });
 let fileBusy = false;
@@ -54,7 +70,7 @@ else {
       window.webContents.on('will-navigate', (event, url) => { if (!trustedURLForRole(url, origin, 'control')) event.preventDefault(); });
       window.webContents.on('will-redirect', (event, url) => { if (!trustedURLForRole(url, origin, 'control')) event.preventDefault(); });
       window.webContents.on('will-attach-webview', event => event.preventDefault());
-      window.once('ready-to-show', () => window.show());
+      window.once('ready-to-show', () => { if (!hiddenSmoke) window.show(); });   // hidden smoke runs never show it
       windows.setControl(window);
       window.on('closed', () => windows.clearControl(window));
       return window.loadURL(origin);
@@ -100,6 +116,11 @@ else {
       try { windows.addOutput(outputId, window); } catch (error) { window.destroy(); throw error; }
       const contents = window.webContents;
       window.on('closed', () => { windows.removeOutput(outputId, window); outputs.onClosed(outputId); });
+      if (smokeOutput && smokeOutput.visible) {
+        // Dead-man switch for the interactive run: every visible output window closes after 20 s, whatever happens.
+        const deadMan = setTimeout(() => { if (!window.isDestroyed()) window.destroy(); }, smokeOutput.deadManMs);
+        window.on('closed', () => clearTimeout(deadMan));
+      }
       contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) outputs.onLoadFailed(outputId, description); });
       // Esc runs here, in main, so it works even while the output renderer is hung (section 2).
       contents.on('before-input-event', (event, input) => {
@@ -110,6 +131,8 @@ else {
       });
     }
     function showOutputWindow(outputId, display) {
+      // Presentation hook: a hidden smoke run never shows, raises or full-screens an output window.
+      if (hiddenSmoke) return;
       const window = windows.output(outputId);
       if (!window || window.isDestroyed()) return;
       window.setBounds(display.boundsDip);
@@ -139,7 +162,11 @@ else {
         outputOnDisplay: outputs.outputOnDisplay(),
         dipToScreenRect: process.platform === 'win32' ? rect => screen.dipToScreenRect(null, rect) : undefined,
       };
-      return screen.getAllDisplays().map(display => toDisplayInfo(display, context));
+      const list = screen.getAllDisplays().map(display => toDisplayInfo(display, context));
+      if (!hiddenSmoke) return list;
+      // Hidden smoke runs only: a virtual display with a real one's geometry, where the output window opens unseen.
+      const fake = virtualDisplay(list.find(d => d.primary) || list[0]);
+      return [...list, { ...fake, hostsOutput: context.outputOnDisplay.get(VIRTUAL_DISPLAY_ID) ?? null }];
     };
     handler('output:list-displays', () => listDisplays());
     const pushDisplays = debounce(() => {
@@ -175,7 +202,7 @@ else {
     if (smoke) {
       const webRoot = path.join(__dirname, '..', 'web');
       await require('./smoke.cjs')(windows.control, app, {
-        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin),
+        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin), mode: smokeOutput, smokeViolations,
         outputPageAvailable: async () => {
           if (!devURL) return fs.access(path.join(webRoot, 'output.html')).then(() => true, () => false);
           try { return (await net.fetch(outputURL(origin))).status === 200; } catch { return false; }

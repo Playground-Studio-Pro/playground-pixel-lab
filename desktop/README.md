@@ -31,6 +31,17 @@ npm run dist:mac
 
 A development launch smoke check is `npm run dev -- --smoke-test`. A static smoke check is `npm run test:smoke` after building. Both verify the real start screen, isolated bridge, lack of Node globals and IndexedDB. They exit automatically. They do not exercise interactive import/export or mapping controls. The smoke profile is separate from normal desktop data.
 
+### Smoke tests and the output window
+
+| Command | What it does | Windows on screen |
+| --- | --- | --- |
+| `npm run test:smoke` (after `build:web`) | The checks above, plus the output window: open → live, isolation, Close, Esc while the page is hung. The output opens on a **virtual display** that exists only in this run, loads the real page, gets a real project (`tests/fixtures/pixel-test.pixellab.json`) and reports. It is never shown, put on top or made full screen. | **None.** The editor window isn't shown either; any window that appears fails the run |
+| `npm run dev -- --smoke-test` | Same against the dev server; the output part is skipped until the dev server serves `/output` | None |
+| `PIXELLAB_ALLOW_VISIBLE_OUTPUT=1 npm run test:smoke:output` | **Interactive. Only with the owner's permission.** Real full-screen output windows, with the visibility, focus and bounds checks. Uses an external display; prints the target and "Esc or Close" first. Every output window closes by itself after 20 s | Yes, full screen |
+| … `-- --allow-control-display` added | As above, on the display that shows the Pixel Lab window (single laptop). Covers the operator's screen | Yes, over your work |
+
+The visible run needs both keys: the `--smoke-output-visible` flag (in `test:smoke:output`) and `PIXELLAB_ALLOW_VISIBLE_OUTPUT=1`; the flag alone stops with a message. None of this exists in a packaged build or a normal launch. CI doesn't run any smoke test.
+
 On Windows 11 x64, with Node and the app dependencies installed:
 
 ```powershell
