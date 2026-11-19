@@ -1,4 +1,4 @@
-module.exports = async function smoke(window, app) {
+module.exports = async function smoke(window, app, hooks = null) {
   const assert = require('node:assert/strict');
   const execute = script => window.webContents.executeJavaScript(script);
   const deadline = Date.now() + 30000;
@@ -29,6 +29,39 @@ module.exports = async function smoke(window, app) {
   assert.equal(prefs.nodeIntegration, false);
   const storage = await execute(`new Promise((resolve, reject) => { const r = indexedDB.open('desktop-smoke', 1); r.onerror = () => reject(r.error.message); r.onsuccess = () => { r.result.close(); indexedDB.deleteDatabase('desktop-smoke'); resolve(true); }; })`);
   assert.equal(storage, true);
-  console.log('DESKTOP_SMOKE_PASS', JSON.stringify({ title: state.title, sandbox: true, isolated: true, indexedDB: storage, ffmpeg: status, displays: displays.map(d => ({ label: d.label, internal: d.internal, primary: d.primary, scaleFactor: d.scaleFactor, devicePx: d.devicePx, devicePxExact: d.devicePxExact, refreshHz: d.refreshHz, hostsControlWindow: d.hostsControlWindow })) }));
+  let output = 'not run';
+  if (hooks) {
+    if (await hooks.outputPageAvailable()) {
+      const out = hooks.openOutputWindow('smoke-output', { x: 0, y: 0, width: 640, height: 360 });
+      const run = script => out.webContents.executeJavaScript(script);
+      const until = Date.now() + 15000;
+      while (Date.now() < until && !(hooks.outputRecord('smoke-output')?.ready && hooks.outputRecord('smoke-output')?.report)) await new Promise(r => setTimeout(r, 100));
+      const record = hooks.outputRecord('smoke-output');
+      assert.ok(record?.ready, 'output page reported ready');
+      assert.ok(record?.report, 'output report accepted by main');
+      const page = await run(`({ url: location.href, desktop: typeof window.pixelLabDesktop, node: typeof process, require: typeof require, api: window.pixelLabOutput ? Object.keys(window.pixelLabOutput).sort() : null, popup: String(window.open(location.origin)) })`);
+      assert.equal(page.url, hooks.outputURL);
+      assert.equal(page.desktop, 'undefined');
+      assert.equal(page.node, 'undefined');
+      assert.equal(page.require, 'undefined');
+      assert.deepEqual(page.api, ['onClock', 'onDisplay', 'onSession', 'ready', 'report', 'version']);
+      assert.equal(page.popup, 'null');
+      const outPrefs = out.webContents.getLastWebPreferences();
+      assert.equal(outPrefs.sandbox, true); assert.equal(outPrefs.contextIsolation, true); assert.equal(outPrefs.nodeIntegration, false);
+      for (const target of [hooks.windows.origin, 'https://example.com/']) {
+        await run(`location.href = ${JSON.stringify(target)}; 1`);
+        await new Promise(r => setTimeout(r, 500));
+        assert.equal(out.webContents.getURL(), hooks.outputURL, `navigation to ${target} blocked`);
+      }
+      const ev = { sender: out.webContents, senderFrame: out.webContents.mainFrame };
+      assert.throws(() => hooks.windows.assertSender(ev, { kind: 'control' }), 'output window rejected on control channels');
+      assert.doesNotThrow(() => hooks.windows.assertSender(ev, { kind: 'output', outputId: 'smoke-output' }));
+      out.destroy();
+      await new Promise(r => setTimeout(r, 200));
+      assert.deepEqual(hooks.windows.outputIds(), []);
+      output = { url: page.url, api: page.api, report: record.report.sourceId || 'page' };
+    } else output = 'skipped: no output page at this origin yet (dev server has no /output until O4)';
+  }
+  console.log('DESKTOP_SMOKE_PASS', JSON.stringify({ output, title: state.title, sandbox: true, isolated: true, indexedDB: storage, ffmpeg: status, displays: displays.map(d => ({ label: d.label, internal: d.internal, primary: d.primary, scaleFactor: d.scaleFactor, devicePx: d.devicePx, devicePxExact: d.devicePxExact, refreshHz: d.refreshHz, hostsControlWindow: d.hostsControlWindow })) }));
   app.exit(0);
 };
