@@ -1,17 +1,23 @@
 const { contextBridge, ipcRenderer } = require('electron');
+function subscribe(channel, callback) {
+  if (typeof callback !== 'function') throw new TypeError(`${channel} listener must be a function`);
+  const listener = (_event, value) => callback(value);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
 contextBridge.exposeInMainWorld('pixelLabDesktop', Object.freeze({
   version: 1,
   openProject: () => ipcRenderer.invoke('project:open'),
   saveProject: (text, suggestedName) => ipcRenderer.invoke('project:save', { text, suggestedName }),
   ffmpegStatus: () => ipcRenderer.invoke('ffmpeg:status'),
-  // Physical output (Phase C). D2: displays only; open/close/status arrive with D3–D5.
+  // Physical output (Phase C). D5: displays, open, close and status; update, clock, retry and resume come later.
+  // A rejected open carries the error code first in its message ("DISPLAY_BUSY: ...").
   output: Object.freeze({
     listDisplays: () => ipcRenderer.invoke('output:list-displays'),
-    onDisplays: callback => {
-      if (typeof callback !== 'function') throw new TypeError('onDisplays expects a function');
-      const listener = (_event, displays) => callback(displays);
-      ipcRenderer.on('output:displays-changed', listener);
-      return () => ipcRenderer.removeListener('output:displays-changed', listener);
-    },
+    open: request => ipcRenderer.invoke('output:open', request),
+    close: outputId => ipcRenderer.invoke('output:close', outputId),
+    status: () => ipcRenderer.invoke('output:status-all'),
+    onStatus: callback => subscribe('output:status', callback),
+    onDisplays: callback => subscribe('output:displays-changed', callback),
   }),
 }));

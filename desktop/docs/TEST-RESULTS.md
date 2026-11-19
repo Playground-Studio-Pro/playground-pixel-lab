@@ -273,3 +273,59 @@ Not tested: the CI run on Linux itself until the PR's checks report (the electro
 | `electron-builder --dir` | `app.asar` contains `output-preload.cjs`, `output-window.cjs`, `output-ipc.cjs`; `Resources/web/output.html` present |
 
 Not tested: the output window in dev mode (needs O4's page); a forged message from a non-output window on `output:ready` / `output:report` in a running app (covered by the registry's unit tests, not by the smoke test); anything about displays or full screen (D5, D6).
+
+## D5. Open and close on the built-in display (2026-11-19)
+
+- `desktop/src/output-controller.cjs` (pure, no Electron) is the output state machine for D5's part of section 2.
+  - **Open.** `open` validates the request (D3), then refuses with `ALREADY_OPEN`, `TOO_MANY_OUTPUTS` (`MAX_OUTPUTS` 1), `DISPLAY_NOT_FOUND` (the key must match one connected display at level 1), `DISPLAY_BUSY` or `CONTROL_DISPLAY` (the control window's display needs `allowControlDisplay: true`, D-5). Otherwise it creates the hidden window and starts the 10 s open timeout.
+  - **Ready.** On `output:ready`, main sends `output:session` (the session plus the display) and clears the timeout.
+  - **Live.** The first report with `firstFrameDrawn: true` for that session's revision moves the output to `live`. Main places the window on the display, shows it inactive, puts it in full screen and takes the sleep blocker.
+  - **Failed.** `opening → failed` on any of: `did-fail-load` (`LOAD_FAILED`), no `ready` within 10 s (`OPEN_TIMEOUT`), or a page error before any frame (`LOAD_FAILED`, with the page's code kept in `render.errorCode`). A failed window is shown black, not closed (D-1).
+  - **Errors while live.** A page error sets `error`, and the next good report clears it. The 1:1 check of section 5 runs until it's no longer pending and raises `NOT_ONE_TO_ONE`.
+  - **Close.** `close(id | '*')`, Esc and quitting the app destroy the window, and the output goes to `closed`.
+- **Sleep.** One `powerSaveBlocker` (`prevent-display-sleep`) covers all outputs and is held only while at least one is `live`.
+- **`main.cjs`.**
+  - Control channels: `output:open`, `output:close` and `output:status-all`, accepted from the control window only, as before, plus the `output:status` push.
+  - A rejected invoke carries the error code first in its message (`"DISPLAY_BUSY: …"`), because Electron passes only the message to the renderer.
+  - Esc is handled in main, in the output window's `before-input-event`, so it works with the page hung. ⌘/Ctrl with `+`, `=`, `-` or `0` is swallowed. No global shortcut.
+  - Placement, in order: `setBounds(display.boundsDip)`, `setAlwaysOnTop(true, 'screen-saver')`, `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })`, `showInactive()`, then `setSimpleFullScreen(true)` on macOS. Other platforms call `setFullScreen(true)`, which isn't claimed to work. Native vs simple full screen is still D6's decision.
+  - `DisplayInfo.hostsOutput` is now filled.
+- **Control preload.** `output.open`, `output.close`, `output.status` and `output.onStatus` are added next to `listDisplays` and `onDisplays`; `api.d.ts` picks the same names from `OutputControlApi`. `update`, `setClock`, `retry` and `resume` aren't exposed yet.
+- **Stub page.** After it receives the session, it now reports a first frame (black, `firstFrameDrawn: true`, the session's revision), then one report a second. So `opening → live` runs on the stub until O4's page arrives.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 50/50, with 10 new in `tests/output-controller.test.cjs` |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 368/368, lint 0 problems |
+| `test:smoke` (static, dev Mac built-in display, 1800 × 1169 DIP at 2×) | pass, through the control window's real IPC; steps below |
+| `dev -- --smoke-test` | pass; the output part is skipped with a message (no `/output` on the dev server until O4) |
+
+The 10 new unit tests cover:
+- the open → live sequence;
+- Close and Esc, and closing while opening;
+- every open refusal, and `DISPLAY_BUSY` with the limit raised to 2;
+- a window that fails to open;
+- `OPEN_TIMEOUT`, `LOAD_FAILED` and a page error before any frame;
+- errors while live and `NOT_ONE_TO_ONE`;
+- the report rate limit and invalid payloads;
+- the key handler.
+
+What the static smoke test did:
+1. **Refusals.** Open without `allowControlDisplay` → `CONTROL_DISPLAY`. A malformed request → `BAD_REQUEST`.
+2. **Open.** With the toggle, `opening` → `live` in **112 ms** (criterion: 2 s).
+   - The window is visible, **not focused** and always on top; `isSimpleFullScreen()` is true and `getBounds()` equals the display bounds.
+   - `powerSaveBlocker.isStarted` is true while live and false while opening.
+   - `status()` shows `live` at revision 1, and a second open → `ALREADY_OPEN`.
+   - D4's isolation checks pass on the live page.
+3. **Close from the control window** → `closed`; the registry is empty and the blocker is stopped.
+4. **Esc with the page hung.** Reopened, then hung the page with `for (;;) {}` and confirmed it no longer answers. Esc sent with `sendInputEvent` → `closed` in **2 ms**; the blocker is stopped.
+5. **Status pushes** seen by the control window: opening, live, closed, opening, live, closed.
+
+Not tested:
+- A real Esc key press from the keyboard. The smoke test injects Esc with `sendInputEvent`, which goes through the same `before-input-event` handler.
+- Opening and closing from the app's UI: the editor has no output UI yet (Output's lane).
+- The output window in dev mode, which needs O4's page.
+- An external display, Spaces, and native vs simple full screen: D6, needs the monitor.
+- Disconnect and reconnect (D7). In this build, nothing hides the window yet if a display is removed while an output is live.
+- Renderer crash, hang detection and retry (D8).
+- Display sleep over a long run (D11).
