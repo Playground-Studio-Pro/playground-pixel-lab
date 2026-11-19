@@ -1,47 +1,31 @@
 # Handoff
 
-Playground Pixel Lab, paused 2026-11-08 at the end of Sprint 1. `main` is at `ba4e5f4`. Current state and details are in [SESSION](SESSION.md).
+Playground Pixel Lab, 2026-11-18. `main` is at `cb084ab`. Alpha 0.1 Phase A is done; Phase B (Electron) is approved and not started. Current state and the Phase B checklist are in [SESSION](SESSION.md).
 
-## What we built
+## What we're building now
 
-A browser-only LED mapping and visual production tool, with no backend. Projects stay in the browser's IndexedDB.
-- **Mapping Studio:** screens, cabinets, canvases and outputs, mapped pixel-exact in Physical, Content and Output views. Exports for processors and Resolume. Undo and redo.
-- **Motion Lab:** the shared Live preview engine. Seven deterministic test patterns play across the mapped screens.
-- **Aurora Gradient:** the first visual generator, with palettes, colors, speed and direction.
-- **Cabinet library:** real cabinet profiles kept outside projects, with supplier specs. It starts with the Yestech MG6S P2.6 Indoor.
-- **Example gallery:** four ready-made shows on the start screen.
-- **Parallel development:** five agent lanes in their own worktrees, with shared contracts.
+**Alpha 0.1:** a desktop app for macOS (Windows after a real test) that completes **Mapping → Test card → Output → external monitor → Resolume Arena** offline, validated in a field test. No features outside that flow until it passes.
+
+## What exists
+
+- **Mapping Studio:** screens, cabinets, canvases and outputs mapped pixel-exact in Physical, Content and Output views. PNG and SVG pixel maps, manifest, report and Resolume preparation package. Undo and redo.
+- **Content Studio:** Depth Studio (Emerald Chamber, WebGL2) and Aurora Gradient, both deterministic by frame number.
+- **Output Studio:** calibration test card with logo modes, and browser H.264 MP4 export per master, output or screen, never scaled.
+- **Engineering Studio:** cabinet library with supplier specs. Processors, power and distribution come later; the studio stays part of the product.
+- **Desktop:** an Electron foundation on `feature/desktop-engineering`, not yet launched.
 
 ## What works
 
-Verified on `ba4e5f4`:
-- 236 of 236 unit tests, typecheck, lint, build and CI pass.
-- In a production build in Chrome, Aurora runs at 60 fps across screens, and the cabinet library works.
-- The initial JavaScript bundle is unchanged at 172.8 KB.
-
-## What remains
-
-- **Ready tasks:** content templates, the module registry, theme tokens, and exports on the shared contract.
-- **Waiting for approval:** full-screen output, power and port calculations, video encoding, NDI, and video generation.
-- **Small cleanups:** dead library code in the store, and Aurora settings that aren't saved yet.
-
-The full list is in [SESSION](SESSION.md#pending-tasks).
+On `main` at `cb084ab`: typecheck, lint, 302 unit tests and CI pass. MP4 files from headless Chrome were checked with ffprobe and match the Preview dialog pixel for pixel. Nothing has run in Electron yet.
 
 ## Important architecture decisions
 
-- **One source of coordinates:** `resolveMapping`. Every view and export reads it, and nothing else computes pixel positions.
-- **Pure core:** `domain` and `engines` have no React, DOM, clock or randomness. Edits go through `project-ops.ts`, which keeps undo and autosave working.
-- **Determinism:** generators draw from the frame number only, so the same frame always gives the same pixels.
-- **Units:** pixels, micrometres, milliwatts and grams are integers. Content FPS, browser FPS and LED refresh rate are never mixed.
-- **Contracts as types:** in [CONTRACTS](docs/architecture/CONTRACTS.md). There's no plugin framework.
-- **Separate data:** the cabinet library and preferences live outside the project file. The project format is unchanged.
-- **Git workflow:** lanes merge `main` into their own branch. No rebase, no force-push, and every PR waits for the user's approval.
-
-## Next three priorities
-
-1. **Full-screen output to a second display (O2).** Needs approval. It's the step toward real walls and NDI.
-2. **Content templates per screen, canvas and output (C1).** Already approved.
-3. **Power and weight from the library specs (E2).** Needs approval to start Phase 4.
+- **One source of coordinates:** `resolveMapping`. Every view and export reads it.
+- **Pure core:** `domain` and `engines` have no React, DOM, clock or randomness.
+- **Determinism:** a frame is a function of the config and the frame number.
+- **Units:** integer pixels, micrometres, milliwatts and grams. Content FPS, browser FPS and LED refresh rate are never mixed.
+- **Physical output:** independent Electron windows, one per output, at native resolution and 1:1 device pixels, designed for several monitors at once. The 4096 px preview cap never limits output. See [DECISIONS](docs/architecture/DECISIONS.md).
+- **Git:** lanes merge `main` into their branch. No rebase, no force-push, no deleting branches or worktrees, and no PR merges without CI and the owner's approval.
 
 ## Restart the application
 
@@ -51,18 +35,12 @@ git fetch && git status
 npm run build && npx next start -p 3000
 ```
 
-Then open http://localhost:3000. Use `npm run dev -- -p 3000` while developing.
+## Start the next agent
 
-## Restart each agent
-
-One terminal each. Every agent merges `origin/main` first, as [START](docs/agents/START.md) says.
+**Phase B, Desktop Engineering.** One terminal:
 
 ```sh
-cd ~/Play.Code/playground.pixel/agents/lead-architect && claude "Eres el agente Lead Architect. Tu brief es docs/agents/lead-architect.md. Sigue docs/agents/START.md."
-cd ~/Play.Code/playground.pixel/agents/product-design && claude "Eres el agente Product Design. Tu brief es docs/agents/product-design.md. Sigue docs/agents/START.md."
-cd ~/Play.Code/playground.pixel/agents/content-engineering && claude "Eres el agente Content Engineering. Tu brief es docs/agents/content-engineering.md. Sigue docs/agents/START.md."
-cd ~/Play.Code/playground.pixel/agents/led-engineering && claude "Eres el agente LED Engineering. Tu brief es docs/agents/led-engineering.md. Sigue docs/agents/START.md."
-cd ~/Play.Code/playground.pixel/agents/output-engineering && claude "Eres el agente Output Engineering. Tu brief es docs/agents/output-engineering.md. Sigue docs/agents/START.md."
+cd ~/Play.Code/playground.pixel/agents/desktop-engineering && claude "Eres el agente Desktop Engineering de Pixel Lab. Ejecuta la Fase B de Alpha 0.1: lee SESSION.md en origin/main (git fetch origin && git show origin/main:SESSION.md) y sigue su checklist 'Phase B' paso a paso en esta worktree, rama feature/desktop-engineering. Autorizado: git merge origin/main, descargar Electron, instalar dependencias, builds sin firmar y fuentes locales. Prohibido: force push, rebase, borrar ramas, worktrees o archivos, tocar la carpeta ../../desktop, integrar ProRes, implementar salida fullscreen u otras funciones nuevas, y declarar compatibilidad con Windows. Detente y reporta ante cualquier conflicto o decisión de arquitectura. Al terminar: abre un PR con la evidencia en desktop/docs/TEST-RESULTS.md y reporta qué funcionó, qué falló y qué no se probó."
 ```
 
-Start only the agents whose tasks the user has approved. A task outside an agent's brief goes in its opening message, as Sprint 1 did.
+Phase C (Output Engineering, full-screen output) starts only after the owner approves it once Phase B passes. Product Design, Content Engineering and LED Engineering stay stopped.
