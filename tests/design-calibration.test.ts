@@ -162,12 +162,12 @@ describe("calibration geometry", () => {
 });
 
 describe("calibration labels", () => {
-  it("carries identifier, name, resolution, canvas coordinates and output in both modes", () => {
-    for (const mode of MODES) {
-      const { frame } = keynote(mode, "center");
-      const texts = labels(frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
-      expect(texts).toEqual(expect.arrayContaining(["SCR-01", "SCR-02", "SCR-03", "LEFT SIDE", "MAIN WALL", "RIGHT SIDE", "2688 × 1536 PX", "768 × 1536 PX", "X 768  Y 0", "X 3456  Y 0", "OUT 1 · MEDIA SERVER", "TOP"]));
-    }
+  it("carries identifier, name, resolution, canvas coordinates and output in calibration; name, resolution and size in identification", () => {
+    const calib = labels(keynote("calibration", "center").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
+    expect(calib).toEqual(expect.arrayContaining(["SCR-01", "SCR-02", "SCR-03", "LEFT SIDE", "MAIN WALL", "RIGHT SIDE", "2688 × 1536 PX", "768 × 1536 PX", "X 768  Y 0", "X 3456  Y 0", "OUT 1 · MEDIA SERVER", "TOP"]));
+    // Identification's center plate, as on a stage test card: physical size from the mapping's micrometres.
+    const ident = labels(keynote("identification", "center").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
+    expect(ident).toEqual(expect.arrayContaining(["SCR-01", "SCR-02", "SCR-03", "LEFT SIDE", "MAIN WALL", "RIGHT SIDE", "W 2688 x H 1536", "W 768 x H 1536", "W 7.000m x H 4.000m", "W 2.000m x H 4.000m", "TOP"]));
     // Calibration adds the last pixel of each screen on the master canvas.
     const texts = labels(keynote("calibration").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
     expect(texts).toEqual(expect.arrayContaining(["X 3455  Y 1535", "X 4223  Y 1535", "CAB 14 × 8 · 192 × 192 PX", "GRID 48 PX", "CONTENT 30 FPS"]));
@@ -217,8 +217,8 @@ describe("calibration labels", () => {
         expect(texts, `${width}×${height} ${mode}`).toContain("SCR-01");
       }
     }
-    // Long names are shortened with an ellipsis, never cut by the screen edge.
-    const texts = labels(single(160, 600, "identification", "off").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
+    // Long names shrink first, then are shortened with an ellipsis, never cut by the screen edge.
+    const texts = labels(single(96, 1024, "identification", "off").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
     expect(texts.some((t) => t.endsWith("…"))).toBe(true);
   });
 
