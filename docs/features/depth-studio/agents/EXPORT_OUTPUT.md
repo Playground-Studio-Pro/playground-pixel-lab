@@ -1,0 +1,2 @@
+# Agent — Export & Output
+Mission: connect deterministic scene rendering to current fullscreen/second-screen output and truthful export pipeline. First audit existing output implementation; write feasibility note before editing. Implement fixed-timestep capture with exact dimensions/frame count where possible; validate MIME/codec/container; do not mislabel WebM as MP4. Preserve existing output behavior. Handle unsupported codecs and large canvas errors. Return branch, commit, test matrix, limitations and instructions.

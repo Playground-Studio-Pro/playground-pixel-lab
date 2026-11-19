@@ -1,0 +1,2 @@
+# Agent — UX & Presets
+Mission: premium, production-first Depth Studio UI integrated into existing Content Generator without redesigning shell. Read existing design system and scene contract. Build viewport/inspector/preset selector, controls, save/reset, timeline and safe error states. Start with typed mock renderer adapter until integration ready. Only one polished preset (Emerald Chamber) is required. Avoid broad state-store changes. Return branch, commit, screenshots and tests.
