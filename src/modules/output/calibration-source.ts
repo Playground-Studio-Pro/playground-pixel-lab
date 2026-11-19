@@ -1,9 +1,10 @@
-import { drawCalibration } from "@/components/shell/calibration/draw";
+import { drawCalibration, type LogoRaster } from "@/components/shell/calibration/draw";
 import { buildCalibrationFrame, type CalibrationFrame, type CalibrationMode, type CalibrationScreen, type LogoMode } from "@/components/shell/calibration/frame";
 import { calibrationTargets, screenLabel } from "@/components/shell/calibration/from-mapping";
 import { CAL_COLORS, CAL_LOGO_ASSET, screenAccent } from "@/components/shell/calibration/tokens";
 import type { FrameInput, FrameSource } from "@/preview/contract";
 import { useCalibrationSource } from "./calibration-store";
+import { createLogoRaster } from "./logo-raster";
 
 /**
  * The calibration test card as a `FrameSource`: Product Design's identification and calibration frames
@@ -21,7 +22,7 @@ import { useCalibrationSource } from "./calibration-store";
 
 const FALLBACK_FONT = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
-let logo: HTMLImageElement | null = null;
+let logo: LogoRaster | null = null;
 let fontFamily = FALLBACK_FONT;
 let preparing: Promise<CalibrationAssets> | null = null;
 
@@ -40,7 +41,7 @@ export function prepareCalibrationSource(): Promise<CalibrationAssets> {
   const image = new Promise<void>((resolve) => {
     const img = new Image();
     img.onload = () => {
-      logo = img;
+      logo = createLogoRaster(img);
       resolve();
     };
     img.onerror = () => resolve();

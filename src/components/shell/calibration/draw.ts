@@ -6,11 +6,22 @@ export interface CalibrationDrawOptions {
   /** Device pixels per frame pixel. Exactly 1 for exported frames and full-size output. */
   readonly scale: number;
   readonly fontFamily: string;
-  /** The decoded logo, or null while it loads. Drawn at the frame's logo rectangle, never stretched. */
-  readonly logo: CanvasImageSource | null;
+  /**
+   * The decoded logo, or null while it loads. Drawn at the frame's logo rectangle, never stretched. A
+   * `LogoRaster` hands over the logo already resized to that rectangle, drawn 1:1, so the pixels don't depend
+   * on how the browser filters a scaled `drawImage` (it differs between GPU and CPU canvases).
+   */
+  readonly logo: CanvasImageSource | LogoRaster | null;
   readonly frame: number;
   readonly fps: ContentFps;
 }
+
+/** The logo pre-resized to an exact device size. Same size, same pixels, on any canvas. */
+export interface LogoRaster {
+  at(width: number, height: number): CanvasImageSource | null;
+}
+
+const isRaster = (logo: CanvasImageSource | LogoRaster): logo is LogoRaster => typeof (logo as LogoRaster).at === "function";
 
 /** Which nodes to draw. Counters go on their own layer so playback redraws a few glyphs, not the frame. */
 export type CalibrationLayer = "static" | "counters";
@@ -45,9 +56,13 @@ export function drawCalibration(ctx: CanvasRenderingContext2D, frame: Calibratio
     } else if (node.kind === "text") {
       text(node, node.text);
     } else if (options.logo) {
-      ctx.globalAlpha = node.opacity;
-      ctx.drawImage(options.logo, Math.round(node.x * scale), Math.round(node.y * scale), Math.round(node.width * scale), Math.round(node.height * scale));
-      ctx.globalAlpha = 1;
+      const [x, y, w, h] = [Math.round(node.x * scale), Math.round(node.y * scale), Math.round(node.width * scale), Math.round(node.height * scale)];
+      const image = isRaster(options.logo) ? options.logo.at(w, h) : options.logo;
+      if (image) {
+        ctx.globalAlpha = node.opacity;
+        ctx.drawImage(image, x, y, w, h);
+        ctx.globalAlpha = 1;
+      }
     }
   }
 }
