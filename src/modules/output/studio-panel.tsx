@@ -5,18 +5,18 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Readout, Section, SelectField } from "@/components/workspace/fields";
 import { CONTENT_FPS, type ContentFps } from "@/domain/motion";
+import { OUTPUT_SOURCE_IDS } from "@/domain/physical-output";
 import { videoTargets, type VideoTarget } from "@/engines/video-targets";
 import { assertExportable, slugify } from "@/exports/gate";
 import { MODULE_SOURCES } from "@/modules/catalog";
-import { createDepthSource, depthMaxSize } from "@/modules/depth-studio/source";
 import { useDepth } from "@/modules/depth-studio/depth-store";
 import type { FrameInput, FrameSource } from "@/preview/contract";
 import { useApp } from "@/state/store";
 import { useMotion } from "@/state/motion-store";
 import { CalibrationSourceControls } from "./calibration-controls";
-import { createCalibrationSource, currentCalibrationSettings, prepareCalibrationSource } from "./calibration-source";
 import { useCalibrationSource } from "./calibration-store";
-import { createPixelGridSource, PIXEL_GRID_LIVE_SETTINGS, PIXEL_GRID_SOURCE_ID } from "./pixel-grid-source";
+import { createOutputSource, frozenSettings } from "./output-sources";
+import { PIXEL_GRID_SOURCE_ID } from "./pixel-grid-source";
 import { targetSource } from "./target-source";
 import { exportMp4 } from "./video-export";
 
@@ -44,19 +44,11 @@ function download(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** The source as it will be exported: settings fixed now. Throws with a message a person can act on. */
-async function frozenSource(sourceId: string, master: { width: number; height: number }): Promise<FrameSource> {
-  if (sourceId === DEPTH) {
-    const max = depthMaxSize();
-    if (max === null) throw new Error("Depth Studio needs WebGL 2, which this browser doesn't provide.");
-    if (Math.max(master.width, master.height) > max) throw new Error(`The master canvas is larger than this GPU renders without scaling (${max} px a side). It is never scaled down.`);
-    return createDepthSource(useDepth.getState().config);
-  }
-  if (sourceId === PIXEL_GRID_SOURCE_ID) return createPixelGridSource(PIXEL_GRID_LIVE_SETTINGS);
-  const settings = currentCalibrationSettings();
-  const assets = await prepareCalibrationSource();
-  if (settings.logo !== "off" && !assets.logo) throw new Error("The Playground Studio logo didn't load, so the test card can't be exported with it. Reload, or set the logo to Off.");
-  return createCalibrationSource(settings);
+/** The source as it will be exported: settings fixed now, through the same table the output window uses. */
+function frozenSource(sourceId: string, master: { width: number; height: number }): Promise<FrameSource> {
+  const id = OUTPUT_SOURCE_IDS.find((s) => s === sourceId);
+  if (!id) return Promise.reject(new Error(`"${sourceId}" can't be exported.`));
+  return createOutputSource(id, frozenSettings(id), master);
 }
 
 /** Output Studio: export the current content as an H.264 MP4, for the master canvas, an output or a screen. */
