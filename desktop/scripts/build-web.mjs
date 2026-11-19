@@ -12,4 +12,11 @@ await access(path.join(root, 'out/index.html'));
 const destination = path.join(desktopRoot, 'web');
 await rm(destination, { recursive: true, force: true });
 await cp(path.join(root, 'out'), destination, { recursive: true });
+// The output window's page is src/app/output/page.tsx (Output Engineering, O4), exported as output.html.
+// Until it exists, ship Desktop's black stub so the output window has its allowlisted page (Phase C D4).
+try { await access(path.join(destination, 'output.html')); }
+catch {
+  await cp(path.join(desktopRoot, 'resources', 'output-stub.html'), path.join(destination, 'output.html'));
+  console.log('Output page not in the export yet (O4): using desktop/resources/output-stub.html as web/output.html');
+}
 console.log(`Desktop web assets: ${destination}`);
