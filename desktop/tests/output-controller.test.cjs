@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createOutputController, outputKeyAction, OPEN_TIMEOUT_MS } = require('../src/output-controller.cjs');
+const { createOutputController, outputKeyAction, OPEN_TIMEOUT_MS, PROBE_INTERVAL_MS, UNRESPONSIVE_MS } = require('../src/output-controller.cjs');
 
 const builtIn = {
   key: { label: 'Built-in Retina Display', devicePx: { width: 3600, height: 2338 }, internal: true, electronId: 1 },
@@ -25,7 +25,7 @@ const report = (extra = {}) => ({
   contentBoxDevicePx: { width: 1920, height: 1080 }, ...extra,
 });
 
-function setup({ displays = [builtIn, external], maxOutputs } = {}) {
+function setup({ displays = [builtIn, external], maxOutputs, probe } = {}) {
   const log = [];
   const statuses = [];
   const timers = new Map();
@@ -41,12 +41,16 @@ function setup({ displays = [builtIn, external], maxOutputs } = {}) {
     blocker: { start: type => { assert.equal(type, 'prevent-display-sleep'); const b = nextBlocker++; started.add(b); return b; }, stop: b => started.delete(b) },
     timers: { setTimeout: (fn, ms) => { const h = nextTimer++; timers.set(h, { fn, ms }); return h; }, clearTimeout: h => timers.delete(h) },
     now: () => clock,
+    reloadWindow: id => log.push(['reload', id]),
+    ...(probe ? { probe } : {}),
     ...(maxOutputs ? { maxOutputs } : {}),
   });
   return {
     controller, log, statuses, timers, started,
     tick: ms => { clock += ms; },
-    fireTimers: () => { for (const [h, t] of [...timers]) { timers.delete(h); t.fn(); } },
+    /** Pending timers of one duration: the open / first-frame timeouts are 10 s, the watchdog 1 s. */
+    pending: (ms = OPEN_TIMEOUT_MS) => [...timers.values()].filter(t => t.ms === ms).length,
+    fireTimers: (ms = OPEN_TIMEOUT_MS) => { for (const [h, t] of [...timers]) if (t.ms === ms) { timers.delete(h); t.fn(); } },
     codeOf: fn => { try { fn(); } catch (e) { return e.code; } return null; },
   };
 }
@@ -57,15 +61,15 @@ test('open → opening → live: session after ready, live on the first drawn fr
   const opening = t.controller.open(request());
   assert.equal(opening.state, 'opening');
   assert.deepEqual(t.log, [['open', 'OUT1', 2]]);
-  assert.equal(t.timers.size, 1);
-  assert.equal([...t.timers.values()][0].ms, OPEN_TIMEOUT_MS);
+  assert.equal(t.pending(), 1);
+  assert.equal(t.pending(PROBE_INTERVAL_MS), 1, 'watchdog running');
   assert.equal(t.controller.sleepBlockerId(), null);
   // A report before the session went out doesn't make it live.
   assert.equal(t.controller.onReport('OUT1', report()), true);
   assert.equal(t.controller.status('OUT1').state, 'opening');
   t.controller.onReady('OUT1');
   assert.deepEqual(t.log.at(-1), ['session', 'OUT1', 3, 2]);
-  assert.equal(t.timers.size, 0, 'ready clears the open timeout');
+  assert.equal(t.pending(), 1, 'ready swaps the open timeout for the first-frame timeout');
   t.tick(500);
   t.controller.onReport('OUT1', report({ sessionRevision: 2 }));   // an older revision isn't this session's first frame
   assert.equal(t.controller.status('OUT1').state, 'opening');
@@ -111,7 +115,7 @@ test('closing while opening clears the timeout; a closed output ignores late mes
   const t = setup();
   t.controller.open(request());
   t.controller.close('OUT1');
-  assert.equal(t.timers.size, 0);
+  assert.equal(t.timers.size, 0, 'timeout and watchdog cleared');
   t.controller.onReady('OUT1');
   assert.equal(t.controller.onReport('OUT1', report()), false);
   assert.equal(t.log.filter(l => l[0] === 'session').length, 0);
@@ -182,7 +186,7 @@ test('opening → failed: OPEN_TIMEOUT, LOAD_FAILED, and a page error before any
   assert.equal(s.state, 'failed');
   assert.equal(s.error.code, 'LOAD_FAILED');
   assert.match(s.error.message, /ERR_FILE_NOT_FOUND/);
-  assert.equal(load.timers.size, 0);
+  assert.equal(load.pending(), 0);
 
   const page = setup();
   page.controller.open(request());
@@ -257,4 +261,144 @@ test('Esc closes, zoom keys are swallowed, everything else passes', () => {
   assert.equal(outputKeyAction({ type: 'keyDown', key: '0' }), null);
   assert.equal(outputKeyAction({ type: 'keyDown', key: 'a' }), null);
   assert.equal(outputKeyAction(null), null);
+});
+
+// ── D8: failures ──────────────────────────────────────────────────────────────
+const flush = () => new Promise(resolve => setImmediate(resolve));
+function liveSetup(options) {
+  const t = setup(options);
+  t.controller.open(request());
+  t.controller.onReady('OUT1');
+  t.controller.onReport('OUT1', report());
+  assert.equal(t.controller.status('OUT1').state, 'live');
+  return t;
+}
+function controllableProbe() {
+  const pending = [];
+  return { pending, probe: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) };
+}
+
+test('renderer gone while live → failed, window kept and shown black, blocker released; only retry or close leave it', async () => {
+  const p = controllableProbe();
+  const t = liveSetup({ probe: p.probe });
+  const shows = t.log.filter(l => l[0] === 'show').length;
+  t.controller.onRendererGone('OUT1', 'crashed');
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'failed');
+  assert.deepEqual(s.error, { code: 'RENDERER_GONE', message: 'The output renderer stopped (crashed)' });
+  assert.equal(t.log.filter(l => l[0] === 'show').length, shows + 1, 'D-1: shown, not closed');
+  assert.ok(!t.log.some(l => l[0] === 'close'));
+  assert.equal(t.started.size, 0);
+  assert.equal(t.statuses.at(-1).error.code, 'RENDERER_GONE', 'pushed at once');
+  // An answer or a report doesn't revive a crashed renderer.
+  t.tick(1000); t.fireTimers(PROBE_INTERVAL_MS); await flush();
+  p.pending.forEach(x => x.resolve());
+  await flush();
+  t.tick(1000);
+  t.controller.onReport('OUT1', report());
+  assert.equal(t.controller.status('OUT1').state, 'failed');
+});
+
+test('renderer gone while opening → failed RENDERER_GONE', () => {
+  const t = setup();
+  t.controller.open(request());
+  t.controller.onRendererGone('OUT1', 'oom');
+  assert.equal(t.controller.status('OUT1').error.code, 'RENDERER_GONE');
+  assert.equal(t.pending(), 0, 'open timeout cleared');
+});
+
+test('retry: one reload, the latest session re-sent on ready, then live again', () => {
+  const t = liveSetup();
+  t.controller.onRendererGone('OUT1', 'crashed');
+  const retrying = t.controller.retry('OUT1');
+  assert.equal(retrying.state, 'opening');
+  assert.equal(retrying.error, null);
+  assert.equal(retrying.render, null);
+  assert.deepEqual(t.log.at(-1), ['reload', 'OUT1']);
+  assert.equal(t.pending(), 1, 'open timeout restarted');
+  t.controller.onReady('OUT1');
+  assert.deepEqual(t.log.at(-1), ['session', 'OUT1', 3, 2]);
+  t.tick(1000);
+  t.controller.onReport('OUT1', report());
+  assert.equal(t.controller.status('OUT1').state, 'live');
+  assert.equal(t.started.size, 1);
+  // A retry that fails again goes back to failed.
+  t.controller.onRendererGone('OUT1');
+  t.controller.retry('OUT1');
+  t.fireTimers();
+  assert.equal(t.controller.status('OUT1').error.code, 'OPEN_TIMEOUT');
+});
+
+test('retry outside failed changes nothing; "*" is refused', () => {
+  const t = liveSetup();
+  const reloads = () => t.log.filter(l => l[0] === 'reload').length;
+  assert.equal(t.controller.retry('OUT1').state, 'live');
+  assert.equal(t.controller.retry('OUT9').state, 'closed');
+  assert.equal(reloads(), 0);
+  assert.equal(t.codeOf(() => t.controller.retry('*')), 'BAD_REQUEST');
+  assert.equal(t.codeOf(() => t.controller.retry('bad id!')), 'BAD_REQUEST');
+});
+
+test('ready but no first frame within 10 s → failed OPEN_TIMEOUT', () => {
+  const t = setup();
+  t.controller.open(request());
+  t.controller.onReady('OUT1');
+  t.fireTimers();
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'failed');
+  assert.equal(s.error.code, 'OPEN_TIMEOUT');
+  assert.match(s.error.message, /no first frame/);
+});
+
+test('hang: no answer for 5 s while live → RENDERER_UNRESPONSIVE; an answer brings it back to live', async () => {
+  const p = controllableProbe();
+  const t = liveSetup({ probe: p.probe });
+  const step = async () => { t.tick(PROBE_INTERVAL_MS); t.fireTimers(PROBE_INTERVAL_MS); await flush(); };
+  for (let i = 0; i < 4; i += 1) await step();
+  assert.equal(t.controller.status('OUT1').state, 'live', '4 s without an answer is still live');
+  assert.equal(p.pending.length, 1, 'one probe at a time');
+  await step();
+  let s = t.controller.status('OUT1');
+  assert.equal(s.state, 'failed');
+  assert.equal(s.error.code, 'RENDERER_UNRESPONSIVE');
+  assert.equal(t.started.size, 0);
+  assert.ok(!t.log.some(l => l[0] === 'close'), 'frozen frame stays on screen');
+  p.pending.shift().resolve();
+  await flush();
+  s = t.controller.status('OUT1');
+  assert.equal(s.state, 'live');
+  assert.equal(s.error, null);
+  assert.equal(t.started.size, 1);
+  // Answers keep it live; so do reports.
+  for (let i = 0; i < 10; i += 1) { await step(); p.pending.splice(0).forEach(x => x.resolve()); await flush(); }
+  assert.equal(t.controller.status('OUT1').state, 'live');
+  for (let i = 0; i < 10; i += 1) { await step(); t.controller.onReport('OUT1', report()); }
+  assert.equal(t.controller.status('OUT1').state, 'live', 'reports count as answers');
+});
+
+test('a rejected probe (timeout) is retried, and Close works while unresponsive', async () => {
+  const p = controllableProbe();
+  const t = liveSetup({ probe: p.probe });
+  const step = async () => { t.tick(PROBE_INTERVAL_MS); t.fireTimers(PROBE_INTERVAL_MS); await flush(); };
+  await step();
+  p.pending.shift().reject(new Error('probe timeout'));
+  await flush();
+  await step();
+  assert.equal(p.pending.length, 1, 'a new probe after the rejected one');
+  for (let i = 0; i < UNRESPONSIVE_MS / PROBE_INTERVAL_MS; i += 1) await step();
+  assert.equal(t.controller.status('OUT1').error.code, 'RENDERER_UNRESPONSIVE');
+  t.controller.close('OUT1');
+  assert.equal(t.controller.status('OUT1').state, 'closed');
+  assert.equal(t.timers.size, 0, 'watchdog stopped');
+  p.pending.splice(0).forEach(x => x.resolve());
+  await flush();
+  assert.deepEqual(t.controller.statusAll(), []);
+});
+
+test('the watchdog never fails an opening output (the open timeouts cover it)', async () => {
+  const p = controllableProbe();
+  const t = setup({ probe: p.probe });
+  t.controller.open(request());
+  for (let i = 0; i < 8; i += 1) { t.tick(PROBE_INTERVAL_MS); t.fireTimers(PROBE_INTERVAL_MS); await flush(); }
+  assert.equal(t.controller.status('OUT1').state, 'opening');
 });

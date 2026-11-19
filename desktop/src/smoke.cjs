@@ -131,5 +131,61 @@ async function smokeOutput(window, hooks, displays) {
   const states = await statesSeen();
   await control('window.__unsubscribe()');
   assert.deepEqual(states.filter((s, i) => s !== states[i - 1]), ['opening', 'live', 'closed', 'opening', 'live', 'closed'], 'status pushes');
-  return { url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
+
+  // D8: renderer crash → failed (black, kept) → retry → live; a hang → RENDERER_UNRESPONSIVE → answers again → live;
+  // Esc while failed from a hang; Close after a crash.
+  await control(`window.__outputStatuses = []; window.__unsubscribe = window.pixelLabDesktop.output.onStatus(s => window.__outputStatuses.push(s.state + (s.error ? ':' + s.error.code : ''))); 1`);
+  const errorOf = () => hooks.outputs.status(id).error?.code || null;
+  const openLive = async () => { await control(`window.pixelLabDesktop.output.open(${JSON.stringify(request(true))})`); await until(() => stateOf() === 'live', 2000, 'live'); return hooks.windows.output(id); };
+  const hangFor = (win, ms) => win.webContents.executeJavaScript(`setTimeout(() => { const end = Date.now() + ${ms}; while (Date.now() < end) {} }, 0); 1`);
+  let win = await openLive();
+  const tCrash = Date.now();
+  win.webContents.forcefullyCrashRenderer();
+  await until(() => stateOf() === 'failed' && errorOf() === 'RENDERER_GONE', 1000, 'RENDERER_GONE within 1 s');
+  const crash = { ms: Date.now() - tCrash, kept: !win.isDestroyed() && win.isVisible(), blocking: blocking() };
+  assert.equal(crash.kept, true, 'D-1: the crashed window stays on screen, black');
+  assert.equal(crash.blocking, false);
+  const notFailed = await control(`window.pixelLabDesktop.output.retry('nope')`);
+  assert.equal(notFailed.state, 'closed', 'retry of an output that is not open changes nothing');
+  const tRetry = Date.now();
+  const retrying = await control(`window.pixelLabDesktop.output.retry('${id}')`);
+  assert.equal(retrying.state, 'opening');
+  await until(() => stateOf() === 'live', 2000, 'retry → live within 2 s');
+  const retryMs = Date.now() - tRetry;
+  assert.equal(blocking(), true);
+  assert.equal(win.webContents.getURL(), hooks.outputURL);
+
+  const tHang = Date.now();
+  await hangFor(win, 8000);
+  await until(() => stateOf() === 'failed' && errorOf() === 'RENDERER_UNRESPONSIVE', 7000, 'RENDERER_UNRESPONSIVE');
+  const unresponsiveMs = Date.now() - tHang;
+  assert.ok(unresponsiveMs >= 5000 && unresponsiveMs < 7000, `unresponsive after ${unresponsiveMs} ms`);
+  assert.equal(win.isVisible(), true, 'frozen frame stays on screen');
+  assert.equal(blocking(), false);
+  await until(() => stateOf() === 'live', 6000, 'back to live once the page answers');
+  const recoverMs = Date.now() - tHang;
+  assert.equal(errorOf(), null);
+  assert.equal(blocking(), true);
+
+  await hangFor(win, 15000);
+  await until(() => stateOf() === 'failed' && errorOf() === 'RENDERER_UNRESPONSIVE', 7000, 'unresponsive again');
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+  await until(() => stateOf() === 'closed' && hooks.windows.outputIds().length === 0, 2000, 'Esc while failed');
+
+  win = await openLive();
+  win.webContents.forcefullyCrashRenderer();
+  await until(() => stateOf() === 'failed', 1000, 'crashed again');
+  await control(`window.pixelLabDesktop.output.close('${id}')`);
+  await until(() => stateOf() === 'closed' && hooks.windows.outputIds().length === 0, 2000, 'Close after a crash');
+  assert.equal(blocking(), false);
+  await sleep(100);
+  const d8States = await statesSeen();
+  await control('window.__unsubscribe()');
+  assert.deepEqual(d8States.filter((s, i) => s !== d8States[i - 1]), [
+    'opening', 'live', 'failed:RENDERER_GONE', 'opening', 'live', 'failed:RENDERER_UNRESPONSIVE', 'live',
+    'failed:RENDERER_UNRESPONSIVE', 'closed', 'opening', 'live', 'failed:RENDERER_GONE', 'closed',
+  ], 'D8 status pushes');
+  const d8 = { crashToFailedMs: crash.ms, retryToLiveMs: retryMs, hangToUnresponsiveMs: unresponsiveMs, hangEndToLiveMs: recoverMs - 8000 };
+
+  return { d8, url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
 }
