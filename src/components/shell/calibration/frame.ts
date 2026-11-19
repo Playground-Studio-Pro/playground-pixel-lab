@@ -1,7 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
 import { timecode } from "@/engines/motion/clock";
-import { CAL_ADVANCE, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_TINT, tint } from "./tokens";
+import { CAL_ADVANCE, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_SWEEP, CAL_TINT, tint } from "./tokens";
 
 /**
  * Screen identification and calibration frames, as drawing primitives in exact integer pixels.
@@ -53,6 +53,11 @@ export interface CalibrationInput {
   readonly elements?: Partial<CalibrationElements>;
   /** Content rate the frame counter is labelled with. Not a browser or panel rate. */
   readonly fps: ContentFps;
+  /**
+   * A moving card: a sweep bar crosses the master (`CAL_SWEEP`), and identification mode shows the frame
+   * counter and timecode too. Off for still frames such as the Preview dialog's PNG.
+   */
+  readonly motion?: boolean;
 }
 
 export type CounterField = "frame" | "timecode";
@@ -77,6 +82,109 @@ export type CalNode =
   | ({ readonly kind: "counter"; readonly field: CounterField } & TextStyle)
   | { readonly kind: "logo"; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly opacity: number };
 
+/** A bar `barWidth` wide crossing `width` once every `period` frames, wrapping at the right edge. */
+export interface Sweep {
+  readonly width: number;
+  readonly barWidth: number;
+  readonly period: number;
+  /** The screens it is drawn on. Master pixels no screen covers stay black. */
+  readonly areas: readonly Box[];
+  /** One edge marker per screen large enough for it (`edgeMarkerRects`). */
+  readonly edges: readonly EdgeTrack[];
+  readonly fill: string;
+}
+
+/**
+ * A marker running clockwise around the inside of a screen from its top-left: a band `thickness` px wide,
+ * `inset` px in from the screen's outer pixel, `length` px long, once per period.
+ */
+export interface EdgeTrack {
+  readonly box: Box;
+  readonly inset: number;
+  readonly thickness: number;
+  readonly length: number;
+}
+
+const even = (n: number) => n - (n % 2);
+
+/** Bar width for a master `width` px wide: `CAL_SWEEP.width`, even, at least 2. */
+export function sweepBarWidth(width: number): number {
+  const rule = CAL_SWEEP.width;
+  return Math.max(2, even(Math.min(Math.max(Math.round(width * rule.ratio), rule.min), Math.floor(width * rule.maxShare))));
+}
+
+/** The edge track of a screen, or null when it is too small to carry one beside its border. */
+export function edgeTrack(box: Box): EdgeTrack | null {
+  const rule = CAL_SWEEP.edge;
+  const m = Math.min(box.width, box.height);
+  const thickness = clamp(Math.round(m * rule.thickness.ratio), rule.thickness.min, rule.thickness.max);
+  const inner = m - 2 * rule.inset - thickness;
+  if (m < 24 || inner < thickness) return null;
+  const perimeter = 2 * (box.width - 2 * rule.inset - thickness) + 2 * (box.height - 2 * rule.inset - thickness);
+  return { box, inset: rule.inset, thickness, length: Math.max(2 * thickness, Math.round(perimeter * rule.lengthShare)) };
+}
+
+/** The sweep for a frame `width` px wide at `fps`: one crossing per `CAL_SWEEP.seconds`. */
+export function sweepFor(width: number, fps: ContentFps, areas: readonly Box[]): Sweep {
+  return { width, barWidth: sweepBarWidth(width), period: CAL_SWEEP.seconds * fps, areas, edges: areas.flatMap((a) => edgeTrack(a) ?? []), fill: CAL_COLORS.white };
+}
+
+/**
+ * The edge marker's rectangles at `frame`. Its head is at `floor(phase × perimeter / period)` along the
+ * clockwise track (top, right, bottom, left); the part past the end wraps to the start, so one period later
+ * it is back where it began. Pure.
+ */
+export function edgeMarkerRects(track: EdgeTrack, period: number, frame: number): Box[] {
+  const { box, inset: d, thickness: t } = track;
+  const a = box.width - 2 * d - t;
+  const b = box.height - 2 * d - t;
+  const perimeter = 2 * a + 2 * b;
+  const phase = ((frame % period) + period) % period;
+  const start = Math.floor((phase * perimeter) / period);
+  const spans: [number, number][] = start + track.length <= perimeter ? [[start, start + track.length]] : [[start, perimeter], [0, start + track.length - perimeter]];
+  const edges: [number, number, (u: number, v: number) => Box][] = [
+    [0, a, (u, v) => ({ x: box.x + d + u, y: box.y + d, width: v - u + t, height: t })],
+    [a, a + b, (u, v) => ({ x: box.x + box.width - d - t, y: box.y + d + u - a, width: t, height: v - u + t })],
+    [a + b, 2 * a + b, (u, v) => ({ x: box.x + box.width - d - t - (v - a - b), y: box.y + box.height - d - t, width: v - u + t, height: t })],
+    [2 * a + b, perimeter, (u, v) => ({ x: box.x + d, y: box.y + box.height - d - t - (v - 2 * a - b), width: t, height: v - u + t })],
+  ];
+  const out: Box[] = [];
+  for (const [s0, s1] of spans) {
+    for (const [e0, e1, rect] of edges) {
+      const u = Math.max(s0, e0);
+      const v = Math.min(s1, e1);
+      if (v > u) out.push(rect(u, v));
+    }
+  }
+  return out;
+}
+
+/** Left edge of the bar at `frame`: `floor(phase × width / period)`, so each step is ⌊w/p⌋ or ⌈w/p⌉ px. */
+export function sweepLeft(sweep: Sweep, frame: number): number {
+  const phase = ((frame % sweep.period) + sweep.period) % sweep.period;
+  return Math.floor((phase * sweep.width) / sweep.period);
+}
+
+/**
+ * The bar's rectangles at `frame`, clipped to each screen. The part past the right edge wraps to the left, and
+ * one period later the bar is back where it started, so the bar is always visible and the last frame of a
+ * period leads into the first. Pure: same sweep and frame, same rectangles.
+ */
+export function sweepRects(sweep: Sweep, frame: number): Box[] {
+  const left = sweepLeft(sweep, frame);
+  const spans: [number, number][] = [[left, Math.min(left + sweep.barWidth, sweep.width)]];
+  if (left + sweep.barWidth > sweep.width) spans.push([0, left + sweep.barWidth - sweep.width]);
+  const out: Box[] = [];
+  for (const [x0, x1] of spans) {
+    for (const r of sweep.areas) {
+      const cx0 = Math.max(x0, r.x);
+      const cx1 = Math.min(x1, r.x + r.width);
+      if (cx1 > cx0 && r.height > 0) out.push({ x: cx0, y: r.y, width: cx1 - cx0, height: r.height });
+    }
+  }
+  return out;
+}
+
 export interface CalibrationFrame {
   readonly width: number;
   readonly height: number;
@@ -84,6 +192,11 @@ export interface CalibrationFrame {
   readonly nodes: readonly CalNode[];
   /** Area kept clear around a centered logo. Null in watermark and off modes. */
   readonly logoKeepOut: Box | null;
+  /**
+   * The sweep bar of a moving card, or null. Where it is depends on the frame number (`sweepRects`). It is
+   * drawn just before `nodes[sweep.before]`: over the field and grid, under lines, plates, marks, logo and text.
+   */
+  readonly sweep: (Sweep & { readonly before: number }) | null;
 }
 
 /** Fixed-width text for a counter: `F 000123` or a non-drop timecode. */
@@ -201,6 +314,7 @@ interface ScreenContext {
   readonly mode: CalibrationMode;
   readonly elements: CalibrationElements;
   readonly fps: ContentFps;
+  readonly motion: boolean;
   /** Areas this screen's labels and marks must stay out of: the logo, and overlaps another screen owns. */
   readonly obstacles: Box[];
   readonly logoKeepOut: Box | null;
@@ -208,6 +322,13 @@ interface ScreenContext {
   readonly placed: Box[];
   readonly layers: Layers;
 }
+
+/** Frame counter, timecode and content rate, as a corner block. */
+const counterLines = (title: number, base: number, fps: ContentFps): Line[] => [
+  { size: title, weight: 700, parts: [{ text: "0".repeat(COUNTER_CHARS.frame), fill: CAL_COLORS.white, counter: "frame" }] },
+  { size: base, weight: 600, parts: [{ text: "0".repeat(COUNTER_CHARS.timecode), fill: CAL_COLORS.white, counter: "timecode" }] },
+  { size: base, weight: 500, parts: [{ text: `CONTENT ${fps} FPS`, fill: CAL_COLORS.muted }] },
+];
 
 function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const { x, y, width: w, height: h } = s.rect;
@@ -466,6 +587,9 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
         }
       }
     }
+    // A moving card counts frames in identification too, in a corner, after the identifier and data have
+    // their room: it never covers them.
+    if (c.motion && c.elements.frameCounter) placeInCorners(counterLines(Math.round(base * 1.5), base, c.fps), ["tr", "bl", "br"]);
     return;
   }
 
@@ -541,14 +665,7 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
     }
   }
 
-  if (c.elements.frameCounter) {
-    const counter: Line[] = [
-      { size: title, weight: 700, parts: [{ text: "0".repeat(COUNTER_CHARS.frame), fill: CAL_COLORS.white, counter: "frame" }] },
-      { size: base, weight: 600, parts: [{ text: "0".repeat(COUNTER_CHARS.timecode), fill: CAL_COLORS.white, counter: "timecode" }] },
-      { size: base, weight: 500, parts: [{ text: `CONTENT ${c.fps} FPS`, fill: CAL_COLORS.muted }] },
-    ];
-    placeInCorners(counter, ["tr", "bl", "br"]);
-  }
+  if (c.elements.frameCounter) placeInCorners(counterLines(title, base, c.fps), ["tr", "bl", "br"]);
 
   if (c.elements.metadata) {
     // Bottom-right: the screen's last pixel on the master canvas.
@@ -578,13 +695,16 @@ export function buildCalibrationFrame(input: CalibrationInput): CalibrationFrame
       const shared = intersect(screen.rect, other.screen.rect);
       if (area(shared) > 0) obstacles.push(shared);
     }
-    layoutScreen(screen, { index, mode, elements, fps: input.fps, obstacles, logoKeepOut: keepOut, placed, layers });
+    layoutScreen(screen, { index, mode, elements, fps: input.fps, motion: input.motion === true, obstacles, logoKeepOut: keepOut, placed, layers });
   });
 
   const nodes: CalNode[] = [rectNode(0, 0, width, height, CAL_COLORS.black), ...layers.field, ...layers.grid];
+  // The sweep goes over the field and grid, under lines, label plates, marks, the logo and text: it never
+  // hides what a screen is.
+  const sweep = input.motion ? { ...sweepFor(width, input.fps, screens.map((sc) => sc.rect)), before: nodes.length } : null;
   if (logo && input.logo.mode === "watermark") nodes.push({ kind: "logo", ...logo, opacity: CAL_LOGO.watermark.opacity });
   nodes.push(...layers.lines, ...layers.plates, ...layers.marks);
   if (logo && keepOut) nodes.push(rectNode(keepOut.x, keepOut.y, keepOut.width, keepOut.height, CAL_COLORS.black), { kind: "logo", ...logo, opacity: CAL_LOGO.center.opacity });
   nodes.push(...layers.text);
-  return { width, height, mode, nodes, logoKeepOut: keepOut };
+  return { width, height, mode, nodes, logoKeepOut: keepOut, sweep };
 }

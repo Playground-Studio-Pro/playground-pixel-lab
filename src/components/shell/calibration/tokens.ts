@@ -57,6 +57,22 @@ export const CAL_ADVANCE = 0.6;
 /** Baseline below the top of a text box, as a share of the font size. */
 export const CAL_BASELINE = 0.78;
 
+/**
+ * Motion on a moving test card, one period of `seconds` for everything, which divides every export duration
+ * (5 to 60 s) so a file loops without a jump:
+ * - a white vertical bar crosses the whole master canvas (each step is ⌊w/p⌋ or ⌈w/p⌉ px), so continuity
+ *   between screens shows, a skipped or repeated frame shows as a jump and tearing as a broken bar. Its width
+ *   is `width.ratio` of the master, at least `width.min` px so it reads on a wall at distance, and never more
+ *   than `width.maxShare` of the master; always even.
+ * - an edge marker runs once around the inside of every screen, `edge.inset` px in from its outer pixel, so
+ *   a file or output of one screen always moves even when the bar is elsewhere on the master.
+ */
+export const CAL_SWEEP = {
+  seconds: 5,
+  width: { ratio: 1 / 100, min: 8, maxShare: 0.02 },
+  edge: { inset: 2, thickness: { ratio: 1 / 48, min: 4, max: 24 }, lengthShare: 1 / 20 },
+} as const;
+
 /** Logo height as a share of the frame's shorter side. */
 export const CAL_LOGO = {
   center: { height: 0.18, maxWidth: 0.5, opacity: 1 },
