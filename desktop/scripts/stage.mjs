@@ -11,7 +11,7 @@ export async function stage() {
   await access(path.join(source, 'node_modules/next/dist/bin/next'));
   await mkdir(stageRoot, { recursive: true });
   // Only owned staging paths are replaced. Never write to source app or its .next.
-  for (const name of ['src', 'public', 'tests', 'examples', 'scripts']) {
+  for (const name of ['src', 'public', 'tests', 'examples', 'scripts', 'prototypes']) {
     await rm(path.join(stageRoot, name), { recursive: true, force: true });
     try { await cp(path.join(source, name), path.join(stageRoot, name), { recursive: true }); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
