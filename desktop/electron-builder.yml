@@ -30,3 +30,12 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 publish: null
+# Flipped right before signing. resetAdHocDarwinSignature re-signs unsigned macOS builds after the flip.
+# Remote debugging has no fuse: src/main.cjs refuses --remote-debugging-* in packaged builds.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  resetAdHocDarwinSignature: true

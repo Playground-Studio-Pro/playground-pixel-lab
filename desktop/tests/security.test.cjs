@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { trustedURL, assertSender, validateText, safeName, assetPath, MAX_PROJECT_BYTES } = require('../src/security.cjs');
+const { trustedURL, assertSender, validateText, safeName, assetPath, MAX_PROJECT_BYTES, debugAccessViolations } = require('../src/security.cjs');
 const { ffmpegPath, probeFFmpeg } = require('../src/native.cjs');
 test('IPC rejects foreign origins, ports and child frames', () => {
   const origin = 'http://127.0.0.1:3210/';
@@ -42,4 +42,18 @@ test('packaging configuration validates against installed builder schema', async
   assert.deepEqual(config.mac.target[0].arch, ['arm64']);
   assert.deepEqual(config.win.target[0].arch, ['x64']);
   assert.equal(config.publish, null);
+});
+test('debugging switches and variables are detected for packaged builds', () => {
+  const clean = { argv: ['/Applications/Pixel Lab.app/Contents/MacOS/Pixel Lab', '-psn_0_123'], env: { HOME: '/Users/x', PIXEL_LAB_DEV_URL: 'http://127.0.0.1:3210/' }, hasSwitch: () => false };
+  assert.deepEqual(debugAccessViolations(clean), []);
+  assert.deepEqual(debugAccessViolations(), []);
+  for (const arg of ['--remote-debugging-port=9333', '--remote-debugging-pipe', '--inspect', '--inspect=9229', '--inspect-brk=0', '--inspect-port=9229', '--debug']) {
+    assert.equal(debugAccessViolations({ ...clean, argv: [...clean.argv, arg] }).length, 1, arg);
+  }
+  assert.deepEqual(debugAccessViolations({ ...clean, hasSwitch: name => name === 'remote-debugging-port' }), ['--remote-debugging-port']);
+  assert.deepEqual(debugAccessViolations({ ...clean, env: { ELECTRON_RUN_AS_NODE: '1' } }), ['ELECTRON_RUN_AS_NODE']);
+  assert.deepEqual(debugAccessViolations({ ...clean, env: { NODE_OPTIONS: '--inspect' } }), ['NODE_OPTIONS']);
+  assert.deepEqual(debugAccessViolations({ ...clean, env: { ELECTRON_RUN_AS_NODE: '', NODE_OPTIONS: '' } }), []);
+  // Look-alike names are not switches.
+  assert.deepEqual(debugAccessViolations({ ...clean, argv: [...clean.argv, '--inspector-ui', 'remote-debugging-port=1', '--debugger'] }), []);
 });

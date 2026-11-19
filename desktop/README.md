@@ -43,6 +43,8 @@ Windows staging uses a directory junction for installed web dependencies. Build 
 
 ## Security and optional integration API
 
+Packaged builds refuse to start with any remote-debugging or Node inspector switch, `ELECTRON_RUN_AS_NODE` or `NODE_OPTIONS`, and their Electron fuses disable RunAsNode, `NODE_OPTIONS`, inspector arguments and loading the app from outside the integrity-checked `app.asar`. Unpackaged development keeps `--remote-debugging-port`. See [test results](docs/TEST-RESULTS.md#debugging-locked-in-distributed-builds).
+
 The window uses sandboxing, context isolation, no Node integration, no webviews, denied popups, denied permissions and navigation limited to the configured origin. CSP allows Next's inline bootstrap scripts/styles; development additionally needs eval and loopback WebSocket access. Production does not allow eval. This POC does not claim that inline-script CSP eliminates XSS; a nonce/hash policy needs a separate Next integration review.
 
 Preload exposes only `window.pixelLabDesktop` (see [types](src/api.d.ts)):

@@ -32,4 +32,17 @@ function assetPath(root, rawURL) {
   if (!file.startsWith(path.resolve(root) + path.sep)) throw new Error('Asset outside web root');
   return file;
 }
-module.exports = { MAX_PROJECT_BYTES, trustedURL, assertSender, validateText, safeName, assetPath };
+// Debugging entry points a distributed build must refuse. Chromium switches and Node inspector flags.
+const DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'remote-debugging-address', 'inspect', 'inspect-brk', 'inspect-port', 'inspect-publish-uid', 'debug', 'debug-brk'];
+const DEBUG_ENV = ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS'];
+// Pure: lists every debugging switch or variable present. main.cjs refuses to start a packaged app when this is non-empty.
+function debugAccessViolations({ argv = [], env = {}, hasSwitch = () => false } = {}) {
+  const found = new Set();
+  for (const name of DEBUG_SWITCHES) {
+    if (hasSwitch(name)) found.add(`--${name}`);
+    for (const arg of argv) if (typeof arg === 'string' && (arg === `--${name}` || arg.startsWith(`--${name}=`))) found.add(`--${name}`);
+  }
+  for (const name of DEBUG_ENV) if (typeof env[name] === 'string' && env[name] !== '') found.add(name);
+  return [...found];
+}
+module.exports = { MAX_PROJECT_BYTES, trustedURL, assertSender, validateText, safeName, assetPath, DEBUG_SWITCHES, debugAccessViolations };

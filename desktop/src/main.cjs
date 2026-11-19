@@ -2,8 +2,18 @@ const { app, BrowserWindow, protocol, net, ipcMain, dialog, session } = require(
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
-const { assertSender, trustedURL, validateText, safeName, assetPath, MAX_PROJECT_BYTES } = require('./security.cjs');
+const { assertSender, trustedURL, validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, debugAccessViolations } = require('./security.cjs');
 const { probeFFmpeg } = require('./native.cjs');
+// Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
+// Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
+if (app.isPackaged) {
+  const violations = debugAccessViolations({ argv: process.argv, env: process.env, hasSwitch: name => app.commandLine.hasSwitch(name) });
+  if (violations.length) {
+    for (const name of DEBUG_SWITCHES) app.commandLine.removeSwitch(name);
+    console.error(`Pixel Lab refuses to start: debugging is disabled in distributed builds (${violations.join(', ')}).`);
+    process.exit(1);
+  }
+}
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 const devURL = !app.isPackaged && process.env.PIXEL_LAB_DEV_URL;
 if (devURL && !/^http:\/\/127\.0\.0\.1:\d+\/$/.test(devURL)) throw new Error('Development URL must be a numeric loopback origin');

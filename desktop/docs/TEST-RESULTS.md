@@ -46,7 +46,7 @@ In Electron, `document.fonts` reports Inter loaded, and the calibration face loa
 | `npm run lint` | Pass |
 | `npm test` | 302/302 tests in 23 files |
 | `npm run build`, with outbound network denied | Pass |
-| `npm --prefix desktop test` | 5/5 |
+| `npm --prefix desktop test` | 6/6 (5 before the debugging guard) |
 | `npm --prefix desktop run build:web`, with outbound network denied | Pass after the staging fix below. Static output 2.4 MB |
 
 "Outbound network denied" means run under `sandbox-exec` with a profile that denies every remote IP except localhost; `curl https://github.com` fails inside it.
@@ -128,11 +128,50 @@ npm --prefix desktop run pack:mac   # build:web + electron-builder --mac --arm64
 ```
 
 - Output `desktop/dist/mac-arm64/Pixel Lab.app`, **301 MB**. electron-builder downloaded its own copy of the Electron zip for packaging (it doesn't reuse `node_modules/electron`): packaging needs network the first time.
-- Signing skipped (no Developer ID). The bundle carries only Electron's ad-hoc linker signature; `codesign -dv` shows `Identifier=Electron`, and `spctl -a` rejects it ("code has no resources but signature indicates they must be present").
+- Signing skipped (no Developer ID). Since the fuses below, electron-builder re-signs the bundle ad-hoc after flipping them: `codesign --verify --deep --strict` passes and `codesign -dv` shows `Identifier=studio.playground.pixellab`, `flags=0x2(adhoc)`, no team. Before the fuses it carried only Electron's linker signature, which `spctl` rejected as inconsistent. Ad-hoc is still not Gatekeeper-approved on another Mac.
 - Default Electron icon (no product icon set).
 - Copied with `ditto` to `…/Pixel Lab Test/Ruta con espacios/Pixel Lab.app` and opened with `open -n`. It launches, loads `app://pixellab/`, reopens the last project and renders the Output test card ([11](evidence/phase-b/11-packaged-output.jpg)).
 - It ran because a locally built app isn't quarantined. A copy downloaded or AirDropped to another Mac will be blocked by Gatekeeper until it's signed and notarized (or the user overrides it).
-- `--remote-debugging-port` works on the packaged app. Harmless for this test, but a release should refuse it.
+
+### Debugging locked in distributed builds
+
+Asked by the owner before merging. Two layers, both only when `app.isPackaged`:
+
+1. **Startup guard** in `src/main.cjs`, before anything else runs: `debugAccessViolations()` (`src/security.cjs`, pure, unit-tested) checks `app.commandLine.hasSwitch()` and `process.argv` for `--remote-debugging-port`, `--remote-debugging-pipe`, `--remote-debugging-address`, `--inspect`, `--inspect-brk`, `--inspect-port`, `--inspect-publish-uid`, `--debug`, `--debug-brk`, and the environment for a non-empty `ELECTRON_RUN_AS_NODE` or `NODE_OPTIONS`. If any is present it removes the switches, prints why and exits with code 1. Remote debugging has no fuse, so this guard is what blocks it.
+2. **Electron fuses** in `electron-builder.yml` (`electronFuses`, built into electron-builder 26.18 through its own `@electron/fuses` 1.8.0; no new dependency). Read back from the built binary:
+
+| Fuse | State |
+| --- | --- |
+| RunAsNode | disabled |
+| EnableNodeOptionsEnvironmentVariable | disabled |
+| EnableNodeCliInspectArguments | disabled |
+| EnableEmbeddedAsarIntegrityValidation | enabled |
+| OnlyLoadAppFromAsar | enabled |
+| EnableCookieEncryption, LoadBrowserProcessSpecificV8Snapshot | disabled (defaults, untouched) |
+| GrantFileProtocolExtraPrivileges | enabled (default, untouched: the `app://` handler reads files with `net.fetch(file://…)`) |
+
+Nothing reopens debugging in the `.app`: no variable or config file is read for it. `PIXEL_LAB_DEV_URL` and `--smoke-test` are already ignored when packaged (`!app.isPackaged &&` in `main.cjs`).
+
+Packaged `.app` from `…/Pixel Lab Test 2/Ruta con espacios/`, each case started from the terminal, waited 4 s, then `curl http://127.0.0.1:9333/json/version`:
+
+| Launch | Result |
+| --- | --- |
+| `--remote-debugging-port=9333` | exit 1, "Pixel Lab refuses to start: debugging is disabled in distributed builds (--remote-debugging-port)"; curl fails |
+| `--remote-debugging-pipe` | exit 1, same message |
+| `--inspect=9229`, `--inspect-brk`, `--inspect-port=9229` | exit 1, same message |
+| `ELECTRON_RUN_AS_NODE=1` | exit 1, same message |
+| `NODE_OPTIONS=--inspect` (also `=9229`, `--inspect-brk=9229`) | **starts normally**, no listening TCP port at all, port 9229 refuses. The fuse neutralises the variable, and it never reaches the guard, which suggests Electron removes it before the main script runs. Debugging stays off, but this case doesn't exit with an error |
+| No flags, `PIXEL_LAB_DEV_URL=http://127.0.0.1:3210/` set, nothing listening on 3210 | Opens normally from `app://` and reopens the last project ([14](evidence/phase-b/14-packaged-no-debug-flags.jpg)); curl fails |
+
+Development keeps explicit debugging:
+
+| Launch | Result |
+| --- | --- |
+| Unpackaged `Electron . --remote-debugging-port=9333` | `/json/version` answers (Chrome/150.0.7871.250) |
+| `npm run dev -- --remote-debugging-port=9335` | `/json/list` shows the page at `http://127.0.0.1:3210/` |
+| `npm run test:smoke` | `DESKTOP_SMOKE_PASS` |
+
+Not covered: other Chromium switches that weaken security without being debuggers (for example `--disable-web-security`, `--js-flags`). They weren't in scope.
 
 ## Not tested
 
