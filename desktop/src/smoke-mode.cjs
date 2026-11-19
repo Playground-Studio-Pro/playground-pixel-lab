@@ -71,7 +71,33 @@ function visibleWarning(display) {
     + `(${display.devicePx.width} × ${display.devicePx.height} px). Esc or Close to close one; each closes by itself after ${DEAD_MAN_MS / 1000} s.`;
 }
 
+const path = require('node:path');
+const SCRIPT_FLAG = '--smoke-script=';
+
+/**
+ * The file a hidden smoke run may use (an integration script, or a project to import): a path relative to the
+ * repository root that stays inside it, outside node_modules, with one of the given extensions. Throws otherwise.
+ */
+function repoFile(value, repoRoot, extensions) {
+  if (typeof value !== 'string' || !value || value.includes('\0')) throw new Error('Smoke file path is missing');
+  const root = path.resolve(repoRoot);
+  const target = path.resolve(root, value);
+  if (!target.startsWith(root + path.sep)) throw new Error(`Smoke file must be inside the repository: ${value}`);
+  if (target.split(path.sep).includes('node_modules')) throw new Error(`Smoke file can't be in node_modules: ${value}`);
+  if (!extensions.includes(path.extname(target))) throw new Error(`Smoke file must end in ${extensions.join(' or ')}: ${value}`);
+  return target;
+}
+
+/** --smoke-script=<path>: only in a hidden run (a visible run refuses it). Returns the resolved path or null. */
+function smokeScript(argv, mode, repoRoot) {
+  const arg = argv.find(a => a.startsWith(SCRIPT_FLAG));
+  if (!arg || !mode) return null;
+  if (mode.visible) throw new Error('--smoke-script runs only in the hidden smoke run');
+  return repoFile(arg.slice(SCRIPT_FLAG.length), repoRoot, ['.cjs', '.mjs', '.js']);
+}
+
 module.exports = {
+  repoFile, smokeScript,
   smokeMode, virtualDisplay, smokeTargetDisplay, smokeOpenRequest, visibleWarning,
   VISIBLE_FLAG, VISIBLE_ENV, CONTROL_DISPLAY_FLAG, DEAD_MAN_MS, VIRTUAL_DISPLAY_ID,
 };

@@ -34,12 +34,14 @@ module.exports = async function smoke(window, app, hooks = null) {
     if (await hooks.outputPageAvailable()) output = await smokeOutput(window, hooks, displays);
     else output = 'skipped: no output page at this origin yet (dev server has no /output until O4)';
   }
+  let script = 'not run';
+  if (hooks && hooks.script) script = await hooks.script();
   if (hooks && hooks.mode && !hooks.mode.visible) {
     const { BrowserWindow } = require('electron');
     assert.deepEqual(hooks.smokeViolations, [], 'hidden run: no window was ever shown');
     assert.ok(BrowserWindow.getAllWindows().every(w => !w.isVisible()), 'hidden run: no window visible');
   }
-  console.log('DESKTOP_SMOKE_PASS', JSON.stringify({ output, title: state.title, sandbox: true, isolated: true, indexedDB: storage, ffmpeg: status, displays: displays.map(d => ({ label: d.label, internal: d.internal, primary: d.primary, scaleFactor: d.scaleFactor, devicePx: d.devicePx, devicePxExact: d.devicePxExact, refreshHz: d.refreshHz, hostsControlWindow: d.hostsControlWindow })) }));
+  console.log('DESKTOP_SMOKE_PASS', JSON.stringify({ output, script, title: state.title, sandbox: true, isolated: true, indexedDB: storage, ffmpeg: status, displays: displays.map(d => ({ label: d.label, internal: d.internal, primary: d.primary, scaleFactor: d.scaleFactor, devicePx: d.devicePx, devicePxExact: d.devicePxExact, refreshHz: d.refreshHz, hostsControlWindow: d.hostsControlWindow })) }));
   app.exit(0);
 };
 

@@ -103,3 +103,21 @@ test('package scripts: test:smoke has no visible flag; test:smoke:output does no
   assert.doesNotMatch(scripts['test:smoke:output'], /PIXELLAB_ALLOW_VISIBLE_OUTPUT|--allow-control-display/);
   for (const [name, value] of Object.entries(scripts)) if (name !== 'test:smoke:output') assert.doesNotMatch(value, /--smoke-output-visible|PIXELLAB_ALLOW_VISIBLE_OUTPUT/, name);
 });
+
+test('integration scripts and imported files: only from inside the repository, only in a hidden run', () => {
+  const { repoFile, smokeScript } = require('../src/smoke-mode.cjs');
+  const root = path.join(__dirname, '..', '..');
+  assert.equal(repoFile('tests/fixtures/pixel-test.pixellab.json', root, ['.json']), path.join(root, 'tests/fixtures/pixel-test.pixellab.json'));
+  for (const bad of ['../outside.json', '/etc/passwd.json', 'desktop/node_modules/x/evil.json', 'tests/fixtures/pixel-test.ts', '', 'a\0.json']) {
+    assert.throws(() => repoFile(bad, root, ['.json']), undefined, JSON.stringify(bad));
+  }
+  const hidden = smokeMode({ isPackaged: false, argv: smoke, env: {} });
+  const script = '--smoke-script=desktop/tests/smoke-scripts/import-and-open.cjs';
+  assert.equal(smokeScript([...smoke, script], hidden, root), path.join(root, 'desktop/tests/smoke-scripts/import-and-open.cjs'));
+  assert.equal(smokeScript(smoke, hidden, root), null);
+  assert.equal(smokeScript([...smoke, script], null, root), null, 'no smoke run, no script');
+  const visible = smokeMode({ isPackaged: false, argv: [...smoke, '--smoke-output-visible', script], env: ON });
+  assert.throws(() => smokeScript([...smoke, '--smoke-output-visible', script], visible, root), /hidden/);
+  assert.throws(() => smokeScript([...smoke, '--smoke-script=../../etc/x.cjs'], hidden, root), /inside the repository/);
+  assert.equal(smokeMode({ isPackaged: true, argv: [...smoke, script], env: {} }), null, 'packaged: no smoke mode, so no script');
+});

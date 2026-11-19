@@ -354,7 +354,7 @@ What changed:
 
 | Check | Result |
 | --- | --- |
-| `npm --prefix desktop test` | 57/57, with 7 new in `tests/smoke-mode.test.cjs` |
+| `npm --prefix desktop test` | 58/58, with 8 new in `tests/smoke-mode.test.cjs` |
 | `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 409/409, lint 0 problems |
 | `npm run test:smoke` (hidden) | pass, **no window shown at any point** (no `show` event on any window, none visible at the end) |
 | Flag without the environment variable | refused: "Visible output smoke refused: it needs both …", exit 1, nothing opened |
@@ -365,5 +365,18 @@ What the hidden run checked:
 - `ALREADY_OPEN` for a second open, and D4's isolation checks pass.
 - Close from the control window works.
 - Esc while the page is hung → `closed` in 2 ms.
+
+**Integration scripts** (requested for Output's hidden O4 test). `--smoke-script=<repository path>`:
+- It works in hidden runs only; a visible run refuses it, and outside `!app.isPackaged && --smoke-test` nothing of it exists.
+- The script runs after the checks with `api.control` (the editor window, to use the real control IPC), `outputs`, `windows`, `listDisplays`, `virtualDisplayId` and `importProjectFile(path)`.
+- `importProjectFile` sets a repository `.json` on the editor's "Import project file" input through the editor's in-process debugger (no port). The page's own change handler then runs `importProject`, the existing path.
+- Paths are confined to the repository and kept out of `node_modules`.
+- Each smoke run now uses a fresh, empty profile in the temp folder. Before this change, a project imported in one run reopened at the next start and broke the start-screen check.
+
+| Check | Result |
+| --- | --- |
+| `test:smoke -- --smoke-script=desktop/tests/smoke-scripts/import-and-open.cjs`, twice in a row | pass both times, hidden, no window shown. "Pixel test" was imported through the input and opened in the editor; output `pixel-3` was opened through the control IPC on the virtual display. First frame in 249 ms and 104 ms; `devicePixelRatio` 2 = `scaleFactor` 2; `canvasPx` 3600 × 2338 = `devicePx` |
+| `test:smoke` without a script, after those | pass, hidden |
+| Unit tests | 58/58, with 1 more for the script and import path rules |
 
 Not run: **the visible run (`test:smoke:output`)**, by instruction; it needs the owner's permission. The 20 s dead-man switch is therefore unexercised.

@@ -8,7 +8,7 @@ const { createWindowRegistry, trustedURLForRole, outputURL } = require('./window
 const { createOutputWindow } = require('./output-window.cjs');
 const { OUTPUT_CHANNELS, OutputIpcError } = require('./output-ipc.cjs');
 const { createOutputController, outputKeyAction } = require('./output-controller.cjs');
-const { smokeMode, virtualDisplay, VIRTUAL_DISPLAY_ID } = require('./smoke-mode.cjs');
+const { smokeMode, virtualDisplay, smokeScript, repoFile, VIRTUAL_DISPLAY_ID } = require('./smoke-mode.cjs');
 const { toDisplayInfo, debounce, DISPLAY_EVENT_DEBOUNCE_MS } = require('./displays.cjs');
 // Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
 // Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
@@ -36,6 +36,11 @@ if (hiddenSmoke) {
     if (!window.isDestroyed()) window.hide();
   }));
 }
+// Hidden smoke runs only: an integration script from the repository (--smoke-script=<path>), run after the checks.
+const repoRoot = path.resolve(__dirname, '..', '..');
+let smokeScriptPath = null;
+try { smokeScriptPath = smokeScript(process.argv, smokeOutput, repoRoot); }
+catch (error) { console.error(`Smoke script refused: ${error.message}`); process.exit(1); }
 if (smokeOutput && smokeOutput.missingKey) {
   console.error('Visible output smoke refused: it needs both --smoke-output-visible and PIXELLAB_ALLOW_VISIBLE_OUTPUT=1, and the owner\'s permission. Run `npm run test:smoke` for the hidden run.');
   process.exit(1);
@@ -43,7 +48,10 @@ if (smokeOutput && smokeOutput.missingKey) {
 const windows = createWindowRegistry(origin);
 const CONTROL = Object.freeze({ kind: 'control' });
 let fileBusy = false;
-app.setPath('userData', path.join(app.getPath('appData'), smoke ? 'Pixel Lab Desktop Smoke' : 'Pixel Lab Desktop'));
+// Smoke runs start from an empty profile of their own each time, so nothing one run imports or opens leaks into the next.
+app.setPath('userData', smoke
+  ? require('node:fs').mkdtempSync(path.join(app.getPath('temp'), 'pixel-lab-desktop-smoke-'))
+  : path.join(app.getPath('appData'), 'Pixel Lab Desktop'));
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { const window = windows.control; if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
@@ -199,10 +207,34 @@ else {
     fromOutput(OUTPUT_CHANNELS.ready, outputId => outputs.onReady(outputId));
     fromOutput(OUTPUT_CHANNELS.report, (outputId, payload) => outputs.onReport(outputId, payload));
     app.on('before-quit', () => outputs.close('*'));
+    // What an integration script gets (hidden smoke runs only; see desktop/README.md). It drives the app through the
+    // control window's own IPC and UI; the one helper is importProjectFile, which feeds a repository file to the
+    // editor's "Import project file" input, so the import runs the app's existing code path without a native dialog.
+    async function runSmokeScript(file) {
+      const api = {
+        mode: smokeOutput, control: windows.control, windows, outputs, listDisplays, virtualDisplayId: VIRTUAL_DISPLAY_ID,
+        outputURL: outputURL(origin), repoRoot,
+        async importProjectFile(relative) {
+          const target = repoFile(relative, repoRoot, ['.json']);
+          const debug = windows.control.webContents.debugger;   // in-process, no port; exists only in this function
+          debug.attach('1.3');
+          try {
+            const { root } = await debug.sendCommand('DOM.getDocument', { depth: 0 });
+            const { nodeId } = await debug.sendCommand('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type="file"][aria-label="Import project file"]' });
+            if (!nodeId) throw new Error('The "Import project file" input is not on screen');
+            await debug.sendCommand('DOM.setFileInputFiles', { nodeId, files: [target] });
+          } finally { debug.detach(); }
+        },
+      };
+      const run = (await import(pathToFileURL(file).href)).default;
+      if (typeof run !== 'function') throw new Error('A smoke script must export a default async function(api)');
+      return run(api);
+    }
     if (smoke) {
       const webRoot = path.join(__dirname, '..', 'web');
       await require('./smoke.cjs')(windows.control, app, {
         windows, outputs, powerSaveBlocker, outputURL: outputURL(origin), mode: smokeOutput, smokeViolations,
+        script: smokeScriptPath && (() => runSmokeScript(smokeScriptPath)),
         outputPageAvailable: async () => {
           if (!devURL) return fs.access(path.join(webRoot, 'output.html')).then(() => true, () => false);
           try { return (await net.fetch(outputURL(origin))).status === 200; } catch { return false; }

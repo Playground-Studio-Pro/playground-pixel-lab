@@ -40,6 +40,14 @@ A development launch smoke check is `npm run dev -- --smoke-test`. A static smok
 | `PIXELLAB_ALLOW_VISIBLE_OUTPUT=1 npm run test:smoke:output` | **Interactive. Only with the owner's permission.** Real full-screen output windows, with the visibility, focus and bounds checks. Uses an external display; prints the target and "Esc or Close" first. Every output window closes by itself after 20 s | Yes, full screen |
 | … `-- --allow-control-display` added | As above, on the display that shows the Pixel Lab window (single laptop). Covers the operator's screen | Yes, over your work |
 
+**Integration scripts (hidden runs only).** `npm run test:smoke -- --smoke-script=<path from the repository root>` runs a script after the checks above, in the same hidden run. The script exports `async function (api)` and returns a JSON-able result, printed with `DESKTOP_SMOKE_PASS`. `api` gives:
+- `control`, the editor window (drive it with `executeJavaScript`, including `window.pixelLabDesktop.output.*`, the real control IPC);
+- `outputs`, `windows` and `listDisplays()`;
+- `virtualDisplayId`, the hidden run's display;
+- `importProjectFile(path)`. It hands a repository `.json` file to the editor's "Import project file" input, so the import runs the app's existing code path without a native dialog.
+
+Example: `desktop/tests/smoke-scripts/import-and-open.cjs`, which imports `tests/fixtures/pixel-test.pixellab.json` and opens its output hidden. Scripts and imported files must be inside the repository and outside `node_modules`, and a visible run refuses `--smoke-script`. Every smoke run uses a fresh, empty profile in the system temp folder.
+
 The visible run needs both keys: the `--smoke-output-visible` flag (in `test:smoke:output`) and `PIXELLAB_ALLOW_VISIBLE_OUTPUT=1`; the flag alone stops with a message. None of this exists in a packaged build or a normal launch. CI doesn't run any smoke test.
 
 On Windows 11 x64, with Node and the app dependencies installed:
