@@ -12,7 +12,7 @@ if (app.isPackaged) {
   const violations = debugAccessViolations({ argv: process.argv, env: process.env, hasSwitch: name => app.commandLine.hasSwitch(name) });
   if (violations.length) {
     for (const name of DEBUG_SWITCHES) app.commandLine.removeSwitch(name);
-    console.error(`Pixel Lab refuses to start: debugging is disabled in distributed builds (${violations.join(', ')}).`);
+    console.error(`Pixel Lab refuses to start: debugging and display-scale switches are disabled in distributed builds (${violations.join(', ')}).`);
     process.exit(1);
   }
 }

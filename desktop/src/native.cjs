@@ -7,8 +7,11 @@ function ffmpegPath(root, platform = process.platform, arch = process.arch) {
   if (!['darwin-arm64', 'win32-x64'].includes(`${platform}-${arch}`)) throw new Error('Unsupported desktop platform');
   return path.join(root, platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 }
-async function probeFFmpeg(root) {
-  const binary = ffmpegPath(root);
+// Never throws: an unsupported platform or an absent binary both report "not available".
+async function probeFFmpeg(root, platform = process.platform, arch = process.arch) {
+  let binary;
+  try { binary = ffmpegPath(root, platform, arch); }
+  catch { return { available: false, reason: 'FFmpeg is not supported on this platform' }; }
   try {
     await fs.access(binary);
     const { stdout } = await run(binary, ['-version'], { timeout: 5000, maxBuffer: 128 * 1024, windowsHide: true, shell: false });

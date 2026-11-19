@@ -33,7 +33,9 @@ function assetPath(root, rawURL) {
   return file;
 }
 // Debugging entry points a distributed build must refuse. Chromium switches and Node inspector flags.
-const DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'remote-debugging-address', 'inspect', 'inspect-brk', 'inspect-port', 'inspect-publish-uid', 'debug', 'debug-brk'];
+const DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'remote-debugging-address', 'inspect', 'inspect-brk', 'inspect-port', 'inspect-publish-uid', 'debug', 'debug-brk',
+  // Not a debugger, but it changes devicePixelRatio and breaks 1:1 output (PHYSICAL_OUTPUT section 5 item 5). Test runner only.
+  'force-device-scale-factor'];
 const DEBUG_ENV = ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS'];
 // Pure: lists every debugging switch or variable present. main.cjs refuses to start a packaged app when this is non-empty.
 function debugAccessViolations({ argv = [], env = {}, hasSwitch = () => false } = {}) {

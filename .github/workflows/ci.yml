@@ -24,6 +24,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
       - run: npm ci
       - name: TypeScript
         run: npm run typecheck
@@ -33,3 +36,9 @@ jobs:
         run: npm test
       - name: Production build
         run: npm run build
+      # Desktop unit tests are pure Node (no Electron binary): --ignore-scripts skips desktop's postinstall,
+      # which downloads the Electron runtime. Electron 43 has no ELECTRON_SKIP_BINARY_DOWNLOAD switch.
+      - name: Desktop dependencies
+        run: npm --prefix desktop ci --ignore-scripts
+      - name: Desktop unit tests
+        run: npm --prefix desktop test

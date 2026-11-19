@@ -27,10 +27,15 @@ test('protocol confines files to static root including encoded traversal', () =>
   for (const url of ['app://evil/a', 'app://pixellab/%2e%2e%2fsecret', 'app://pixellab/a%5csecret', 'app://pixellab/%00']) assert.throws(() => assetPath(root, url));
 });
 test('FFmpeg resolves only supported binaries, absent binary is nonfatal', async () => {
+  // Platform and arch are injected so the test means the same on macOS, Windows and the Linux CI runner.
+  assert.equal(ffmpegPath('/resource', 'darwin', 'arm64'), path.join('/resource', 'ffmpeg'));
   assert.equal(ffmpegPath('/resource', 'win32', 'x64'), path.join('/resource', 'ffmpeg.exe'));
-  assert.throws(() => ffmpegPath('/resource', 'linux', 'x64'));
-  const status = await probeFFmpeg(path.resolve('nonexistent-binary-folder'));
-  assert.equal(status.available, false);
+  for (const [platform, arch] of [['linux', 'x64'], ['darwin', 'x64'], ['win32', 'arm64']]) assert.throws(() => ffmpegPath('/resource', platform, arch), /Unsupported/);
+  const absent = path.resolve('nonexistent-binary-folder');
+  for (const [platform, arch] of [['darwin', 'arm64'], ['win32', 'x64']]) {
+    assert.deepEqual(await probeFFmpeg(absent, platform, arch), { available: false, reason: 'Approved FFmpeg binary is not installed' });
+  }
+  assert.deepEqual(await probeFFmpeg(absent, 'linux', 'x64'), { available: false, reason: 'FFmpeg is not supported on this platform' });
 });
 test('packaging configuration validates against installed builder schema', async () => {
   const fs = require('node:fs');
@@ -47,7 +52,7 @@ test('debugging switches and variables are detected for packaged builds', () => 
   const clean = { argv: ['/Applications/Pixel Lab.app/Contents/MacOS/Pixel Lab', '-psn_0_123'], env: { HOME: '/Users/x', PIXEL_LAB_DEV_URL: 'http://127.0.0.1:3210/' }, hasSwitch: () => false };
   assert.deepEqual(debugAccessViolations(clean), []);
   assert.deepEqual(debugAccessViolations(), []);
-  for (const arg of ['--remote-debugging-port=9333', '--remote-debugging-pipe', '--inspect', '--inspect=9229', '--inspect-brk=0', '--inspect-port=9229', '--debug']) {
+  for (const arg of ['--remote-debugging-port=9333', '--remote-debugging-pipe', '--inspect', '--inspect=9229', '--inspect-brk=0', '--inspect-port=9229', '--debug', '--force-device-scale-factor=1']) {
     assert.equal(debugAccessViolations({ ...clean, argv: [...clean.argv, arg] }).length, 1, arg);
   }
   assert.deepEqual(debugAccessViolations({ ...clean, hasSwitch: name => name === 'remote-debugging-port' }), ['--remote-debugging-port']);

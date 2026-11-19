@@ -1,20 +1,5 @@
-export {};
-// Mirrors DisplayInfo in src/domain/physical-output.ts (PR #21); switch to importing it once that is on main.
-interface DesktopDisplayInfo {
-  key: { label: string; devicePx: { width: number; height: number }; internal: boolean; electronId: number };
-  electronId: number;
-  label: string;
-  internal: boolean;
-  primary: boolean;
-  boundsDip: { x: number; y: number; width: number; height: number };
-  scaleFactor: number;
-  devicePx: { width: number; height: number };
-  devicePxExact: boolean;
-  rotation: 0 | 90 | 180 | 270;
-  refreshHz: number;
-  hostsControlWindow: boolean;
-  hostsOutput: string | null;
-}
+import type { OutputControlApi } from "../../src/domain/physical-output";
+
 declare global {
   interface Window {
     pixelLabDesktop?: {
@@ -23,11 +8,8 @@ declare global {
       openProject(): Promise<{ name: string; text: string } | null>;
       saveProject(text: string, suggestedName: string): Promise<{ name: string } | null>;
       ffmpegStatus(): Promise<{ available: boolean; version?: string; reason?: string }>;
-      readonly output: {
-        listDisplays(): Promise<DesktopDisplayInfo[]>;
-        /** Called after display-added / removed / metrics-changed, debounced 250 ms. Returns an unsubscribe. */
-        onDisplays(callback: (displays: DesktopDisplayInfo[]) => void): () => void;
-      };
+      /** Physical output (Phase C). Grows to the whole OutputControlApi as D3–D5 land; displays only so far. */
+      readonly output: Pick<OutputControlApi, "listDisplays" | "onDisplays">;
     };
   }
 }
