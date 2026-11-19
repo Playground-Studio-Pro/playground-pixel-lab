@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Desktop stub for the output window (Phase C D4). build:web copies it to web/output.html only when the app's own
+<!-- Desktop stub for the output window (Phase C D4, D5). build:web copies it to web/output.html only when the app's own
      page (src/app/output/page.tsx, Output Engineering, O4) isn't in the static export. Black, no interface. -->
 <html lang="en">
 <head>
@@ -9,14 +9,19 @@
 </head>
 <body data-output-stub="1">
 <script>
-  // Mirrors what the real page does at start: tell main it's listening, then report what it measures.
+  // Mirrors the real page's handshake: listen, tell main it's ready, and once a session arrives report a first frame
+  // (here: the black page) with that session's revision, then once a second.
   const api = window.pixelLabOutput;
   if (api) {
-    const w = Math.round(innerWidth * devicePixelRatio), h = Math.round(innerHeight * devicePixelRatio);
-    api.onSession(() => {}); api.onClock(() => {}); api.onDisplay(() => {});
+    let revision = null, frame = 0;
+    const report = () => {
+      const w = Math.round(innerWidth * devicePixelRatio), h = Math.round(innerHeight * devicePixelRatio);
+      api.report({ sessionRevision: revision, firstFrameDrawn: true, frame: frame++, devicePixelRatio, viewportCss: { width: innerWidth, height: innerHeight },
+        canvasPx: { width: w, height: h }, outputPx: { width: Math.max(1, w), height: Math.max(1, h) }, browserFps: 0, lateFrames: 0, skippedFrames: 0, contentBoxDevicePx: null, sourceId: 'stub' });
+    };
+    api.onSession(session => { const first = revision === null; revision = session.revision; requestAnimationFrame(report); if (first) setInterval(report, 1000); });
+    api.onClock(() => {}); api.onDisplay(() => {});
     api.ready();
-    api.report({ sessionRevision: 0, firstFrameDrawn: false, frame: 0, devicePixelRatio, viewportCss: { width: innerWidth, height: innerHeight },
-      canvasPx: { width: w, height: h }, outputPx: { width: Math.max(1, w), height: Math.max(1, h) }, browserFps: 0, lateFrames: 0, skippedFrames: 0, contentBoxDevicePx: null, sourceId: 'stub' });
   } else console.log('Pixel Lab output stub: no output preload, staying black.');
 </script>
 </body>
