@@ -89,13 +89,74 @@ export interface Sweep {
   readonly period: number;
   /** The screens it is drawn on. Master pixels no screen covers stay black. */
   readonly areas: readonly Box[];
+  /** One edge marker per screen large enough for it (`edgeMarkerRects`). */
+  readonly edges: readonly EdgeTrack[];
   readonly fill: string;
+}
+
+/**
+ * A marker running clockwise around the inside of a screen from its top-left: a band `thickness` px wide,
+ * `inset` px in from the screen's outer pixel, `length` px long, once per period.
+ */
+export interface EdgeTrack {
+  readonly box: Box;
+  readonly inset: number;
+  readonly thickness: number;
+  readonly length: number;
+}
+
+const even = (n: number) => n - (n % 2);
+
+/** Bar width for a master `width` px wide: `CAL_SWEEP.width`, even, at least 2. */
+export function sweepBarWidth(width: number): number {
+  const rule = CAL_SWEEP.width;
+  return Math.max(2, even(Math.min(Math.max(Math.round(width * rule.ratio), rule.min), Math.floor(width * rule.maxShare))));
+}
+
+/** The edge track of a screen, or null when it is too small to carry one beside its border. */
+export function edgeTrack(box: Box): EdgeTrack | null {
+  const rule = CAL_SWEEP.edge;
+  const m = Math.min(box.width, box.height);
+  const thickness = clamp(Math.round(m * rule.thickness.ratio), rule.thickness.min, rule.thickness.max);
+  const inner = m - 2 * rule.inset - thickness;
+  if (m < 24 || inner < thickness) return null;
+  const perimeter = 2 * (box.width - 2 * rule.inset - thickness) + 2 * (box.height - 2 * rule.inset - thickness);
+  return { box, inset: rule.inset, thickness, length: Math.max(2 * thickness, Math.round(perimeter * rule.lengthShare)) };
 }
 
 /** The sweep for a frame `width` px wide at `fps`: one crossing per `CAL_SWEEP.seconds`. */
 export function sweepFor(width: number, fps: ContentFps, areas: readonly Box[]): Sweep {
-  const w = clamp(Math.round(width * CAL_SWEEP.width.ratio), CAL_SWEEP.width.min, CAL_SWEEP.width.max);
-  return { width, barWidth: w - (w % 2), period: CAL_SWEEP.seconds * fps, areas, fill: CAL_COLORS.white };
+  return { width, barWidth: sweepBarWidth(width), period: CAL_SWEEP.seconds * fps, areas, edges: areas.flatMap((a) => edgeTrack(a) ?? []), fill: CAL_COLORS.white };
+}
+
+/**
+ * The edge marker's rectangles at `frame`. Its head is at `floor(phase × perimeter / period)` along the
+ * clockwise track (top, right, bottom, left); the part past the end wraps to the start, so one period later
+ * it is back where it began. Pure.
+ */
+export function edgeMarkerRects(track: EdgeTrack, period: number, frame: number): Box[] {
+  const { box, inset: d, thickness: t } = track;
+  const a = box.width - 2 * d - t;
+  const b = box.height - 2 * d - t;
+  const perimeter = 2 * a + 2 * b;
+  const phase = ((frame % period) + period) % period;
+  const start = Math.floor((phase * perimeter) / period);
+  const spans: [number, number][] = start + track.length <= perimeter ? [[start, start + track.length]] : [[start, perimeter], [0, start + track.length - perimeter]];
+  const edges: [number, number, (u: number, v: number) => Box][] = [
+    [0, a, (u, v) => ({ x: box.x + d + u, y: box.y + d, width: v - u + t, height: t })],
+    [a, a + b, (u, v) => ({ x: box.x + box.width - d - t, y: box.y + d + u - a, width: t, height: v - u + t })],
+    [a + b, 2 * a + b, (u, v) => ({ x: box.x + box.width - d - t - (v - a - b), y: box.y + box.height - d - t, width: v - u + t, height: t })],
+    [2 * a + b, perimeter, (u, v) => ({ x: box.x + d, y: box.y + box.height - d - t - (v - 2 * a - b), width: t, height: v - u + t })],
+  ];
+  const out: Box[] = [];
+  for (const [s0, s1] of spans) {
+    for (const [e0, e1, rect] of edges) {
+      const u = Math.max(s0, e0);
+      const v = Math.min(s1, e1);
+      if (v > u) out.push(rect(u, v));
+    }
+  }
+  return out;
 }
 
 /** Left edge of the bar at `frame`: `floor(phase × width / period)`, so each step is ⌊w/p⌋ or ⌈w/p⌉ px. */

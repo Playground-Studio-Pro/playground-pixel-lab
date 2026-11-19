@@ -1,6 +1,6 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alpha 0.1 Phase C (physical output) started.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alpha 0.1 Phase C, steps 1–3 merged.
 
 ## Objective
 
@@ -10,7 +10,7 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alp
 | --- | --- | --- |
 | **A.** Protection and integration | Lead Architect | Done |
 | **B.** Electron on macOS | Desktop Engineering | Done: #19. Launches, offline, persistence, MP4, unsigned `.app`, remote debugging refused when packaged |
-| **C.** Physical output | Desktop + Output Engineering | **In progress.** Contract approved and merged (#20). Shared types in #21, open, waiting for the owner's approval to merge. Automated tests first, then one session with a real external monitor |
+| **C.** Physical output | Desktop + Output Engineering | **In progress.** Contract (#20) and shared types (#21) merged. Done: D1 (#24), D2 (#25), D3 (#27), O1 (#23), O2 (#26). Next: D4 and O3, then O4 and D5 (section 9). Automated tests first, then one session with a real external monitor |
 
 Product Design, Content Engineering and LED Engineering stay stopped.
 
@@ -50,7 +50,8 @@ Owner decisions, 2026-11-18: the 14 draft positions are approved, except:
 
 ## Where it stands
 
-- **`main`** at `87bf339`, the merge of #20 (contract), after #19 (Electron). **#21** (shared types, `src/domain/physical-output.ts`) is open with CI green; D3 and O4 need it merged first.
+- **`main`** at `bcf93bd`, the merge of #27 (D3), CI green. CI now runs the desktop unit tests too (Linux runner).
+- **O2 MP4 criterion** restated by the owner: at least 99.9 % of probes within ±8 luma, every outlier exact in the source canvas.
 - **Branches kept:** `feature/desktop-engineering`, `feature/output-engineering` (ProRes, not merged, out of Alpha), `docs/phase-c-output-contract`, and every merged branch.
 - **Local backups, keep until Alpha 0.1 passes:** `~/Play.Code/playground.pixel/_backups/` (Depth Studio pack copies) and the original `~/Play.Code/playground.pixel/desktop/` folder.
 

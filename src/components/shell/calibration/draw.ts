@@ -1,5 +1,5 @@
 import type { ContentFps } from "@/domain/motion";
-import { counterText, sweepRects, type CalibrationFrame, type CalNode } from "./frame";
+import { counterText, edgeMarkerRects, sweepRects, type CalibrationFrame, type CalNode } from "./frame";
 import { CAL_BASELINE } from "./tokens";
 
 export interface CalibrationDrawOptions {
@@ -50,7 +50,9 @@ export function drawCalibration(ctx: CanvasRenderingContext2D, frame: Calibratio
   };
   // The sweep moves with the frame: a caller that draws the static layer once sees it at that frame only.
   const sweep = () => {
-    if (frame.sweep && layer === "static") for (const r of sweepRects(frame.sweep, options.frame)) rect(r, frame.sweep.fill);
+    if (!frame.sweep || layer !== "static") return;
+    for (const r of sweepRects(frame.sweep, options.frame)) rect(r, frame.sweep.fill);
+    for (const track of frame.sweep.edges) for (const r of edgeMarkerRects(track, frame.sweep.period, options.frame)) rect(r, frame.sweep.fill);
   };
   for (const [i, node] of frame.nodes.entries()) {
     if (i === frame.sweep?.before) sweep();
