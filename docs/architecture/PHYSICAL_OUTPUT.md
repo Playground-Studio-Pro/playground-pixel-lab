@@ -1,6 +1,6 @@
 # Physical Output Contract
 
-**Status: design draft, not approved.** Alpha 0.1 Phase C. Nothing here is implemented. Desktop Engineering wrote sections 1–7 (displays, windows, IPC, clock, scaling, tasks). Output Engineering adds rendering and pixel tests in section 8, then each lane reviews the other's part. The owner approves before any production code.
+**Status: design draft, not approved.** Alpha 0.1 Phase C. Nothing here is implemented. Desktop Engineering wrote sections 1–7 (displays, windows, IPC, clock, scaling, tasks). Output Engineering wrote section 8 (rendering, sources, cadence, pixel tests, Resolume procedure) and reviewed sections 1–7 in 8.12; Desktop reviews section 8. The owner approves before any production code.
 
 Scope: one Pixel Lab **output** (an `VideoOutput`, for example "OUT 1 · Processor A · 3072 × 1920") shown full screen, 1:1, with no interface, on a chosen **display** (a monitor or the input of an LED processor), from the Electron app. Built so several outputs on several displays can run at once, even though Alpha ships one.
 
@@ -332,7 +332,396 @@ Small, in order. Each one ends with `npm --prefix desktop test`, `npm run typech
 | D-3 | Closing the control window while outputs run: keep them running, ask, or close them | Ask, with "Keep running" as default; quitting always closes all |
 | D-4 | Edits reach a live output: on "Update output" only, or immediately | Only on "Update output" |
 | D-5 | Allow an output on the control window's display (single-laptop rehearsal) | Allowed only with an explicit toggle, off by default |
+| O-1 | Output window: draw the whole master at scale 1 and cut, or render only the output's regions (needs a `FrameInput.clip` contract change) | Whole master and cut, as the MP4 export does; revisit only if O8 measures it too slow or `MAX_OUTPUTS` > 1 |
+| O-2 | Add the `pixel-grid` test card to the Output module, the Live preview and the MP4 export, not only the output window | Everywhere: the Resolume check needs it in MP4 |
+| O-3 | Motion Lab patterns on the physical output in Alpha | No: test card, pixel grid and Depth Studio only |
+| O-4 | Output size ≠ display size: anything drawn on the wall to show it | Nothing on the wall; warning with pixel counts in the control window only; the `display`-space grid outlines the output edge |
+| O-5 | Master larger than the canvas or GPU limit | Refuse with `MASTER_TOO_LARGE`, never scale |
+| O-6 | Uneven cadence (24/25/50 fps on 60 Hz, 30/60 on 50 Hz): block, or allow with a warning | Allow, with a warning that names the pattern and suggests the matching display rate |
+| O-7 | Add the optional report fields of 8.4 to `OutputRenderReport` (and Desktop's validator) | Yes, before O4 |
+| O-8 | Depth Studio's config travels frozen in `session.source.settings`, since it isn't saved in the project | Yes, until the `modules[id]` section exists for Depth Studio |
+| O-9 | Use `--force-device-scale-factor=1` in the test runner (never in a packaged build) to cover 1× without an external monitor | Yes, alongside the physical 1× check |
 
 ## 8. Rendering and pixel tests (Output Engineering)
 
-*To be written by Output Engineering:* the `output.html` page, how each source (calibration test card, Depth Studio, Motion Lab patterns) is drawn from an `OutputSession` at native size, canvas sizing from `devicePx`, the pixel-grid test card, pixel-sampling tests, frame-rate cadence on 50/60 Hz displays, and measured canvas and GPU limits. Desktop reviews this section.
+Written by Output Engineering. Desktop reviews it. Same rule as sections 1–7: nothing here is implemented, and nothing is built before the owner approves.
+
+The goal is the one in section 5, from the drawing side: **output px (x, y) of the `VideoOutput` lands on device px (x, y) of the display**, with the same RGB value the MP4 export writes for that output and frame, for every x < min(output width, display width) and y < min(output height, display height). Everything else on the display is black.
+
+### 8.1 The output page
+
+`src/app/output/page.tsx`, exported as `output.html`. A client component that renders one `<canvas>` and nothing else. All logic lives in a plain class, `OutputRuntime` (`src/modules/output/output-runtime.ts`), so it can be read and tested without React.
+
+**What it loads.** The root layout (fonts as CSS variables, `globals.css`) and the runtime. Nothing from the editor: no `state/store.ts`, no studio panels, no `modules/registry.ts` (its sources read the live UI stores; see "Sources" below). The build records the page's chunk size in [PERFORMANCE](../development/PERFORMANCE.md), and a test fails if the output chunk graph includes `state/store`.
+
+**No interface, no cursor.**
+
+```css
+/* Scoped to the output page only. */
+html, body { margin: 0; padding: 0; background: #000; overflow: hidden; cursor: none; user-select: none; }
+canvas { display: block; position: fixed; left: 0; top: 0; image-rendering: pixelated; }
+```
+
+The page draws nothing but content: no status text, no warning, no logo of its own, on the wall or anywhere. Every warning goes to the control window through `OutputRenderReport`. Without `window.pixelLabOutput` (opened in a normal browser) it stays black and logs one console line.
+
+**Lifecycle.**
+
+```ts
+// src/modules/output/output-runtime.ts (sketch, not final code)
+class OutputRuntime {
+  start(api: OutputApi, canvas: HTMLCanvasElement): void;  // api.onSession / onClock, then api.ready()
+  // onSession(s): prepare(s) off to the side; if it succeeds, swap at the next rAF; if it fails,
+  //   keep drawing the previous session (if any) and report the error. A half-built session never draws.
+  // onClock(c): replace the clock; the next rAF uses it.
+  // rAF loop: draw only when (sessionRevision, contentFrame, layout) changed. A still card costs nothing.
+  // Every 500 ms: api.report(report).
+}
+
+interface PreparedSession {
+  revision: number;
+  project: Project;                 // parseProjectFile(s.projectText)
+  mapping: ResolvedMapping;         // resolveMapping(project)
+  target: VideoTarget;              // videoTargets(mapping).find(t => t.kind === "output" && t.id === s.outputId)
+  master: Omit<FrameInput, "frame" | "fps">;  // same object the Output Studio panel builds today
+  source: FrameSource;              // frozen, see 8.5, already prepared (fonts, logo, WebGL)
+  layout: OutputLayout;             // 8.3, from s.display and window.devicePixelRatio
+}
+```
+
+**One mapping path.** The frame is assembled by the code the MP4 export already uses, unchanged:
+
+```
+projectText ─parseProjectFile─▶ Project ─resolveMapping─▶ ResolvedMapping ─videoTargets─▶ VideoTarget (this output)
+                                                                                              │
+frozen FrameSource ──targetSource(source, target, master)──▶ draws master at scale 1, copies each slice
+                                                              masterRect → outputRect, 1:1, smoothing off
+```
+
+`targetSource` is called on the visible canvas after a black fill of the whole backing store. It draws only inside `target.width × target.height`; whatever falls past the canvas is clipped by the canvas, never scaled. So for the same project, output, source settings and frame number, **the output window and the MP4 export produce the same pixels**, and section 8.7 tests exactly that. No coordinate is computed in the output page: every rectangle comes from `resolveMapping` through `videoTargets`.
+
+`parseProjectFile` already runs the schema. The runtime also refuses a session whose mapping has `unresolved` screens belonging to this output, or whose `outputId` is missing from `mapping.outputs` (`PROJECT_INVALID`, `UNKNOWN_OUTPUT`). Main checks the same before opening (section 3); the page checks again because it can't trust that main's copy of the parser is the same build.
+
+### 8.2 Native resolution: whole master, then cut
+
+**Decision (O-1): draw the whole master at scale 1 into an off-screen canvas, then copy this output's slices.** That is what `targetSource` does today. No new contract.
+
+| Option | For | Against |
+| --- | --- | --- |
+| **Whole master + cut (chosen)** | No contract change: `FrameSource` already says "draws the whole master canvas once". Same code as the MP4 export, so output = MP4 by construction. Shared regions read identical pixels. Test-card labels and Depth Studio's camera are defined on the whole master, so they're correct with no extra work | Each output window draws every master pixel, including other outputs' regions. With N outputs that's N× the work |
+| Only this output's regions, in master coordinates | Less fill and less memory per window when a master is much larger than one output | Needs a contract change (`FrameInput` clip hint) and every source honouring it. Depth Studio would need an off-axis sub-frustum, which isn't bit-identical to a crop because of MSAA and rasterization rules. Two code paths to prove equal |
+
+Why the cost is acceptable in Alpha: one output, and the largest bundled master, Festival Main Stage, is 5120 × 1664 = 8.5 MP, about 34 MB as RGBA. That is far below Chromium's canvas limits (8.9). Whether it holds 60 fps on the GPU is **measured, not assumed**: task O8 records frame time for Festival with the test card and with Depth Studio at 60 fps.
+
+**The 4096 px preview cap never applies.** `MAX_SOURCE_SIDE` and `sourceScale` in `live-renderer.ts` are the Live preview's; the output page doesn't import `live-renderer.ts`. `targetSource` always uses scale 1 and throws otherwise.
+
+**Limits are refusals, never scaling.** Before the first frame the runtime checks:
+
+```ts
+type MasterLimit = { maxSide: number; maxArea: number };   // measured once per window, 8.9
+// 2D canvas: master and canvasPx must each fit maxSide and maxArea.
+// Depth Studio: max(master.width, master.height) <= depthMaxSize(), as the MP4 export already checks.
+// Over a limit → report error MASTER_TOO_LARGE with the size and the limit; the window stays black.
+```
+
+`drawDepthScene` scales a too-large master down then up "which only a preview may do"; the output path must never reach that branch, so the check above runs before the source is created, exactly as `frozenSource` does in `studio-panel.tsx` today.
+
+**When a contract change would be needed.** Only if O8 measures that the whole master doesn't hold the content frame rate, or when `MAX_OUTPUTS` goes above 1 with large masters. Then the smallest change is one optional field, proposed through the Lead Architect as `CONTRACTS.md` requires:
+
+```ts
+// Proposed later, not for Alpha.
+interface FrameInput {
+  // ...
+  /** Master-space rectangles the caller will read. A source may skip pixels outside them; inside them it
+   *  must draw exactly what it draws without the hint. Absent = whole master. */
+  readonly clip?: readonly PixelRect<"master">[];
+}
+```
+
+A source that ignores the hint stays correct. A test compares hinted vs unhinted pixels inside the clip for every source that honours it.
+
+### 8.3 Canvas size and placement
+
+```ts
+// src/engines/output-layout.ts, pure
+interface OutputLayoutInput { devicePx: Size; devicePixelRatio: number; outputPx: Size; devicePxExact: boolean }
+interface OutputLayout {
+  canvasPx: Size;            // = devicePx exactly
+  canvasCss: { width: string; height: string };  // `${devicePx.width / dpr}px`, not rounded
+  visiblePx: Size;           // min(outputPx, devicePx) per axis: output px that reach the cable
+  croppedPx: { right: number; bottom: number };  // output px past the display edge, never shown
+  blackPx: { right: number; bottom: number };    // display px past the output edge, painted black
+  sizeMatch: 'exact' | 'smaller-than-display' | 'larger-than-display' | 'mixed';
+}
+export function outputLayout(i: OutputLayoutInput): OutputLayout;
+```
+
+Rules in the page:
+
+- `canvas.width/height = display.devicePx` from `OutputWindowSession.display`, **not** `innerWidth × devicePixelRatio` (fractional on Windows) and not `screen.width` (DIP).
+- CSS size `devicePx / devicePixelRatio`, set as an unrounded px string. Position fixed at 0, 0.
+- 2D context `{ alpha: false }`, `setTransform(1, 0, 0, 1, 0, 0)`, `imageSmoothingEnabled = false` before every `drawImage`. Fill the whole backing store `#000`, then `targetSource` draws at scale 1 at the top-left.
+- **Verification in the page:** a `ResizeObserver` on the canvas with `{ box: 'device-pixel-content-box' }` gives the real number of device pixels the canvas covers, as Chromium lays it out. It must equal `canvasPx`. This is the strongest 1:1 check available from inside the renderer, and it's reported (8.4).
+- Re-layout on a new session or `display` (section 8.12 asks Desktop for a display-update message), and on `matchMedia('(resolution: <dpr>dppx)')` change. Re-layout reallocates the canvas only when `canvasPx` changes.
+
+### 8.4 What the page reports
+
+Desktop's `OutputRenderReport` fields, filled as follows, plus the optional fields Output asks to add (8.12, O-7). Desktop's validator rejects unknown keys, so these must be in the contract before O4 lands.
+
+```ts
+interface OutputRenderReport {
+  sessionRevision: number;           // revision of the session being drawn (not the last received)
+  firstFrameDrawn: boolean;
+  frame: number;                     // content frame of the last draw
+  devicePixelRatio: number;
+  viewportCss: Size;                 // innerWidth × innerHeight
+  canvasPx: Size;                    // backing store
+  outputPx: Size;                    // target.width × target.height
+  browserFps: number;                // rAF callbacks per second over the last 2 s. Browser metric only
+  lateFrames: number;                // since last report: rAF intervals > 1.5 × measured refresh period
+  skippedFrames: number;             // since last report: content frames that should have been shown and weren't
+  error?: string;
+  // ── Proposed additions (optional, Output fills them) ──
+  contentBoxDevicePx?: Size | null;  // ResizeObserver device-pixel-content-box; null until observed
+  masterPx?: Size;
+  sourceId?: string;
+  errorCode?: OutputRenderErrorCode;
+  cadence?: OutputCadence;           // 8.6
+  limits?: { maxCanvasSide: number; maxCanvasArea: number; maxTextureSize: number; depthMaxSize: number | null };
+}
+type OutputRenderErrorCode =
+  | 'PROJECT_INVALID' | 'UNKNOWN_OUTPUT'
+  | 'SOURCE_UNKNOWN' | 'SOURCE_SETTINGS_INVALID'
+  | 'ASSET_MISSING'          // test-card logo or face failed to load while the settings need it
+  | 'GPU_UNAVAILABLE'        // Depth Studio without WebGL 2, or context lost
+  | 'MASTER_TOO_LARGE'
+  | 'DRAW_FAILED';
+```
+
+The 1:1 check Desktop runs on the first report (section 5, item 4) should use all three: `devicePixelRatio === scaleFactor`, `canvasPx === devicePx`, and `contentBoxDevicePx === devicePx`. When `devicePxExact` is false (fractional Windows scale) a ±1 difference is a warning, not `NOT_ONE_TO_ONE`.
+
+### 8.5 Sources and their frozen settings
+
+The registry's sources (`calibrationSource`, `depthSource`) read the editor's live stores on every `draw`, and those stores don't exist in the output window. The output uses the **frozen factories** the MP4 export already uses (`createCalibrationSource`, `createDepthSource`), through one Output-owned table. No module-contract change:
+
+```ts
+// src/modules/output/output-sources.ts
+type OutputSourceId = 'calibration-test-card' | 'pixel-grid' | 'depth-scene';
+
+/** Control window: the settings of the source as the operator sees it now. Also used by the MP4 export. */
+export function frozenSettings(id: OutputSourceId): JsonValue;
+
+/** Output window (and MP4 export): validate settings, load assets, check limits. Rejects with a code. */
+export function createOutputSource(id: string, settings: JsonValue, master: Size): Promise<FrameSource>;
+```
+
+`studio-panel.tsx`'s `frozenSource` becomes a call to these two, so the operator's MP4 and the live output are built from the same settings by the same function.
+
+| `source.id` | `source.settings` | Prepared before the first frame | Refuses with |
+| --- | --- | --- | --- |
+| `calibration-test-card` | `CalibrationSettings`: `{ mode: 'identification' \| 'calibration', logo: 'center' \| 'watermark' \| 'off' }` | `prepareCalibrationSource()`: logo and the `--font-cal-mono` face, both local assets under `app://` | `SOURCE_SETTINGS_INVALID` for any other key or value; `ASSET_MISSING` if `logo !== 'off'` and the logo didn't load |
+| `pixel-grid` (new, 8.7) | `PixelGridSettings`: `{ space: 'master' \| 'display', motion: boolean }` | Nothing to load (no fonts beyond the face above) | `SOURCE_SETTINGS_INVALID` |
+| `depth-scene` | The whole `DepthSceneConfig` (a few hundred bytes of JSON) | One `DepthRenderer`; `depthMaxSize()` checked against the master | `SOURCE_SETTINGS_INVALID` if `normalizeDepthConfig(settings)` isn't deep-equal to `settings` (the control window sends a normalized config, so any difference is a bug, never silently fixed); `GPU_UNAVAILABLE`; `MASTER_TOO_LARGE` |
+
+Depth Studio's config is **not** in the project today (`depth-store.ts`: saving waits for the `modules[id]` section), so it must travel in `source.settings`. Section 4 says otherwise; see 8.12.
+
+**Motion Lab patterns are not on the physical output in Alpha** (O-3). They aren't registered as a source yet (the adapter was part of L1), and the Alpha path needs only the test card, the pixel grid and Depth Studio. If the owner wants them, the row would be `{ pattern: PatternId, options: PatternOptions }` through `renderPattern` + `drawPattern` at scale 1, with no other change.
+
+`DrawOptions.fontFamily` is passed as today (`"sans-serif"`); the test card and the grid use their own loaded face.
+
+### 8.6 Content cadence vs the display's refresh
+
+Three numbers, never confused: **content fps** (24/25/30/50/60, the clock's `fps`), **browser fps** (rAF callbacks per second, what Chromium delivers to this window), and **LED refresh** (set in the processor, thousands of Hz, invisible to Pixel Lab and never reported as anything).
+
+**Which frame.** Desktop's formula (section 4) stays: `frame = startFrame + floor((t − epochMs) × fps / 1000)`. Output refines how `t` is taken, inside the page:
+
+1. `t` is the rAF callback's own timestamp (`performance.timeOrigin + rafTimestamp`), which Chromium aligns to the vsync it's producing for, not `performance.now()` at some later point in the callback.
+2. **Quantized to the refresh grid**, so jitter of a fraction of a millisecond can't flip `floor` at a frame boundary (a 60 fps clock on a 60 Hz display would otherwise show a random double and skip). With `P` the median rAF interval over the last 60 callbacks and `t0` the first rAF timestamp after the clock arrived: `t' = t0 + round((t − t0) / P) × P`. Re-anchor `t0` when `|t − t'| > P / 4` (display clock drift, a dropped vsync). Every window still computes a pure function of time, so outputs stay within one refresh of each other, as section 4 promises.
+
+**Expected pattern.** Refreshes each content frame stays on screen, over one cycle:
+
+| Content fps | 60 Hz display | 50 Hz display |
+| --- | --- | --- |
+| 24 | 3, 2 (uneven, classic pulldown) | 2 ×11, 3 (uneven) |
+| 25 | 3, 2, 3, 2, 2 (uneven) | 2 (even) |
+| 30 | 2 (even) | 2, 2, 1 (uneven) |
+| 50 | 1, 1, 1, 1, 2 (uneven) | 1 (even) |
+| 60 | 1 (even) | 1 frame in 6 never shown |
+
+Pure function, unit-tested against this table:
+
+```ts
+// src/engines/output-layout.ts
+interface OutputCadence {
+  contentFps: ContentFps;
+  refreshHz: number;        // DisplayInfo.refreshHz, or the measured rate when it is 0
+  measuredHz: number;       // 1000 / P
+  pattern: number[];        // refreshes per content frame over one cycle (capped at 1 s for 59.94-style rates)
+  even: boolean;            // every entry equal and fps <= refreshHz
+  repeated: number;         // since last report: content frames held longer than the pattern says
+}
+export function cadencePattern(fps: number, refreshHz: number): { pattern: number[]; even: boolean };
+```
+
+`skippedFrames` counts content frames the pattern says should have appeared and didn't (frame number jumped by more than the pattern allows); `lateFrames` counts rAF intervals over 1.5 P. Both reset at every report.
+
+**Warning in the control window** (not on the wall) when `even` is false: "25 fps content on a 60 Hz display can't play evenly (3-2-3-2-2). Set the display to 50 Hz if it offers it, or use 30 or 60 fps." When `measuredHz` differs from `refreshHz` by more than 2 %: "This window receives 30 frames per second but the display runs at 60 Hz. Content may stutter." (that also catches Chromium syncing the window to another display's vsync, which must be checked on a real second display, O9).
+
+### 8.7 The pixel-grid test card
+
+A new deterministic source, `pixel-grid`, owned by Output: `src/engines/pixel-grid.ts` (pure geometry) and `src/modules/output/pixel-grid-source.ts` (the `FrameSource`). It exists to make any scaling, offset, crop or resampling visible, on a canvas capture, in a decoded MP4 and in a close-up photo.
+
+Two spaces:
+
+- `space: 'master'`: drawn on the master canvas inside each screen's `masterRect`, like the calibration card, then cut by the mapping. Proves the whole chain: mapping → slice copy → window → cable. This is the one exported to MP4 for Resolume.
+- `space: 'display'`: the output runtime draws it **directly on the full `canvasPx`**, ignoring the mapping, plus a 1-px cyan line along the output's right and bottom edge when the output is smaller than the display. Proves the window → cable part alone, independent of any project. It's an output-only mode, not offered in the MP4 export.
+
+Per rectangle (a screen region, or the whole display), all coordinates integers relative to the rectangle's origin, `w × h` its size:
+
+| Element | Exact pixels | What it reveals |
+| --- | --- | --- |
+| Edge line | 1-px white (#FFF) on row 0, row h−1, column 0, column w−1 | Missing line = crop or 1-px offset on that side |
+| Inner edge | 1-px black gap, then a 1-px white line at inset 2 | Gray instead of white-black-white = resampling at the edge |
+| Corner markers | 16 × 16 squares at inset 4, TL red, TR green, BL blue, BR white; each with a 1-px black notch at its own corner | A wrong colour in a corner = flipped or rotated; a marker cut short = crop |
+| Grid | 1-px #404040 lines every 10 px, 1-px #A0A0A0 lines every 100 px, from the origin | Uneven spacing = non-integer scale |
+| Coordinates | Every 100-px crossing: text `x,y` in the rectangle's master (or display) coordinates, 11 px, in the calibration face | Reads the real position on the photo |
+| Checker patches | 64 × 64 patches of 1 × 1 and of 2 × 2 black/white checker, and 64 × 64 of 1-px vertical and horizontal stripes (pitch 2), at the centre and next to each corner marker; patch origin on even coordinates | 1:1 → crisp; any scale ≠ 1 or half-pixel offset → flat gray or moiré, visible even from a distance |
+| Label | Centre: name, `w × h`, master origin, output origin (`SCR-03 · 640 × 360 · master 1280,0 · out 0,360`) | Which region is where |
+| Motion marker (`motion: true`) | A 4 × 4 white square on row 8 that moves 4 px right per content frame, wrapping at w | Repeated or skipped content frames in a slow-motion video of the display |
+
+Colour lines are only in the corner markers, 16 × 16 at even coordinates, because H.264 4:2:0 halves chroma resolution: 1-px colour detail can't survive an MP4, 1-px white-on-black can (luma is full resolution). The 1 × 1 checker may still blur after H.264 compression; that's expected and recorded, not a failure of the mapping (the MP4 checks in O2 and 8.11 use only the probes that survive).
+
+```ts
+// src/engines/pixel-grid.ts, pure
+type GridOp = { kind: 'rect'; x: number; y: number; w: number; h: number; color: string }
+            | { kind: 'text'; x: number; y: number; text: string; color: string };
+export function pixelGridOps(rect: { w: number; h: number }, label: GridLabel, opts: { motionFrame: number | null }): GridOp[];
+/** The colour the card puts at (x, y) outside text boxes: the oracle the pixel tests compare against. */
+export function expectedGridPixel(rect: { w: number; h: number }, x: number, y: number): [number, number, number] | 'text';
+```
+
+### 8.8 Pixel tests
+
+**Unit tests (vitest, node, no canvas)**, in `tests/output-*.test.ts`:
+
+- `outputLayout`: 1× 1920 × 1080; 2× 3840 × 2160 display with a 3840 × 2160 output (exact) and a 1920 × 1080 output (`smaller`, 1920 right / 1080 bottom black); output larger (cropped); mixed; Windows 125 % 1366 × 768 fixture (`canvasCss` 1092.8 px, `devicePxExact: false`).
+- `cadencePattern`: every cell of the table in 8.6, plus 59.94 Hz.
+- `pixelGridOps` / `expectedGridPixel`: every op integer and inside the rectangle; corner colours; checker parity; ops identical for the same input (determinism); text boxes reported so the comparers skip them.
+- `createOutputSource` settings validation: each source, each bad value and unknown key → the right code.
+- Assembly without a canvas: for Festival and for a fixture with non-zero slice offsets, the region list the output page uses is exactly `videoTargets(mapping)` for that output (it's the same call, the test guards against a second path appearing).
+
+**Electron pixel tests** (`desktop/tests/output-pixels.test.cjs`, after D1–D5; runs on the dev Mac with no external display):
+
+1. Open the output on the built-in display with `allowControlDisplay: true` and `pixel-grid` in `display` space. Main takes `webContents.capturePage()` after `firstFrameDrawn`.
+2. The capture must be `devicePx` in size. If Electron returns it at another size, the test fails; it never resamples to compare. (Whether `capturePage` returns device px on a 2× display is the first thing this task measures.)
+3. Compare ~2,000 probe pixels (all four corners and edges at offsets 0–3, the corner markers, every checker patch at full density, random grid points with a fixed seed) to `expectedGridPixel`, **exact match**, text boxes excluded.
+4. Same with `space: 'master'` on a fixture project whose output has three slices at odd, non-zero offsets: probes at each slice's four corners in output coordinates.
+5. **2× and 1×.** The built-in Retina display covers 2×. The same test runs a second time with the dev-only switch `--force-device-scale-factor=1` (test runner only, never in a packaged build) to cover 1×. A real 1× monitor is still checked physically (O10), because the switch is not the same thing as a 1× display.
+6. **Mutation check.** The test must fail against two deliberately broken builds: canvas sized `innerWidth × innerHeight` (CSS px) and scaled by CSS, and smoothing on with a 0.5 px offset. A pixel test that passes against these proves nothing.
+
+**Output = MP4** (Electron): for Festival's two outputs, frames 0 and 37 of the calibration card and the pixel grid, a hash of the capture's visible area equals a hash of `targetSource(...)` drawn off-screen by the export path at the same frame. Equality, not tolerance.
+
+**Physical** [monitor físico]: the pixel grid in `display` space and then `master` space on an external monitor, photographed from 10–20 cm with a phone, at the monitor's native mode with scale 1, at a HiDPI mode with scale 2, and at one macOS *scaled* mode (expected to fail visibly: gray checker patches; the photo documents what the operator should look for). Pass = all four edge lines, both inner lines and all corner markers complete, and the 1 × 1 checker crisp. Photos go into `desktop/docs/TEST-RESULTS.md`.
+
+### 8.9 Measured limits (to be filled by O8)
+
+Known numbers, from Chromium's and the GPU's own limits; everything else is measured on the dev Mac and written here, not guessed.
+
+| Limit | Value | Source |
+| --- | --- | --- |
+| 2D canvas side | 32,767 px (Chromium) | Chromium limit, to confirm in Electron by creating canvases of growing size and checking `getContext` and one pixel round-trip |
+| 2D canvas area | 268,435,456 px (Chromium) | Same |
+| GPU texture side (`MAX_TEXTURE_SIZE`) | To measure | A 2D canvas larger than this may fall back to software and drop the frame rate; record where |
+| Depth Studio (`depthMaxSize()`) | To measure | `min(MAX_RENDERBUFFER_SIZE, MAX_VIEWPORT_DIMS)` |
+| Memory per output window, Festival, test card | To measure | `app.getAppMetrics()` / `process.getProcessMemoryInfo()` and Activity Monitor's GPU memory, before and after `live` |
+| Same, Depth Studio | To measure | Note: `DepthRenderer` uses `antialias: true`, so an MSAA buffer the master's size; at 5120 × 1664 that can reach hundreds of MB |
+| Frame time, Festival, test card / Depth Studio at 60 fps | To measure | rAF timestamps over 60 s; report `browserFps`, `lateFrames`, `skippedFrames` |
+
+### 8.10 Output tasks for Phase C
+
+Small, in order. Each ends with `npm run typecheck && npm run lint && npm test` and, once Electron is involved, `npm --prefix desktop test` and a note in `desktop/docs/TEST-RESULTS.md`. **[monitor físico]** marks tasks that need a real external display.
+
+| # | Task | Depends on | Acceptance criteria |
+| --- | --- | --- | --- |
+| O1 | **Layout and cadence, pure.** `src/engines/output-layout.ts`: `outputLayout`, `cadencePattern`, `contentFrame(clock, t, P, t0)` | — | Unit tests in 8.8 pass; every cell of the 8.6 table matches; no DOM import |
+| O2 | **Pixel-grid card.** `src/engines/pixel-grid.ts`, `pixel-grid-source.ts`, registered in `output/module.ts`; its id added to `catalog.ts` with the Lead Architect's OK; a "Pixel test" fixture project (master 1920 × 1080, three screens, one 1920 × 1080 output with slices at odd non-zero offsets) under `tests/fixtures/` | — | Unit tests pass; the card shows in the Live preview and the MP4 export; frame 0 of a 1920 × 1080 export, decoded with WebCodecs in Electron, has every edge-line and 2 × 2-checker probe within ±8 luma |
+| O3 | **Frozen source table.** `output-sources.ts`; `studio-panel.tsx` uses it | O2 | Settings tests for every code in 8.5; the MP4 panel's frame-0 preview canvas is pixel-identical before and after the refactor (hash, in the browser) |
+| O4 | **Output page.** `src/app/output/page.tsx`, `output-runtime.ts`, CSS from 8.1, report from 8.4 | O1, O3, D4, report fields agreed (O-7) | Static export writes `output.html`; the page's chunks don't include `state/store`; in a browser without the preload it stays black with one console line; with D4's preload: first frame within 1 s of the session for Festival on the dev Mac; the DOM holds one canvas; a bad session keeps the previous one on screen and reports the code |
+| O5 | **Electron pixel tests, 1× and 2×** | O4, D5 | 0 mismatched probes at 2× (built-in display) and at 1× (`--force-device-scale-factor=1`), in `display` and `master` space; both mutation builds fail; `contentBoxDevicePx === devicePx` in every report |
+| O6 | **Output = MP4** | O5 | Hashes equal for Festival OUT 1 and OUT 2, frames 0 and 37, calibration card and pixel grid |
+| O7 | **Depth Studio on the output** | O4 | Festival plays Depth Studio at 1:1 when `depthMaxSize() ≥ 5120`; a master over the limit reports `MASTER_TOO_LARGE` and stays black (forced with a fake limit in a test); a lost WebGL context reports `GPU_UNAVAILABLE` and recovers on restore |
+| O8 | **Limits** | O4, O7 | Every "to measure" row in 8.9 filled with the Mac model, macOS and Electron version; frame time for Festival with both sources at 60 fps recorded |
+| O9 | **Cadence on a real display** [monitor físico] | O4, D6 | Pixel grid with `motion: true`, 240 fps phone video of 10 s per content rate on a 60 Hz display (and 50 Hz if the monitor offers it): the counted pattern equals 8.6's table; 30 fps for 10 min with 0 `skippedFrames`; `measuredHz` within 2 % of the display's rate; the warning appears for uneven combinations |
+| O10 | **Physical 1:1** [monitor físico] | O5, D6, D10 | Close-up photos pass the criteria in 8.8 at scale 1 and scale 2; the macOS scaled mode visibly fails; `sizeMatch` warning text checked for a smaller output on a HiDPI display |
+| O11 | **Resolume Arena procedure** [monitor físico] | O2, O3 | 8.11 executed, every box filled with what was seen and photos, results in `docs/integrations/RESOLUME.md` |
+
+**Risks.**
+
+- `capturePage()` might return a DIP-sized image on 2× displays. Then O5 has to read the bitmap at the right scale factor or compare inside the page; known in the first hour of O5.
+- `--force-device-scale-factor=1` is not a real 1× display; only O10 proves 1×.
+- Chromium may not sync an output window's rAF to the external display's vsync on macOS (e.g. follow the primary display). O9 catches it via `measuredHz`; there's no fix in Alpha beyond the warning.
+- Fractional CSS size on Windows may be snapped by Chromium's layout; `contentBoxDevicePx` would show it. Windows is not claimed.
+- H.264 4:2:0 and compression blur 1-px colour and possibly the 1 × 1 checker in MP4s. The grid is designed around it (8.7); the Resolume check uses the probes that survive.
+- Depth Studio's MSAA buffer at master size may cost more GPU memory than expected (O8).
+- Text in the grid is anti-aliased; exact-match tests exclude text boxes, so a regression inside a label isn't caught by them.
+- Every output window draws the whole master; fine for one output, to be re-measured before `MAX_OUTPUTS` > 1.
+
+### 8.11 Resolume Arena test procedure
+
+Resolume hasn't been tested with Pixel Lab yet. Nothing below assumes a result: each box records what was actually seen. Run it on the dev Mac with one external monitor at its native mode, scale 1. Results and photos go into `docs/integrations/RESOLUME.md`. No Arena preset file is generated (same rule as that document).
+
+**Setup**
+
+- [ ] Write down: Arena version, macOS version, Mac model, monitor model, its native resolution and refresh, cable/adapter.
+- [ ] In Pixel Lab, open the "Pixel test" fixture (O2). Check it validates with no errors.
+- [ ] Export the MP4 of the **master** (1920 × 1080), `pixel-grid` in `master` space, `motion: true`, 30 fps, 10 s.
+- [ ] Export the MP4 of **OUT 1** (1920 × 1080), same card and settings.
+- [ ] Export the Resolume package (slice tables, CSV, pixel-map guides, manifest, setup guide).
+- [ ] Open Pixel Lab's own output window for OUT 1 on the monitor and take the reference close-up photos of the four corners and the centre. Close it.
+
+**A. Per-output MP4, shown 1:1**
+
+- [ ] Composition size = 1920 × 1080, frame rate 30.
+- [ ] Advanced Output: the external monitor as the output device, at its native resolution; one slice, input = 0, 0, 1920, 1080, output = 0, 0, 1920, 1080.
+- [ ] Drop the OUT 1 MP4 in a clip slot. Check the clip's reported size is 1920 × 1080 and that its transform does no fit, scale or offset.
+- [ ] Close-up photos of the four corners and the centre. All four edge lines present: ☐ yes ☐ no (which side).
+- [ ] Inner lines distinct from the edge lines (white-black-white, not gray): ☐ yes ☐ no.
+- [ ] Corner markers: right colours, complete 16 × 16: ☐ yes ☐ no.
+- [ ] 2 × 2 checker crisp: ☐ yes ☐ no. 1 × 1 checker: ☐ crisp ☐ blurred by the codec ☐ gray (scaled).
+- [ ] Coordinates read on the photo match their position (e.g. `1000,500` sits at the 1000/500 crossing): ☐ yes ☐ no.
+- [ ] Compared with the reference photos of Pixel Lab's own output: ☐ same ☐ different (describe).
+- [ ] Black is black and white is full white (no lifted blacks from video-range levels), judged on the photo with fixed exposure: ☐ yes ☐ no.
+- [ ] Motion marker steps evenly at 30 fps on the 60 Hz monitor (slow-motion video): ☐ yes ☐ no.
+
+**B. Master MP4, cut by slices**
+
+- [ ] Composition size = master size (1920 × 1080), 30 fps; master MP4 in a clip slot, no fit or scale.
+- [ ] Advanced Output: enter every slice from the package's slice table by hand (input rectangle in master px, output rectangle in output px).
+- [ ] Load the package's input guide and output guide images. Each slice outline sits exactly on its guide: ☐ yes ☐ no (which slice, how many px).
+- [ ] On the monitor, every slice shows its own edge lines, corner markers and label (`SCR-xx · w × h · master x,y · out x,y`), and the label's numbers match the slice table: ☐ yes ☐ no.
+- [ ] Where slices touch, no line is doubled or missing (no off-by-one at the seam): ☐ yes ☐ no.
+- [ ] Compared with Pixel Lab's own output window of OUT 1: ☐ same ☐ different (describe).
+- [ ] Repeat the A checks for corners, checker and levels on this output.
+
+**Closing**
+
+- [ ] Every "no" or "different" has a photo and a one-line description.
+- [ ] Record what has to change in Pixel Lab, in the package, or in the procedure. Nothing is declared compatible with Resolume until A and B pass.
+
+### 8.12 Output review of sections 1–7
+
+**Agreed, no change:** main-only display detection and window creation; the window options and security settings of section 2 (Output adds nothing that needs `nodeIntegration`, a webview, extra preload functions or any network); black `backgroundColor`; no scaling anywhere in the shell; zoom locked at 1; the shared-epoch clock; explicit "Update output" (D-4); black window on failure (D-1); `MAX_OUTPUTS` as a constant; no preview cap.
+
+**Objections and proposed changes** (Desktop's text is left as it is; these are for Desktop to accept or reject):
+
+1. **Depth Studio settings aren't in the project.** Section 4 says Depth Studio's "`project.modules` entry is already in the project". It isn't: `depth-store.ts` says saving waits for the `modules[id]` section. Proposed: Depth's config travels in `source.settings` (8.5), well under the 1 MiB bound.
+2. **Sources aren't looked up in the registry.** Section 4 says "the source is looked up by id in the module registry". The registry's sources read live editor stores. Proposed wording: "the source is created by id from its frozen settings (`createOutputSource`, section 8.5)".
+3. **Display updates need a message to the output window.** Section 5 item 3 says `devicePx`, `scaleFactor` and `devicePxExact` reach the output window "again on every metrics change", but `OutputApi` has only `onSession` and `onClock`. Proposed: `onDisplay(cb: (d: DisplayInfo) => void)` on `output:display`, or re-sending `output:session` with the same `revision` and the new `display`. Output prefers `onDisplay`: a re-sent session would rebuild the source for nothing.
+4. **Report fields.** Add the optional fields in 8.4 (`contentBoxDevicePx`, `masterPx`, `sourceId`, `errorCode`, `cadence`, `limits`) to `OutputRenderReport` and its validator, since unknown keys are rejected.
+5. **Stronger 1:1 check.** Section 5 item 4 compares `viewportCss × devicePixelRatio` with `devicePx`. Add `canvasPx === devicePx` and `contentBoxDevicePx === devicePx`. With `devicePxExact: false`, a ±1 px difference should be a warning, not `NOT_ONE_TO_ONE`.
+6. **`sizeMatch` needs a fourth value.** An output wider but shorter than the display is neither smaller nor larger. Add `'mixed'`, and carry the per-axis numbers (8.3 `croppedPx`, `blackPx`) so the warning can say how many pixels are cropped or black on each side.
+7. **Clock sampling.** Keep the formula; Output takes `t` from the rAF timestamp and quantizes it to the refresh grid (8.6). Section 4's "`now()` = `performance.timeOrigin + performance.now()`" should read "a timestamp on that clock; output windows use the rAF timestamp".
+8. **Session swap semantics.** "The output window swaps at the next frame" (section 3): Output adds that the swap happens only after the new session is fully prepared; if preparing fails, the previous session keeps playing and the report carries the error. A first session that fails leaves the window black (`opening` → `failed` via the report). Desktop's state machine should treat a report with `errorCode` and `firstFrameDrawn: false` during `opening` as `LOAD_FAILED`.
+9. **Source errors.** Main can't validate `source.settings` (no registry, no schemas). Output validates and reports `SOURCE_UNKNOWN` / `SOURCE_SETTINGS_INVALID`. Desktop shows these like `PROJECT_INVALID`.
+10. **D10 and O5/O10 overlap.** D10's close-up photo uses the pixel-grid card from O2; D10 should be scheduled after O2 and run together with O10, one session with the monitor.
+11. **Rehearsal on the laptop.** O5's automated tests rely on `allowControlDisplay` (D-5); Output agrees with Desktop's draft (explicit toggle, off by default).
+12. **Static export.** Section 2 states `assetPath` must serve `/output.html`; agreed. Output's page lives at `src/app/output/page.tsx` and inherits the root layout (fonts only); no other route or rewrite is needed.
