@@ -101,6 +101,7 @@ else {
       const contents = window.webContents;
       window.on('closed', () => { windows.removeOutput(outputId, window); outputs.onClosed(outputId); });
       contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) outputs.onLoadFailed(outputId, description); });
+      contents.on('render-process-gone', (_event, details) => outputs.onRendererGone(outputId, details?.reason));
       // Esc runs here, in main, so it works even while the output renderer is hung (section 2).
       contents.on('before-input-event', (event, input) => {
         const action = outputKeyAction(input);
@@ -128,6 +129,18 @@ else {
       sendSession: (outputId, value) => windows.output(outputId)?.webContents.send(OUTPUT_CHANNELS.session, value),
       pushStatus: status => { const control = windows.control; if (control && !control.isDestroyed()) control.webContents.send(OUTPUT_CHANNELS.status, status); },
       blocker: powerSaveBlocker,
+      reloadWindow: outputId => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.loadURL(outputURL(origin)).catch(() => {}); },
+      // Main-side liveness probe (D8): a trivial script the renderer must run on its main thread. Nothing is exposed
+      // to the page. A probe left unanswered for 2 s is abandoned; the 5 s rule counts from the last answer.
+      probe: outputId => {
+        const window = windows.output(outputId);
+        if (!window || window.isDestroyed() || window.webContents.isCrashed()) return Promise.reject(new Error('no renderer'));
+        let timer;
+        return Promise.race([
+          window.webContents.executeJavaScript('0', false),
+          new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error('probe timeout')), 2000); }),
+        ]).finally(() => clearTimeout(timer));
+      },
     });
     // Displays (Phase C D2). Renderers never see raw Display objects; the control window gets DisplayInfo only.
     const listDisplays = () => {
@@ -162,6 +175,7 @@ else {
     outputHandler(OUTPUT_CHANNELS.open, payload => outputs.open(payload));
     outputHandler(OUTPUT_CHANNELS.close, target => { outputs.close(target); });
     outputHandler(OUTPUT_CHANNELS.statusAll, () => outputs.statusAll());
+    outputHandler(OUTPUT_CHANNELS.retry, outputId => outputs.retry(outputId));
     // Messages from output windows. ipcMain.on can't answer, so an untrusted sender or a bad payload is dropped.
     const fromOutput = (channel, fn) => ipcMain.on(channel, (event, payload) => {
       const role = windows.roleOf(event.sender);
