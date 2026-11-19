@@ -209,3 +209,26 @@ Also tightened: the control window now blocks `will-redirect` outside its allowe
 New tests cover, for both `app://` and the dev origin: control channels reject an output window's sender and the reverse; an unregistered or invalid output id is rejected; child frames, foreign `WebContents`, a control window at the output route and foreign URLs are rejected; a destroyed window authorises nothing; `ALREADY_OPEN`, `TOO_MANY_OUTPUTS` and the output id pattern.
 
 Not tested: output-window sender checks against a real output window (none exists until D4/D5); `will-redirect` with a real redirect (the static app never redirects).
+
+## D2. Displays (2026-11-18)
+
+`desktop/src/displays.cjs` (pure): `toDisplayInfo` builds the contract's `DisplayInfo` from Electron's `Display`; `devicePxOf` gives the framebuffer size (macOS: bounds × scale; Windows: `screen.dipToScreenRect`, `devicePxExact: false` when the DIP product is fractional); `matchDisplay` implements section 1's two levels; `reliableMatch` implements owner decision D-2: reliable only with exactly one candidate at level 1 or 2 and no other connected display sharing that label and `devicePx`. `main.cjs` adds `output:list-displays` (control role only) and pushes `output:displays-changed` to the control window after `display-added`, `display-removed` and `display-metrics-changed`, debounced 250 ms. The control preload exposes `pixelLabDesktop.output.listDisplays()` and `onDisplays()`.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 24/24 (8 new in `tests/displays.test.cjs`) |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 302/302 |
+| `test:smoke` (static) and `dev -- --smoke-test` | pass; the smoke test now calls `listDisplays()` and checks integer `devicePx`, one primary display and valid rotation |
+
+Static smoke output on the dev Mac (MacBook Pro M1 Max, built-in display only):
+
+```json
+{"label":"Built-in Retina Display","internal":true,"primary":true,"scaleFactor":2,
+ "devicePx":{"width":3600,"height":2338},"devicePxExact":true,"refreshHz":120.0006103515625,"hostsControlWindow":true}
+```
+
+3600 × 2338 is the **framebuffer** of the "More Space" scaled mode (1800 × 1169 DIP at 2×); the panel itself is 3456 × 2234. This is the macOS scaled-mode case in section 1: Electron reports the framebuffer exactly and can't see the panel. `refreshHz` comes back fractional (120.0006); consumers should round for display and compare with a tolerance.
+
+Unit fixtures: macOS 2× built-in and 1× external; Windows 125 % on 1920 × 1080 (exact) and 1366 × 768 (`devicePxExact: false`), 150 %; rotation 90; level 1 / level 2 / no match (other size, other label, internal vs external); D-2: same monitor on the same or a new id (reliable), **identical twins** both connected with old or new ids (ambiguous), a shared empty label (ambiguous), a lookalike differing only in `internal` (ambiguous); debounce of a burst.
+
+Not tested: real `display-added` / `removed` / `metrics-changed` events (needs plugging a monitor, task D7 **[monitor físico]**); Windows `dipToScreenRect` (stand-in function in tests; **Windows only, not claimed**). Known limit: with only the other identical twin connected, label + size can't tell it apart from the original (level 2, reliable); documented in the contract's risks.
