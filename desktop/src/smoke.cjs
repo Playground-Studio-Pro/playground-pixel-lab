@@ -54,7 +54,7 @@ async function smokeOutput(window, hooks, displays) {
   const until = async (predicate, ms, what) => {
     const end = Date.now() + ms;
     while (Date.now() < end) { if (await predicate()) return Date.now(); await sleep(25); }
-    assert.fail(`timed out waiting for ${what}`);
+    const st = hooks.outputs.status(id); assert.fail(`timed out waiting for ${what} (state ${st.state}, error ${st.error ? st.error.code : null})`);
   };
   const stateOf = () => hooks.outputs.status(id).state;
   const blocking = () => { const b = hooks.outputs.sleepBlockerId(); return b !== null && hooks.powerSaveBlocker.isStarted(b); };
@@ -187,5 +187,68 @@ async function smokeOutput(window, hooks, displays) {
   ], 'D8 status pushes');
   const d8 = { crashToFailedMs: crash.ms, retryToLiveMs: retryMs, hangToUnresponsiveMs: unresponsiveMs, hangEndToLiveMs: recoverMs - 8000 };
 
-  return { d8, url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
+  // D7 (simulated display lists; the real unplug is for the monitor session): removed → waiting-display, hidden,
+  // clock paused; a lookalike → DISPLAY_AMBIGUOUS; same display back → held on the paused frame; resume → live.
+  const sharedNow = () => performance.timeOrigin + performance.now();
+  const playing = { ...request(true), session: { ...request(true).session, clock: { state: 'playing', fps: 30, startFrame: 0, epochMs: sharedNow() } } };
+  await control(`window.pixelLabDesktop.output.open(${JSON.stringify(playing)})`);
+  await until(() => stateOf() === 'live', 2000, 'live (D7)');
+  win = hooks.windows.output(id);
+  await sleep(1000);
+  const stubClock = async () => JSON.parse(await win.webContents.executeJavaScript('document.body.dataset.clock || "null"'));
+  const real = hooks.listDisplays();
+  const tRemove = Date.now();
+hooks.outputs.onDisplaysChanged(real.filter(d => d.electronId !== display.electronId));
+  const removed = { ms: Date.now() - tRemove, state: stateOf(), visible: win.isVisible(), blocking: blocking(), display: hooks.outputs.status(id).display };
+  assert.equal(removed.state, 'waiting-display');
+  assert.equal(removed.visible, false, 'hidden at once');
+  assert.equal(removed.blocking, false);
+  assert.equal(removed.display, null);
+  await sleep(200);
+  const paused = await stubClock();
+  assert.equal(paused.state, 'paused', 'clock paused on the output page');
+  assert.ok(paused.frame >= 25 && paused.frame <= 45, `paused near frame 30, got ${paused.frame}`);
+  const twin = { ...display, electronId: 999999, key: { ...display.key, electronId: 999999 }, hostsControlWindow: false, primary: false };
+  hooks.outputs.onDisplaysChanged([...real.filter(d => d.electronId !== display.electronId), twin, { ...display, electronId: 999998, key: { ...display.key, electronId: 999998 }, hostsControlWindow: false, primary: false }]);
+  assert.equal(stateOf(), 'waiting-display');
+  assert.equal(errorOf(), 'DISPLAY_AMBIGUOUS', 'identical twins never take the output');
+  assert.equal(win.isVisible(), false);
+  const tBack = Date.now();
+  hooks.outputs.onDisplaysChanged(real);
+  await sleep(300);
+  const held = { ms: Date.now() - tBack - 300, state: stateOf(), status: hooks.outputs.status(id), visible: win.isVisible(), focused: win.isFocused(),
+    bounds: win.getBounds(), simpleFullScreen: process.platform === 'darwin' ? win.isSimpleFullScreen() : null, blocking: blocking() };
+  assert.equal(held.state, 'held');
+  assert.equal(held.status.reconnected, true);
+  assert.equal(held.status.error, null);
+  assert.equal(held.visible, true); assert.equal(held.focused, false); assert.equal(held.blocking, false);
+  assert.deepEqual(held.bounds, display.boundsDip);
+  if (process.platform === 'darwin') assert.equal(held.simpleFullScreen, true);
+  assert.deepEqual(JSON.parse(await win.webContents.executeJavaScript('document.body.dataset.display || "null"')), display.boundsDip, 'output:display sent');
+  await sleep(1000);
+  assert.deepEqual(await stubClock(), paused, 'the frame does not advance while held');
+  assert.equal(stateOf(), 'held', 'never resumes by itself');
+  const resumed = await control(`window.pixelLabDesktop.output.resume('${id}')`);
+  assert.equal(resumed.state, 'live');
+  assert.equal(resumed.reconnected, false);
+  await sleep(100);
+  const after = await stubClock();
+  assert.equal(after.state, 'playing'); assert.equal(after.startFrame, paused.frame); assert.equal(after.fps, 30);
+  assert.equal(blocking(), true);
+  assert.match(await control(`window.pixelLabDesktop.output.resume('${id}').then(() => 'resumed', e => e.message)`), /NOT_RESUMABLE/);
+  // Metrics change on the display in use: output:display sent with the new geometry, still live, then back. The window's
+  // own bounds can't follow a simulated size (simple full screen fills the real screen); that's checked on the monitor.
+  const shrunk = { ...display, boundsDip: { ...display.boundsDip, height: display.boundsDip.height - 100 } };
+  hooks.outputs.onDisplaysChanged(real.map(d => (d.electronId === display.electronId ? shrunk : d)));
+  await sleep(400);
+  const metrics = { sent: JSON.parse(await win.webContents.executeJavaScript('document.body.dataset.display')), state: stateOf(), visible: win.isVisible() };
+  assert.deepEqual(metrics.sent, shrunk.boundsDip); assert.equal(metrics.state, 'live'); assert.equal(metrics.visible, true);
+  hooks.outputs.onDisplaysChanged(real);
+  await sleep(400);
+  assert.deepEqual(win.getBounds(), display.boundsDip);
+  await control(`window.pixelLabDesktop.output.close('${id}')`);
+  await until(() => stateOf() === 'closed' && hooks.windows.outputIds().length === 0, 2000, 'close (D7)');
+  const d7 = { removeToHiddenMs: removed.ms, pausedFrame: paused.frame, reconnectToHeldMs: held.ms, resumedClock: after };
+
+  return { d7, d8, url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
 }

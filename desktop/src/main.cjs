@@ -110,23 +110,38 @@ else {
         if (action === 'close') outputs.close(outputId);
       });
     }
+    const isFull = window => (process.platform === 'darwin' ? window.isSimpleFullScreen() : window.isFullScreen());
+    const setFull = (window, on) => (process.platform === 'darwin' ? window.setSimpleFullScreen(on) : window.setFullScreen(on));
     function showOutputWindow(outputId, display) {
       const window = windows.output(outputId);
       if (!window || window.isDestroyed()) return;
+      const b = window.getBounds(), t = display.boundsDip;
+      // Moving or resizing (metrics change, reconnect): leave full screen first so the new bounds apply.
+      if (isFull(window) && (b.x !== t.x || b.y !== t.y || b.width !== t.width || b.height !== t.height)) setFull(window, false);
       window.setBounds(display.boundsDip);
       window.setAlwaysOnTop(true, 'screen-saver');
       // skipTransformProcessType: without it macOS briefly hides the app's windows and Dock icon on every call.
       window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
       if (!window.isVisible()) window.showInactive();   // never takes focus: the control window keeps the keyboard
-      if (process.platform === 'darwin') window.setSimpleFullScreen(true);   // native vs simple is decided in D6
-      else window.setFullScreen(true);
+      if (!isFull(window)) setFull(window, true);   // native vs simple full screen is decided in D6
     }
+    // D7: display removed. Hidden at once, renderer kept; leaving full screen first so the OS has nothing to move.
+    function hideOutputWindow(outputId) {
+      const window = windows.output(outputId);
+      if (!window || window.isDestroyed()) return;
+      if (isFull(window)) setFull(window, false);
+      window.hide();
+    }
+    const sendToOutput = (outputId, channel, value) => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.webContents.send(channel, value); };
     const outputs = createOutputController({
       listDisplays: () => listDisplays(),
       openWindow: openOutputWindow,
       showWindow: showOutputWindow,
       closeWindow: outputId => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.destroy(); },
-      sendSession: (outputId, value) => windows.output(outputId)?.webContents.send(OUTPUT_CHANNELS.session, value),
+      sendSession: (outputId, value) => sendToOutput(outputId, OUTPUT_CHANNELS.session, value),
+      hideWindow: hideOutputWindow,
+      sendClock: (outputId, clock) => sendToOutput(outputId, OUTPUT_CHANNELS.clock, clock),
+      sendDisplay: (outputId, display) => sendToOutput(outputId, OUTPUT_CHANNELS.display, display),
       pushStatus: status => { const control = windows.control; if (control && !control.isDestroyed()) control.webContents.send(OUTPUT_CHANNELS.status, status); },
       blocker: powerSaveBlocker,
       reloadWindow: outputId => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.loadURL(outputURL(origin)).catch(() => {}); },
@@ -156,10 +171,13 @@ else {
     };
     handler('output:list-displays', () => listDisplays());
     const pushDisplays = debounce(() => {
+      outputs.onDisplaysChanged(listDisplays());   // D7: reconnects and metrics changes, after the burst settles
       const control = windows.control;
       if (control && !control.isDestroyed()) control.webContents.send('output:displays-changed', listDisplays());
     }, DISPLAY_EVENT_DEBOUNCE_MS);
     for (const name of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(name, pushDisplays);
+    // A removal hides its output at once, without waiting for the debounce (D7 criterion: within 500 ms).
+    screen.on('display-removed', () => outputs.onDisplaysChanged(listDisplays()));
     await createWindow();
     app.on('activate', () => { if (!windows.control) createWindow().catch(fail); });
     // Output windows (Phase C D4, D5). Created only here, from validated control-window IPC, and registered under their
@@ -176,6 +194,7 @@ else {
     outputHandler(OUTPUT_CHANNELS.close, target => { outputs.close(target); });
     outputHandler(OUTPUT_CHANNELS.statusAll, () => outputs.statusAll());
     outputHandler(OUTPUT_CHANNELS.retry, outputId => outputs.retry(outputId));
+    outputHandler(OUTPUT_CHANNELS.resume, outputId => outputs.resume(outputId));
     // Messages from output windows. ipcMain.on can't answer, so an untrusted sender or a bad payload is dropped.
     const fromOutput = (channel, fn) => ipcMain.on(channel, (event, payload) => {
       const role = windows.roleOf(event.sender);
@@ -189,7 +208,7 @@ else {
     if (smoke) {
       const webRoot = path.join(__dirname, '..', 'web');
       await require('./smoke.cjs')(windows.control, app, {
-        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin),
+        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin), listDisplays,
         outputPageAvailable: async () => {
           if (!devURL) return fs.access(path.join(webRoot, 'output.html')).then(() => true, () => false);
           try { return (await net.fetch(outputURL(origin))).status === 200; } catch { return false; }

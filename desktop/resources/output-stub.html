@@ -19,8 +19,9 @@
       api.report({ sessionRevision: revision, firstFrameDrawn: true, frame: frame++, devicePixelRatio, viewportCss: { width: innerWidth, height: innerHeight },
         canvasPx: { width: w, height: h }, outputPx: { width: Math.max(1, w), height: Math.max(1, h) }, browserFps: 0, lateFrames: 0, skippedFrames: 0, contentBoxDevicePx: null, sourceId: 'stub' });
     };
-    api.onSession(session => { const first = revision === null; revision = session.revision; requestAnimationFrame(report); if (first) setInterval(report, 1000); });
-    api.onClock(() => {}); api.onDisplay(() => {});
+    api.onSession(session => { document.body.dataset.clock = JSON.stringify(session.clock); const first = revision === null; revision = session.revision; requestAnimationFrame(report); if (first) setInterval(report, 1000); });
+    // Last clock and display received, readable by the desktop smoke test (main-side executeJavaScript).
+    api.onClock(c => { document.body.dataset.clock = JSON.stringify(c); }); api.onDisplay(d => { document.body.dataset.display = JSON.stringify(d.boundsDip); });
     api.ready();
   } else console.log('Pixel Lab output stub: no output preload, staying black.');
 </script>
