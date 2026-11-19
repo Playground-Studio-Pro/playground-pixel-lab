@@ -30,5 +30,6 @@ export interface SourceInfo {
 
 export const MODULE_SOURCES: readonly SourceInfo[] = [
   { id: "calibration-test-card", name: "Calibration test card", moduleId: "output", checks: "Resolution, identity, alignment, color and motion of every screen" },
+  { id: "pixel-grid", name: "Pixel grid", moduleId: "output", checks: "1:1 pixels: edges, corners, offsets and scaling of every screen and output" },
   { id: "depth-scene", name: "Depth Studio scene", moduleId: "depth-studio", checks: "The current depth scene, played across every mapped screen" },
 ];

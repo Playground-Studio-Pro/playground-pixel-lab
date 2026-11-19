@@ -16,6 +16,7 @@ import { useMotion } from "@/state/motion-store";
 import { CalibrationSourceControls } from "./calibration-controls";
 import { createCalibrationSource, currentCalibrationSettings, prepareCalibrationSource } from "./calibration-source";
 import { useCalibrationSource } from "./calibration-store";
+import { createPixelGridSource, PIXEL_GRID_LIVE_SETTINGS, PIXEL_GRID_SOURCE_ID } from "./pixel-grid-source";
 import { targetSource } from "./target-source";
 import { exportMp4 } from "./video-export";
 
@@ -51,6 +52,7 @@ async function frozenSource(sourceId: string, master: { width: number; height: n
     if (Math.max(master.width, master.height) > max) throw new Error(`The master canvas is larger than this GPU renders without scaling (${max} px a side). It is never scaled down.`);
     return createDepthSource(useDepth.getState().config);
   }
+  if (sourceId === PIXEL_GRID_SOURCE_ID) return createPixelGridSource(PIXEL_GRID_LIVE_SETTINGS);
   const settings = currentCalibrationSettings();
   const assets = await prepareCalibrationSource();
   if (settings.logo !== "off" && !assets.logo) throw new Error("The Playground Studio logo didn't load, so the test card can't be exported with it. Reload, or set the logo to Off.");
@@ -123,7 +125,9 @@ export default function OutputStudioPanel() {
       ? seconds % depthConfig.durationSeconds === 0
         ? `Loops seamlessly: the scene repeats every ${depthConfig.durationSeconds} s.`
         : `The scene loops every ${depthConfig.durationSeconds} s, so a ${seconds} s file won't loop seamlessly.`
-      : calibrationMode === "calibration"
+      : sourceId === PIXEL_GRID_SOURCE_ID
+        ? "The motion marker steps 4 px per frame across each screen, so the file loops seamlessly only when the frame count fits every screen's width."
+        : calibrationMode === "calibration"
         ? "The frame counter and timecode count up, so the file doesn't loop seamlessly."
         : "Identification is a still frame, so the file loops seamlessly.";
 
@@ -152,7 +156,7 @@ export default function OutputStudioPanel() {
           }
         },
       });
-      const filename = `${slugify(project.meta.name)}-${slugify(sourceId === DEPTH ? "depth" : "calibration")}-${slugify(target.label)}-${target.width}x${target.height}-${fps}fps-${seconds}s.mp4`;
+      const filename = `${slugify(project.meta.name)}-${slugify(sourceId === DEPTH ? "depth" : sourceId === PIXEL_GRID_SOURCE_ID ? "pixel-grid" : "calibration")}-${slugify(target.label)}-${target.width}x${target.height}-${fps}fps-${seconds}s.mp4`;
       download(blob, filename);
       setStatus({ kind: "done", filename, bytes: blob.size, frames, width: target.width, height: target.height, fps });
     } catch (error) {
