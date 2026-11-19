@@ -330,9 +330,52 @@ Not tested:
 - Renderer crash, hang detection and retry (D8).
 - Display sleep over a long run (D11).
 
+## D8. Failure handling (2026-11-19)
+
+- **`output-controller.cjs`** gains the D8 transitions of section 2:
+  - **Renderer gone.** `render-process-gone` → `failed` with `RENDERER_GONE` and Electron's reason. Applies from `opening` or `live`. The window stays on its display, black (D-1); only retry or close leave this state.
+  - **Hang.** No answer from the renderer for 5 s while `live` → `failed` with `RENDERER_UNRESPONSIVE`. The frozen frame stays on screen, and Esc and Close still work, because both run in main. When the page answers again, the output returns to `live` and `error` clears.
+  - **Retry.** `output:retry` works only from `failed`. It reloads the fixed URL once and restarts the open timeout, and main re-sends the latest session on `ready`. Retry on an output that isn't failed returns its status unchanged; `'*'` → `BAD_REQUEST`.
+  - **First-frame timeout** (raised in the D5 review). A page that sends `ready` but draws no first frame within another 10 s → `failed` with `OPEN_TIMEOUT` ("reported ready but drew no first frame"). It reuses an existing code, so the contract doesn't change.
+  - **Sleep blocker.** Released while `failed`, as section 2 says (held only while `live`).
+- **How a hang is detected.** Section 2 names Electron's `unresponsive` event, but it doesn't fire for an output window.
+  - Measured on Electron 43: a page hung for 25 s never raised `unresponsive`, with or without synthetic mouse input. Only `responsive` fired once the hang ended. Chromium's hang monitor needs pending real input, which an output window never gets.
+  - So main probes the renderer itself: once a second it runs `executeJavaScript('0')`, which needs the page's main thread. A probe unanswered after 2 s is abandoned, and the 5 s rule counts from the last answer or valid report.
+  - Nothing is exposed to the page, and the page doesn't need to report at any minimum rate, so section 8.4 is unchanged.
+- **`main.cjs`**: the control channel `output:retry`, `render-process-gone` → controller, `reloadWindow` (`loadURL` of the fixed URL) and the probe. Control preload and `api.d.ts`: `output.retry`.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 58/58, with 8 new D8 tests in `tests/output-controller.test.cjs` |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 409/409, lint 0 problems |
+| `test:smoke` (static, built-in display) | pass; D5's steps, then the D8 steps below |
+| `dev -- --smoke-test` | pass; output part skipped (no `/output` on the dev server until O4) |
+
+The 8 new unit tests cover:
+- renderer gone while live and while opening;
+- retry, and retry outside `failed`;
+- the first-frame timeout;
+- a hang, and recovery once the page answers;
+- a rejected probe being retried, and Close while unresponsive;
+- the watchdog leaving an opening output alone.
+
+What the static smoke test did, after D5's steps:
+1. **Crash.** `forcefullyCrashRenderer()` (main-side, no hook in the page) → `failed` / `RENDERER_GONE` in **26 ms** (criterion: 1 s). The window stays visible, and the blocker is released.
+2. **Retry.** Retry of an output that isn't open → `closed`, nothing reloaded. Retry from the control window → `opening` → `live` in **106 ms**, at the same URL, and the blocker is held again.
+3. **Hang and recovery.** The page busy-loops for 8 s → `RENDERER_UNRESPONSIVE` after **5.8 s** (criterion: 5 s; the probe runs once a second). The window stays visible and the blocker is released. The output is back to `live` about 1 ms after the loop ends, with the error cleared.
+4. **Esc while failed.** A 15 s hang → `RENDERER_UNRESPONSIVE`, then Esc → `closed`.
+5. **Close after a crash.** Reopened, crashed, then Close from the control window → `closed`.
+6. **Status pushes** seen by the control window: opening, live, failed:RENDERER_GONE, opening, live, failed:RENDERER_UNRESPONSIVE, live, failed:RENDERER_UNRESPONSIVE, closed, opening, live, failed:RENDERER_GONE, closed.
+
+Not tested:
+- A real GPU process crash, as opposed to a renderer crash.
+- A page that hangs while `opening`; the open and first-frame timeouts cover that case.
+- Esc after a crash. Close was used instead, since `sendInputEvent` needs a live renderer.
+- Retry or failures with O4's real page, and anything on an external display (D6, D7).
+
 ## Smoke tests no longer show windows (2026-11-19)
 
-Since D5, `npm run test:smoke` opened the output window full screen on the display that shows the Pixel Lab window, several times per run (open, reopen, hang and Esc). On 2026-11-19 those black full-screen windows appeared over the owner's desktop during repeated runs. The smoke set `allowControlDisplay: true` itself.
+Since D5, `npm run test:smoke` opened the output window full screen on the display that shows the Pixel Lab window, several times per run (open, reopen, hang and Esc; with D8 also crash, retry and two long hangs). On 2026-11-19 those black full-screen windows appeared over the owner's desktop during repeated runs. The smoke set `allowControlDisplay: true` itself.
 
 What changed:
 - **`desktop/src/smoke-mode.cjs`** (pure). `smokeMode` returns `null` unless `!app.isPackaged && --smoke-test`. Otherwise:
@@ -354,9 +397,9 @@ What changed:
 
 | Check | Result |
 | --- | --- |
-| `npm --prefix desktop test` | 58/58, with 8 new in `tests/smoke-mode.test.cjs` |
-| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 409/409, lint 0 problems |
-| `npm run test:smoke` (hidden) | pass, **no window shown at any point** (no `show` event on any window, none visible at the end) |
+| `npm --prefix desktop test` | 66/66 after merging D8, with 8 new in `tests/smoke-mode.test.cjs` |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 409/409, lint 0 problems. One root test (`design-calibration`) timed out once at load average ~35 and passed on rerun |
+| `npm run test:smoke` (hidden), after merging D8 from `main` | pass three times, **no window shown at any point** (no `show` event on any window, none visible at the end); D8 steps hidden: crash → failed 27 ms, retry → live 81–107 ms, hang → unresponsive 5.8 s, back to live 1–2 ms |
 | Flag without the environment variable | refused: "Visible output smoke refused: it needs both …", exit 1, nothing opened |
 
 What the hidden run checked:
@@ -365,6 +408,7 @@ What the hidden run checked:
 - `ALREADY_OPEN` for a second open, and D4's isolation checks pass.
 - Close from the control window works.
 - Esc while the page is hung → `closed` in 2 ms.
+- D8's steps, also hidden on the virtual display: crash → `RENDERER_GONE`, retry → `live`, an 8 s hang → `RENDERER_UNRESPONSIVE` → back to `live`, Esc after a hang, Close after a crash. The window stays unseen throughout; the "stays on screen" checks apply only to the visible run.
 
 **Integration scripts** (requested for Output's hidden O4 test). `--smoke-script=<repository path>`:
 - It works in hidden runs only; a visible run refuses it, and outside `!app.isPackaged && --smoke-test` nothing of it exists.
