@@ -1,10 +1,11 @@
-const { app, BrowserWindow, protocol, net, ipcMain, dialog, session } = require('electron');
+const { app, BrowserWindow, protocol, net, ipcMain, dialog, session, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const { validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, debugAccessViolations } = require('./security.cjs');
 const { probeFFmpeg } = require('./native.cjs');
 const { createWindowRegistry, trustedURLForRole } = require('./windows.cjs');
+const { toDisplayInfo, debounce, DISPLAY_EVENT_DEBOUNCE_MS } = require('./displays.cjs');
 // Distributed builds never allow remote debugging or the Node inspector: strip the switches, then refuse to start.
 // Unpackaged development builds keep explicit debugging. Fuses in electron-builder.yml cover RunAsNode, NODE_OPTIONS and --inspect too.
 if (app.isPackaged) {
@@ -91,6 +92,24 @@ else {
       if (!windows.control || windows.roleOf(contents)?.kind !== 'control' || !trustedURLForRole(contents.getURL(), origin, 'control') || !item.getURL().startsWith('blob:')) { event.preventDefault(); return; }
       item.setSaveDialogOptions({ title: 'Export Pixel Lab file' });
     });
+    // Displays (Phase C D2). Renderers never see raw Display objects; the control window gets DisplayInfo only.
+    const listDisplays = () => {
+      const control = windows.control && !windows.control.isDestroyed() ? windows.control : null;
+      const context = {
+        platform: process.platform,
+        primaryId: screen.getPrimaryDisplay().id,
+        controlBounds: control ? control.getBounds() : null,
+        outputOnDisplay: new Map(),   // filled once output windows exist (D5)
+        dipToScreenRect: process.platform === 'win32' ? rect => screen.dipToScreenRect(null, rect) : undefined,
+      };
+      return screen.getAllDisplays().map(display => toDisplayInfo(display, context));
+    };
+    handler('output:list-displays', () => listDisplays());
+    const pushDisplays = debounce(() => {
+      const control = windows.control;
+      if (control && !control.isDestroyed()) control.webContents.send('output:displays-changed', listDisplays());
+    }, DISPLAY_EVENT_DEBOUNCE_MS);
+    for (const name of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(name, pushDisplays);
     await createWindow();
     app.on('activate', () => { if (!windows.control) createWindow().catch(fail); });
     if (smoke) await require('./smoke.cjs')(windows.control, app);
