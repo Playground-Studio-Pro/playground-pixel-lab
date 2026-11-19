@@ -57,6 +57,14 @@ export const CAL_ADVANCE = 0.6;
 /** Baseline below the top of a text box, as a share of the font size. */
 export const CAL_BASELINE = 0.78;
 
+/**
+ * The sweep bar of a moving test card: a white vertical bar that crosses the whole master canvas at an even pace
+ * (each step is ⌊w/p⌋ or ⌈w/p⌉ px), so a skipped or repeated frame shows as a jump and tearing as a broken bar.
+ * One crossing takes `seconds`, which divides every export duration (5 to 60 s), so a file loops without a jump.
+ * Width is relative to the master width, kept even.
+ */
+export const CAL_SWEEP = { seconds: 5, width: { ratio: 1 / 160, min: 4, max: 64 } } as const;
+
 /** Logo height as a share of the frame's shorter side. */
 export const CAL_LOGO = {
   center: { height: 0.18, maxWidth: 0.5, opacity: 1 },

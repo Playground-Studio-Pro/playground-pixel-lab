@@ -1,5 +1,5 @@
 import type { ContentFps } from "@/domain/motion";
-import { counterText, type CalibrationFrame, type CalNode } from "./frame";
+import { counterText, sweepRects, type CalibrationFrame, type CalNode } from "./frame";
 import { CAL_BASELINE } from "./tokens";
 
 export interface CalibrationDrawOptions {
@@ -42,17 +42,25 @@ export function drawCalibration(ctx: CanvasRenderingContext2D, frame: Calibratio
     // The box width is the monospace advance. Passing it as a limit keeps a fallback font inside the box.
     ctx.fillText(value, Math.round(node.x * scale), Math.round((node.y + node.size * CAL_BASELINE) * scale), node.width * scale);
   };
-  for (const node of frame.nodes) {
+  const rect = (r: { x: number; y: number; width: number; height: number }, fill: string) => {
+    const x0 = Math.round(r.x * scale);
+    const y0 = Math.round(r.y * scale);
+    ctx.fillStyle = fill;
+    ctx.fillRect(x0, y0, Math.max(1, Math.round((r.x + r.width) * scale) - x0), Math.max(1, Math.round((r.y + r.height) * scale) - y0));
+  };
+  // The sweep moves with the frame: a caller that draws the static layer once sees it at that frame only.
+  const sweep = () => {
+    if (frame.sweep && layer === "static") for (const r of sweepRects(frame.sweep, options.frame)) rect(r, frame.sweep.fill);
+  };
+  for (const [i, node] of frame.nodes.entries()) {
+    if (i === frame.sweep?.before) sweep();
     if (node.kind === "counter") {
       if (layer === "counters") text(node, counterText(node.field, options.frame, options.fps));
       continue;
     }
     if (layer !== "static") continue;
     if (node.kind === "rect") {
-      const x0 = Math.round(node.x * scale);
-      const y0 = Math.round(node.y * scale);
-      ctx.fillStyle = node.fill;
-      ctx.fillRect(x0, y0, Math.max(1, Math.round((node.x + node.width) * scale) - x0), Math.max(1, Math.round((node.y + node.height) * scale) - y0));
+      rect(node, node.fill);
     } else if (node.kind === "text") {
       text(node, node.text);
     } else if (options.logo) {
@@ -65,4 +73,5 @@ export function drawCalibration(ctx: CanvasRenderingContext2D, frame: Calibratio
       }
     }
   }
+  if (frame.sweep && frame.sweep.before >= frame.nodes.length) sweep();
 }

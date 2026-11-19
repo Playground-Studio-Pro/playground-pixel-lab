@@ -1,7 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
 import { timecode } from "@/engines/motion/clock";
-import { CAL_ADVANCE, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_TINT, tint } from "./tokens";
+import { CAL_ADVANCE, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_SWEEP, CAL_TINT, tint } from "./tokens";
 
 /**
  * Screen identification and calibration frames, as drawing primitives in exact integer pixels.
@@ -53,6 +53,11 @@ export interface CalibrationInput {
   readonly elements?: Partial<CalibrationElements>;
   /** Content rate the frame counter is labelled with. Not a browser or panel rate. */
   readonly fps: ContentFps;
+  /**
+   * A moving card: a sweep bar crosses the master (`CAL_SWEEP`), and identification mode shows the frame
+   * counter and timecode too. Off for still frames such as the Preview dialog's PNG.
+   */
+  readonly motion?: boolean;
 }
 
 export type CounterField = "frame" | "timecode";
@@ -77,6 +82,48 @@ export type CalNode =
   | ({ readonly kind: "counter"; readonly field: CounterField } & TextStyle)
   | { readonly kind: "logo"; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly opacity: number };
 
+/** A bar `barWidth` wide crossing `width` once every `period` frames, wrapping at the right edge. */
+export interface Sweep {
+  readonly width: number;
+  readonly barWidth: number;
+  readonly period: number;
+  /** The screens it is drawn on. Master pixels no screen covers stay black. */
+  readonly areas: readonly Box[];
+  readonly fill: string;
+}
+
+/** The sweep for a frame `width` px wide at `fps`: one crossing per `CAL_SWEEP.seconds`. */
+export function sweepFor(width: number, fps: ContentFps, areas: readonly Box[]): Sweep {
+  const w = clamp(Math.round(width * CAL_SWEEP.width.ratio), CAL_SWEEP.width.min, CAL_SWEEP.width.max);
+  return { width, barWidth: w - (w % 2), period: CAL_SWEEP.seconds * fps, areas, fill: CAL_COLORS.white };
+}
+
+/** Left edge of the bar at `frame`: `floor(phase × width / period)`, so each step is ⌊w/p⌋ or ⌈w/p⌉ px. */
+export function sweepLeft(sweep: Sweep, frame: number): number {
+  const phase = ((frame % sweep.period) + sweep.period) % sweep.period;
+  return Math.floor((phase * sweep.width) / sweep.period);
+}
+
+/**
+ * The bar's rectangles at `frame`, clipped to each screen. The part past the right edge wraps to the left, and
+ * one period later the bar is back where it started, so the bar is always visible and the last frame of a
+ * period leads into the first. Pure: same sweep and frame, same rectangles.
+ */
+export function sweepRects(sweep: Sweep, frame: number): Box[] {
+  const left = sweepLeft(sweep, frame);
+  const spans: [number, number][] = [[left, Math.min(left + sweep.barWidth, sweep.width)]];
+  if (left + sweep.barWidth > sweep.width) spans.push([0, left + sweep.barWidth - sweep.width]);
+  const out: Box[] = [];
+  for (const [x0, x1] of spans) {
+    for (const r of sweep.areas) {
+      const cx0 = Math.max(x0, r.x);
+      const cx1 = Math.min(x1, r.x + r.width);
+      if (cx1 > cx0 && r.height > 0) out.push({ x: cx0, y: r.y, width: cx1 - cx0, height: r.height });
+    }
+  }
+  return out;
+}
+
 export interface CalibrationFrame {
   readonly width: number;
   readonly height: number;
@@ -84,6 +131,11 @@ export interface CalibrationFrame {
   readonly nodes: readonly CalNode[];
   /** Area kept clear around a centered logo. Null in watermark and off modes. */
   readonly logoKeepOut: Box | null;
+  /**
+   * The sweep bar of a moving card, or null. Where it is depends on the frame number (`sweepRects`). It is
+   * drawn just before `nodes[sweep.before]`: over the field and grid, under lines, plates, marks, logo and text.
+   */
+  readonly sweep: (Sweep & { readonly before: number }) | null;
 }
 
 /** Fixed-width text for a counter: `F 000123` or a non-drop timecode. */
@@ -201,6 +253,7 @@ interface ScreenContext {
   readonly mode: CalibrationMode;
   readonly elements: CalibrationElements;
   readonly fps: ContentFps;
+  readonly motion: boolean;
   /** Areas this screen's labels and marks must stay out of: the logo, and overlaps another screen owns. */
   readonly obstacles: Box[];
   readonly logoKeepOut: Box | null;
@@ -208,6 +261,13 @@ interface ScreenContext {
   readonly placed: Box[];
   readonly layers: Layers;
 }
+
+/** Frame counter, timecode and content rate, as a corner block. */
+const counterLines = (title: number, base: number, fps: ContentFps): Line[] => [
+  { size: title, weight: 700, parts: [{ text: "0".repeat(COUNTER_CHARS.frame), fill: CAL_COLORS.white, counter: "frame" }] },
+  { size: base, weight: 600, parts: [{ text: "0".repeat(COUNTER_CHARS.timecode), fill: CAL_COLORS.white, counter: "timecode" }] },
+  { size: base, weight: 500, parts: [{ text: `CONTENT ${fps} FPS`, fill: CAL_COLORS.muted }] },
+];
 
 function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const { x, y, width: w, height: h } = s.rect;
@@ -466,6 +526,9 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
         }
       }
     }
+    // A moving card counts frames in identification too, in a corner, after the identifier and data have
+    // their room: it never covers them.
+    if (c.motion && c.elements.frameCounter) placeInCorners(counterLines(Math.round(base * 1.5), base, c.fps), ["tr", "bl", "br"]);
     return;
   }
 
@@ -541,14 +604,7 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
     }
   }
 
-  if (c.elements.frameCounter) {
-    const counter: Line[] = [
-      { size: title, weight: 700, parts: [{ text: "0".repeat(COUNTER_CHARS.frame), fill: CAL_COLORS.white, counter: "frame" }] },
-      { size: base, weight: 600, parts: [{ text: "0".repeat(COUNTER_CHARS.timecode), fill: CAL_COLORS.white, counter: "timecode" }] },
-      { size: base, weight: 500, parts: [{ text: `CONTENT ${c.fps} FPS`, fill: CAL_COLORS.muted }] },
-    ];
-    placeInCorners(counter, ["tr", "bl", "br"]);
-  }
+  if (c.elements.frameCounter) placeInCorners(counterLines(title, base, c.fps), ["tr", "bl", "br"]);
 
   if (c.elements.metadata) {
     // Bottom-right: the screen's last pixel on the master canvas.
@@ -578,13 +634,16 @@ export function buildCalibrationFrame(input: CalibrationInput): CalibrationFrame
       const shared = intersect(screen.rect, other.screen.rect);
       if (area(shared) > 0) obstacles.push(shared);
     }
-    layoutScreen(screen, { index, mode, elements, fps: input.fps, obstacles, logoKeepOut: keepOut, placed, layers });
+    layoutScreen(screen, { index, mode, elements, fps: input.fps, motion: input.motion === true, obstacles, logoKeepOut: keepOut, placed, layers });
   });
 
   const nodes: CalNode[] = [rectNode(0, 0, width, height, CAL_COLORS.black), ...layers.field, ...layers.grid];
+  // The sweep goes over the field and grid, under lines, label plates, marks, the logo and text: it never
+  // hides what a screen is.
+  const sweep = input.motion ? { ...sweepFor(width, input.fps, screens.map((sc) => sc.rect)), before: nodes.length } : null;
   if (logo && input.logo.mode === "watermark") nodes.push({ kind: "logo", ...logo, opacity: CAL_LOGO.watermark.opacity });
   nodes.push(...layers.lines, ...layers.plates, ...layers.marks);
   if (logo && keepOut) nodes.push(rectNode(keepOut.x, keepOut.y, keepOut.width, keepOut.height, CAL_COLORS.black), { kind: "logo", ...logo, opacity: CAL_LOGO.center.opacity });
   nodes.push(...layers.text);
-  return { width, height, mode, nodes, logoKeepOut: keepOut };
+  return { width, height, mode, nodes, logoKeepOut: keepOut, sweep };
 }
