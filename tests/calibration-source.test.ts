@@ -39,7 +39,8 @@ describe("calibration test card source", () => {
     const [master] = calibrationTargets(mapping);
     expect(frame.width).toBe(mapping.master.width);
     expect(frame.height).toBe(mapping.master.height);
-    for (const s of master.screens) expect(frame.nodes.some((n) => n.kind === "text" && n.text === s.label)).toBe(true);
+    // Identification names each screen as typed, on its center plate, as on a stage test card.
+    for (const s of master.screens) expect(frame.nodes.some((n) => n.kind === "text" && n.text === s.name)).toBe(true);
     expect(frame.nodes.some((n) => n.kind === "logo")).toBe(true);
   });
 
@@ -70,6 +71,7 @@ describe("calibration test card source", () => {
   });
 
   it("labels screens by order when no mapping is given", () => {
+    useCalibrationSource.setState({ mode: "calibration" });
     const frame = calibrationFrameFor({ ...input(0), context: undefined });
     expect(frame.nodes.some((n) => n.kind === "text" && n.text === "SCR-01")).toBe(true);
   });
