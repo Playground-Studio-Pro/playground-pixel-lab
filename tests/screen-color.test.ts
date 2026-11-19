@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { drawCalibration } from "@/components/shell/calibration/draw";
 import { cabinetCells } from "@/components/shell/calibration/frame";
 import { calibrationTargets } from "@/components/shell/calibration/from-mapping";
-import { CAL_CHECKER, screenAccent, tint } from "@/components/shell/calibration/tokens";
+import { CAL_CHECKER, lighten, screenAccent } from "@/components/shell/calibration/tokens";
 import { resolveMapping } from "@/engines/mapping";
 import * as ops from "@/engines/project-ops";
 import { calibrationFrameFor } from "@/modules/output/calibration-source";
@@ -88,18 +88,18 @@ describe("the test card uses the chosen color and name", () => {
     const [target] = calibrationTargets(i.context!.mapping);
     const s = target.screens[0];
     expect(s.accent).toBe(screenAccent("#E01070", 0));
-    // Probe B1 (row 2, column 1: dark) and B2 (light) 28, 20 px in from their corner: past the sweep bar, edge
+    // Probe B1 (row 2, column 1: the color itself) and B2 (its light tint) 28, 20 px in from their corner: past the sweep bar, edge
     // marker and seams, and clear of the centered label.
     const cells = cabinetCells(s);
     const b1 = cells.find((c) => c.row === 2 && c.column === 1)!.box;
     const b2 = cells.find((c) => c.row === 2 && c.column === 2)!.box;
-    expect(probe(i, b1.x + 28, b1.y + 20)).toBe(tint(s.accent, CAL_CHECKER.dark));
-    expect(probe(i, b2.x + 28, b2.y + 20)).toBe(tint(s.accent, CAL_CHECKER.light));
+    expect(probe(i, b1.x + 28, b1.y + 20)).toBe(s.accent);
+    expect(probe(i, b2.x + 28, b2.y + 20)).toBe(lighten(s.accent, CAL_CHECKER.light));
   });
 
   it("the plate carries the name as edited", () => {
     app().edit((p) => ops.updateScreen(p, screen().id, { name: "Stage Left" }));
     const frame = calibrationFrameFor(input(), { mode: "identification", logo: "off" });
-    expect(frame.nodes.some((n) => n.kind === "text" && n.text === "STAGE LEFT")).toBe(true);
+    expect(frame.nodes.some((n) => n.kind === "text" && n.text === "Stage Left")).toBe(true);
   });
 });

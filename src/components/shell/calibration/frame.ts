@@ -1,7 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
 import { timecode } from "@/engines/motion/clock";
-import { CAL_ADVANCE, CAL_CABINET, CAL_CHECKER, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_SCALE, CAL_SWEEP, CAL_TINT, readableOn, tint } from "./tokens";
+import { CAL_ADVANCE, CAL_CABINET, CAL_CHECKER, CAL_COLORS, CAL_LOGO, CAL_MIN_TEXT, CAL_PLATE, CAL_SCALE, CAL_SWEEP, CAL_TINT, lighten, readableOn, tint } from "./tokens";
 
 /**
  * Screen identification and calibration frames, as drawing primitives in exact integer pixels.
@@ -452,18 +452,18 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const { layers, obstacles, placed } = c;
   const cal = c.mode === "calibration";
   const m = Math.min(w, h);
-  const fieldColor = cal ? CAL_COLORS.black : tint(s.accent, CAL_CHECKER.dark);
+  const fieldColor = cal ? CAL_COLORS.black : s.accent;
   const cells = cabinetCells(s);
   /** The tone under a cabinet: identification alternates two tones of the screen's color, like a checkerboard. */
-  const toneOf = (cell: CabinetCell) => (cal ? CAL_COLORS.black : tint(s.accent, (cell.row + cell.column) % 2 === 0 ? CAL_CHECKER.light : CAL_CHECKER.dark));
+  const toneOf = (cell: CabinetCell) => (cal ? CAL_COLORS.black : (cell.row + cell.column) % 2 === 0 ? lighten(s.accent, CAL_CHECKER.light) : s.accent);
 
   layers.field.push(rectNode(x, y, w, h, fieldColor));
   if (!cal) for (const cell of cells) layers.field.push(rectNode(cell.box.x, cell.box.y, cell.box.width, cell.box.height, toneOf(cell)));
 
-  // Cabinet seams: 2 px straddling each seam, the last pixel of one cabinet and the first of the next. Black
-  // between identification's two tones, so every cabinet edge reads.
+  // Cabinet seams: 2 px straddling each seam, the last pixel of one cabinet and the first of the next. A light
+  // tint between identification's two tones, as on a stage test card.
   const cab = s.cabinet;
-  const seamColor = cal ? tint(s.accent, CAL_TINT.gridSeam) : CAL_COLORS.black;
+  const seamColor = cal ? tint(s.accent, CAL_TINT.gridSeam) : lighten(s.accent, CAL_CHECKER.seam);
   const showGrid = cal ? c.elements.grid : true;
   const pitchX = minorPitch(cab?.pixelsX);
   const pitchY = minorPitch(cab?.pixelsY);
@@ -676,8 +676,8 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
 
   if (!cal) {
     // Identification, as on a stage test card: corner-to-corner diagonals and two concentric circles in thin
-    // white lines over the checkerboard, and one black plate in the middle with the screen's name, resolution
-    // and physical size.
+    // white lines over the checkerboard, and a small plate in the middle: the screen's name as typed on white,
+    // then its resolution and physical size on black.
     const line = Math.max(2, stroke);
     const cx = x + Math.floor(w / 2);
     const cy = y + Math.floor(h / 2);
@@ -690,38 +690,44 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
     const res = `W ${w} x H ${h}`;
     const inner: Box = { x: x + off, y: Math.max(topReserve, arrowBox.y + arrowH + gap), width: w - 2 * off, height: 0 };
     const within = obstacles.reduce((left, o) => largestRemainder(left, expand(o, gap)), { ...inner, height: y + h - off - inner.y });
-    const plateLines = (title: number): Line[] => {
-      const sub = Math.max(CAL_MIN_TEXT, Math.round(title * 0.5));
-      const lines: Line[] = [
-        { size: Math.max(CAL_MIN_TEXT, Math.round(title * 0.42)), weight: 700, parts: [{ text: s.label, fill: s.accent }] },
-        { size: title, weight: 700, parts: [{ text: name, fill: CAL_COLORS.white }] },
-      ];
+    const plateLines = (text: number): Line[] => {
+      const lines: Line[] = [{ size: text, weight: 700, parts: [{ text: s.name, fill: CAL_COLORS.black }] }];
       if (c.elements.metadata) {
-        lines.push({ size: sub, weight: 600, parts: [{ text: res, fill: CAL_COLORS.white }] });
-        if (size) lines.push({ size: sub, weight: 500, parts: [{ text: size, fill: CAL_COLORS.muted }] });
+        lines.push({ size: text, weight: 600, parts: [{ text: res, fill: CAL_COLORS.white }] });
+        if (size) lines.push({ size: text, weight: 600, parts: [{ text: size, fill: CAL_COLORS.white }] });
       }
       return lines;
     };
     let placedPlate = false;
-    // A ribbon reads as one line: identifier, name, resolution, size.
+    // A ribbon reads as one line on black: name, resolution, size.
     if (compact && w >= 4 * h) {
       const rowSize = Math.min(clamp(Math.round(m * 0.36), CAL_MIN_TEXT, 64), within.height);
-      const parts: Part[] = [{ text: s.label, fill: s.accent }, { text: name, fill: CAL_COLORS.white }];
-      if (c.elements.metadata) parts.push({ text: res, fill: CAL_COLORS.white }, ...(size ? [{ text: size, fill: CAL_COLORS.muted }] : []));
+      const parts: Part[] = [{ text: s.name, fill: CAL_COLORS.white }];
+      if (c.elements.metadata) parts.push({ text: res, fill: CAL_COLORS.white }, ...(size ? [{ text: size, fill: CAL_COLORS.white }] : []));
       const row = rowSize >= CAL_MIN_TEXT ? fitLine({ size: rowSize, weight: 600, parts }, within.width - 2 * platePad) : null;
-      placedPlate = !!row && row.parts[0].text === s.label && placeCentered([row], cx, cy, within);
+      placedPlate = !!row && placeCentered([row], cx, cy, within);
     }
     if (!placedPlate) {
-      // The name as large as the plate allows, up to the identifier size; shrunk before it is shortened.
-      const maxW = Math.min(within.width, Math.floor(w * 0.8)) - 2 * platePad;
-      // Every line first, at the largest size that fits; a line is dropped only when none fits at 9 px.
+      // Every line at one size: `CAL_PLATE` of the screen, shrunk to fit before a line is shortened or dropped.
+      const maxW = within.width - 2 * platePad;
       const count = plateLines(CAL_MIN_TEXT).length;
       for (let n = count; n >= 1 && !placedPlate; n--) {
-        for (let title = Math.min(sized(CAL_SCALE.id, t), within.height); title >= CAL_MIN_TEXT && !placedPlate; title--) {
-          const lines = plateLines(title).slice(0, n);
-          if (blockWidth(lines) > maxW && title > CAL_MIN_TEXT) continue;
+        for (let text = Math.min(clamp(Math.round(t * CAL_PLATE.ratio), CAL_MIN_TEXT, CAL_PLATE.max), within.height); text >= CAL_MIN_TEXT && !placedPlate; text--) {
+          const lines = plateLines(text).slice(0, n);
+          if (blockWidth(lines) > maxW && text > CAL_MIN_TEXT) continue;
           const set = fitted(lines, maxW);
-          if (set.length === n && blockHeight(set) + 2 * platePad <= within.height) placedPlate = placeCentered(set, cx, cy, within);
+          if (set.length !== n || blockHeight(set) + 2 * platePad > within.height) continue;
+          const plates = layers.plates.length;
+          placedPlate = placeCentered(set, cx, cy, within);
+          if (placedPlate) {
+            // The name line sits on white, the full width of the plate, over the black plate just reserved.
+            const plate = layers.plates[plates];
+            const nameText = layers.text.findLast((n2) => n2.kind === "text" && n2.text === set[0].parts[0].text && n2.owner === c.index);
+            if (plate && plate.kind === "rect" && nameText && nameText.kind === "text") {
+              const bottom = nameText.y + nameText.height + Math.floor(lineGap(set[Math.min(1, set.length - 1)]) / 2);
+              layers.plates.push(rectNode(plate.x, plate.y, plate.width, Math.min(plate.height, bottom - plate.y), CAL_COLORS.white));
+            }
+          }
         }
       }
     }
