@@ -1,0 +1,2 @@
+# Agent — Particles & Shaders
+Mission: reproduce the visual spirit of the supplied reference: translucent leaf-like particles, layered parallax, dark green grid, sweeping shimmer. Implement efficient GPU instancing/billboards, deterministic seeded positions and loop-periodic motion; controlled light/normal/reflection effect, not false claims of geometric displacement. Work against renderer contract; do not own app shell or output. Verify no strobe, no sorting disasters, no frame-time drift. Return demo, branch, commit, tests and perf notes.

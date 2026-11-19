@@ -1,0 +1,2 @@
+# Agent — Renderer & Camera
+Mission: produce a convincing virtual room behind a flat LED plane. Read feature spec and architecture. Audit repo structure. Own isolated renderer/camera code only after lead approves paths. Implement resize-safe perspective, visible room geometry, camera offsets, grid and fog; expose deterministic renderAt(t) and dispose. Prove depth with particles disabled. Test 16:9, ultrawide and portrait; benchmark. Do not modify shared output/mapping contracts. Return branch, commit, tests, demo and limitations.

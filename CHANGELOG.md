@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Export MP4 in the Output Studio: Calibration test card or Depth Studio scene, for the master canvas, an output or a screen, at its exact size. Targets H.264 can't take at their own size are listed with the reason, never scaled. Frame rate, duration, progress and Cancel. Uses the browser H.264 exporter.
 - Studios: a switch between Mapping, Content, Engineering and Output. Content, Engineering and Output show their modules' panels, loaded on first use, or an empty state. Depth Studio now lives in the Content Studio.
 - Module sources in Live preview: the pattern menu also lists sources from modules. The Depth Studio scene and the calibration test card play across the mapped screens.
 - Calibration test card in Live preview: Product Design's identification and calibration frames, built for the master canvas from the resolved mapping, with frame and logo (center, watermark, off) selects in the header.

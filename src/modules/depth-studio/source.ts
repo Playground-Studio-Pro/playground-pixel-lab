@@ -66,6 +66,12 @@ export const depthSource: FrameSource = {
   draw: (ctx, input, options) => drawDepthScene(ctx, input, options, useDepth.getState().config),
 };
 
+/** The scene with its settings fixed, for exports: editing Depth Studio during an export can't change the frames. */
+export function createDepthSource(config: DepthSceneConfig): FrameSource {
+  const frozen = structuredClone(config);
+  return { id: "depth-scene", name: "Depth Studio scene", draw: (ctx, input, options) => drawDepthScene(ctx, input, options, frozen) };
+}
+
 /** Largest master side the scene renders at without scaling, on this GPU. Null without WebGL 2. */
 export function depthMaxSize(): number | null {
   return renderer()?.maxSize ?? null;

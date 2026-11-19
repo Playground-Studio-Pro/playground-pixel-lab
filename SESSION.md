@@ -1,123 +1,96 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-12, calibration test card integrated in Live preview (owner away; nothing merged).
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alpha 0.1 Phase A (protection and integration) done.
 
 ## Objective
 
-**Sprint 3, Production Studio**, approved by the owner on 2026-11-12: Micro Environment Studio, calibration test card, processor intelligence, cabinet engineering and production exports. It supersedes the Sprint 2 list. Tasks, ownership, integration order, acceptance criteria and the four agent prompts are in [SPRINT_3](docs/agents/SPRINT_3.md).
+**Pixel Lab Alpha 0.1:** a desktop app (Electron) that completes one real flow, offline: **Mapping → Test card → Output → external monitor → Resolume Arena.** Nothing outside that flow starts until Alpha 0.1 passes a field test with a laptop, an external monitor, Resolume Arena and a real LED project.
+
+Phases, each approved separately by the owner:
+
+| Phase | Owner | Status |
+| --- | --- | --- |
+| **A.** Protection and integration | Lead Architect | **Done** 2026-11-18 |
+| **B.** Electron build and run on macOS: first validation gate | Desktop Engineering | Approved, not started |
+| **C.** Physical output on external monitors | Output Engineering, with Desktop | Waits for Phase B to pass. Desktop and Output agree the contract before implementing |
+
+Sprint 3 ([SPRINT_3](docs/agents/SPRINT_3.md)) is paused. Product Design, Content Engineering and LED Engineering stay stopped.
+
+## Alpha 0.1 requirements
+
+✅ verified · 🟡 partial or unverified · ❌ not built
+
+| # | Requirement | Web | Electron |
+| --- | --- | --- | --- |
+| 1 | Works offline | ❌ needs a server | 🟡 static `app://` build designed, never built |
+| 2 | macOS and Windows | n/a | 🟡 macOS never launched. Windows: don't claim support until tested on a real Windows 11 machine |
+| 3 | Screens and resolutions | ✅ | 🟡 |
+| 4 | Test cards | ✅ | 🟡 |
+| 5 | Full-screen output on an external monitor, no UI | ❌ | ❌ |
+| 6 | MP4 export | ✅ headless Chrome, ffprobe-checked (#16) | 🟡 WebCodecs H.264 unverified |
+| 7 | Reliable save and recovery | ✅ IndexedDB autosave + project file | 🟡 |
+| 8 | Resolume workflow | 🟡 package built, never followed in Arena | 🟡 |
 
 ## Where it stands
 
-**Merge order for the owner:** #12, then #13, then mark #14 ready and merge it. All three are open and unmerged; `main` is untouched at `c81a17b`.
+- **`main` is at `cb084ab`**, the merge of PR #16 (Export MP4 in the Output Studio), merged 2026-11-18 at its reviewed head `faf6d90` with CI passing. The local `app/` checkout was fast-forwarded to it.
+- **Backed up on GitHub, not merged:**
+  - `feature/desktop-engineering` at `a4d3302`: the Electron foundation. Based on `10f9f74`, so it doesn't contain #16 yet. Its tests ran in a sandbox without network: Electron itself was never downloaded or launched.
+  - `feature/output-engineering` at `ff5c24b`: a Node-only ProRes 422 and PNG sequence service, not wired to any UI or IPC. **Out of Alpha 0.1.**
+- **Open PRs:** #17, the Depth Studio implementation pack under `docs/features/depth-studio/`; the PR for this handoff.
+- **Local only, kept intact on purpose:**
+  - `~/Play.Code/playground.pixel/desktop/`: the original Electron copy. Its source is identical to the branch; its docs are older. Keep it until the owner confirms the backup, then archive, never delete without approval.
+  - `Playground_Depth_Studio_Implementation_Pack.zip` and `CLAUDE_MASTER_PROMPT.md` at the parent folder, and the untracked pack copies in `app/` (identical to #17).
+- **Agents:** none running.
 
-- **PR #13** (`feature/product-design`, Product Design, not merged): screen identification and calibration frames in the Preview dialog, `src/components/shell/calibration/`. Logo `public/brand/playground-studio-outline-white.png` is a byte-identical copy of the existing brand file `playground-growth/01_BRAND/.../logo_horizontal_outline-white_web.png`.
-- **PR #14** (`integration/calibration-live-preview`, draft, not merged): #12 + #13 merged together, plus the calibration test card as the Output module's `FrameSource`, playing in Live preview. Commits:
-  - `54a1765` merge of #13 into `18b2d9f` (one conflict, `docs/development/PERFORMANCE.md`, both sections kept);
-  - `e2f1707` `src/modules/output/calibration-source.ts`, settings store, `FrameSource.subscribe?` contract addition, Live preview redraw on it;
-  - `54d0199` header selects (frame, logo), header controls no longer shrink, `tests/calibration-source.test.ts`, CONTRACTS and CHANGELOG notes;
-  - the commit holding this SESSION update, local only: not pushed, at the owner's request.
-- **PR #12** (`feature/lead-architect`, draft, not merged) carries Depth Studio milestone 1 and the Sprint 3 foundation: studio switch, module registry and catalog, `project.modules` at schema 2 with migration, frame context, the engineering contract, and the Depth Studio scene as a Live preview source. The owner merges it first; the lanes start from it.
-- **Depth Studio** now opens from the Content Studio. Content Engineering owns it from Sprint 3. Its settings still aren't saved: the module can now use `project.modules`.
-- **Lanes:** none started. The owner starts each agent with its prompt in SPRINT_3.
-- **The pack:** `CLAUDE_MASTER_PROMPT.md`, `START_HERE.md` and `docs/features/depth-studio/` sit untracked in `app/`, read there and not changed. The owner decides when they are committed.
-- **Logo:** none in the repository. Candidates are in `~/Play.Code/brandplayground/assets/`; Output Engineering asks the owner which to use.
+### Worktrees
 
-## Verified current state
+Everything lives in `~/Play.Code/playground.pixel/`, which isn't itself a Git repository.
 
-- **Folder layout:** everything lives in `~/Play.Code/playground.pixel/`, which isn't itself a Git repository. Never develop in `~/Documents/Play.Code/playground.pixel`, an old copy.
+| Path | Branch | Port |
+| --- | --- | --- |
+| `app/`: main worktree | `main` | 3000 |
+| `agents/lead-architect` | `docs/alpha-0.1-phase-a` now; lane branch `feature/lead-architect` | 3100 |
+| `agents/desktop-engineering` | `feature/desktop-engineering` | 3210 (Electron dev server) |
+| `agents/output-engineering` | `feature/output-engineering` (ProRes, frozen) | 3104 |
+| `agents/product-design`, `content-engineering`, `led-engineering` | their lane branches, paused | 3101–3103 |
 
-  | Path | Branch | Port |
-  | --- | --- | --- |
-  | `app/`: main worktree, integration checkout | `main` | 3000 |
-  | `agents/lead-architect` | `feature/lead-architect` | 3100 |
-  | `agents/product-design` | `feature/product-design` | 3101 |
-  | `agents/content-engineering` | `feature/content-engineering` | 3102 |
-  | `agents/led-engineering` | `feature/led-engineering` | 3103 |
-  | `agents/output-engineering` | `feature/output-engineering` | 3104 |
+## Phase B checklist (Desktop Engineering)
 
-- **Baseline:** `main` is at `c81a17b`, the merge of PR #11. The four other agent worktrees are at that commit and clean. `feature/lead-architect` carries PR #12 on top of it.
-- **Merged PRs:**
-  - #1 Phase 0 foundation, #2 Phase 0 complete;
-  - #3 undo and redo, #4 Motion Lab V1;
-  - #5 agent briefs, #6 example gallery, #7 shared contracts and lanes, #8 folder layout;
-  - #9 Aurora Gradient, #10 cabinet library.
-- **Open PRs:** #12 (draft, Sprint 3 foundation), #13 (Product Design calibration frames), #14 (draft, integration of both plus the Live preview test card).
-- **Agents:** none running. All five are stopped.
+Work in `agents/desktop-engineering` on `feature/desktop-engineering`. Approved: download Electron and install dependencies, unsigned builds, local fonts.
 
-## Completed features
+1. `git fetch origin && git merge origin/main`. Stop and report on any conflict.
+2. `npm ci` at the root and `npm --prefix desktop ci`, with the real Electron runtime installed.
+3. **Local fonts:** replace `next/font/google` in `src/app/layout.tsx` with `next/font/local` and committed Inter and JetBrains Mono `woff2` files (both SIL Open Font License; keep the licence text beside them). No new npm dependency. The build must pass with no network.
+4. `npm run typecheck && npm run lint && npm test && npm run build` at the root; `npm --prefix desktop test`.
+5. `npm --prefix desktop run build:web`, then launch Electron on macOS (dev and static). Run the smoke test.
+6. In Electron, with the network off: open the examples, create and edit a project, Mapping, Content and Depth Studio, Output test card, Live preview.
+7. Persistence: quit and relaunch, the project is still there; export the project file and import it again.
+8. MP4: export the test card for one output; check it with ffprobe and play it.
+9. `npm --prefix desktop run pack:mac`, unsigned; launch the `.app` from a path with spaces.
+10. Record evidence (commands, results, screenshots) in `desktop/docs/TEST-RESULTS.md`, refresh `desktop/README.md` (it still points to the sibling folder), open a PR. Report what failed or wasn't tested.
 
-- **Mapping Studio:** screens, cabinets, canvases and outputs mapped pixel-exact in Physical, Content and Output views. Exports: PNG and SVG pixel maps, manifest, technical report and Resolume preparation package. Undo and redo for every edit.
-- **Motion Lab V1:** Live preview with seven deterministic patterns, separate content FPS and browser FPS, and overlap marks.
-- **Aurora Gradient** (#9): a moving multi-color pattern with palette presets, three editable colors, flow speed and eight directions. It's continuous across screens, and the same frame always gives the same pixels. Settings aren't saved yet.
-- **Cabinet library** (#10): profiles kept per browser, outside projects. Create, edit, duplicate, delete, and add to a project.
-  - **Specs:** supplier, model and optional data-sheet values: power, weight, LED refresh rate, indoor or outdoor.
-  - **Seed:** Yestech MG6S P2.6 Indoor.
-  - **Older data:** custom cabinets saved earlier are copied in once.
-- **Example gallery:** Festival Main Stage, Corporate Keynote, Motion Lab acceptance and a 500-screen stress test.
-- **Parallel setup:** shared contracts, as types only, in [CONTRACTS](docs/architecture/CONTRACTS.md). Lanes, file ownership and dependencies in [docs/agents](docs/agents/README.md).
-
-## Last validation
-
-On `integration/calibration-live-preview` at `54d0199`, 2026-11-12, M1 Max:
-
-| Check | Result |
-| --- | --- |
-| Typecheck, lint, build | Pass |
-| Unit tests | 288 of 288 pass, in 19 files |
-| Pixel accuracy | At scale 1 the Live preview source draws the Preview dialog's frame call for call, after one black master fill; every rectangle on whole master pixels (Corporate Keynote, 4224 × 1536) |
-| Bundle | Initial JavaScript 172.8 KB gzip, unchanged; within every budget |
-| Browser | Production build, headless Chrome 1440 × 900 driven over the DevTools protocol (the Chrome extension was not connected). Corporate Keynote, Live preview, Calibration test card: Identification with centered logo, watermark, Calibration; each mode keeps its own logo; switching while paused redraws; 60.0 fps preview, 0 late, 0 skipped; no console errors |
-| Not tested | Interactive Chrome, other widths, the 500-screen example, full-screen output and export of the test card, a real LED wall |
-
-Screenshots (local, temporary): `/private/tmp/claude-501/-Users-miguelgontran-Play-Code-playground-pixel-agents-lead-architect/e4ee782d-47d2-49d6-a50c-3b364dece18a/scratchpad/shots/`.
+Out of scope for Phase B: full-screen output, ProRes, FFmpeg, signing, Windows claims, any new feature.
 
 ## Important decisions
 
-- **Contracts:** types only, no plugin framework. The Lead Architect owns them, and a contract change merges alone first.
-- **Branches:** each lane works on its long-lived `feature/<lane>` branch. It merges `main` in and never rebases or force-pushes. PRs merge with CI passing and the user's approval.
-- **Library data:** library profiles live in their own IndexedDB database. A project keeps a plain copy, so editing the library never changes a saved project, and the project format is unchanged (`SCHEMA_VERSION` 1).
-- **Module state:** Aurora settings are module state, not saved. Saving waits for the `modules[id]` project section (L2).
-- **Proposals:** [MODULES](docs/product/MODULES.md) is a proposal. Video encoding, NDI, Phase 4 calculations and anything needing a backend wait for approval.
+Recorded in [DECISIONS](docs/architecture/DECISIONS.md), 2026-11-18: Alpha 0.1 scope, unsigned builds, local fonts, ProRes out of Alpha, and output windows as independent Electron windows designed for several monitors.
+
+Earlier decisions still hold: contracts as types, saved module data in `project.modules[id]` at schema 2, lanes merge `main` and never rebase or force-push, and no PR merges without CI and the owner's approval.
 
 ## Known issues
 
-- **Calibration test card (for Product Design, D9):**
-  - At 1440 px the Live preview header is wider than the canvas area and scrolls sideways.
-  - The Live preview screen-guide labels cover the test card's top-left labels in Calibration mode; guides can be switched off.
-  - The pure calibration code (`frame.ts`, `tokens.ts`, `from-mapping.ts`) lives in `components/shell/calibration` but is used by a module; move it beside the engines later.
-- **Test card export:** a frame exported before the logo loads has no logo. Exporters must `await prepareCalibrationSource()` first (Output Engineering).
-
-- **Dead code:** `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary` in `state/store.ts` and `persistence/indexeddb.ts` are no longer used by the UI. The Lead Architect removes them in a cleanup.
-- **Aurora:**
-  - Settings are lost on reload, until L2.
-  - `AuroraControls` is imported statically by the canvas header, so it isn't lazy-loaded.
-- **Library copies:** editing a library profile doesn't update projects that already copied it. This is intentional.
-- **Motion Lab:**
-  - Venue-laptop performance is unmeasured.
-  - The preview image is capped at 4096 px a side.
-  - There's no full-screen output.
-- **Undo:** not kept across reloads.
-- **Resolume:** the guide is untested in real Arena.
-- **Offline:** the app can't load offline without being served.
-- **Audit:** `npm audit` reports 13 findings in dev tooling and 0 in production dependencies.
-
-## Pending tasks
-
-All in [SPRINT_3](docs/agents/SPRINT_3.md): D8–D9, C6, E5–E6, O6–O10, then L6, the end-to-end demo and QA. Lead cleanup still to do: remove `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary`; move Motion Lab patterns onto `FrameSource`.
+- **Electron:** never launched. Every Electron cell above is unverified until Phase B.
+- **Output:** no full-screen output exists. The Live preview caps its master image at 4096 px a side (Festival Main Stage is 5120 px wide), so physical output must render each output at native size, not cut it from the preview.
+- **MP4 export:** H.264 over 4096 px a side can't be exported whole (Corporate Keynote's 4224 × 1536); per-output and per-screen files instead. The whole file is held in memory until download. Motion Lab patterns aren't export sources yet.
+- **Resolume:** the guide has never been followed in Arena. No preset files are generated, by design ([RESOLUME](docs/integrations/RESOLUME.md)).
+- **Persistence:** browser and Electron data are separate; move projects with the project file. Undo isn't kept across reloads.
+- **Calibration test card:** at 1440 px the Live preview header scrolls sideways; screen-guide labels cover the card's top-left labels.
+- **Settings:** Aurora settings aren't saved.
+- **Dead code:** `useApp.library`, `saveToLibrary` and `IndexedDbCabinetLibrary` are unused. Cleanup after Alpha.
+- **Audit:** `npm audit` reports findings in dev tooling only.
 
 ## Resume
 
-1. **Check the baseline:** `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `c81a17b` unless the owner has merged #12–#14 since.
-2. **Run the app:** `npm run build && npx next start -p 3000`.
-3. **Start agents** with the commands in [HANDOFF](HANDOFF.md#restart-each-agent). Each one runs `git merge origin/main` first, as [START](docs/agents/START.md) says.
-
-## Resume prompt
-
-Read:
-- CLAUDE.md
-- SESSION.md
-- HANDOFF.md
-- docs/agents/README.md
-- docs/agents/lead-architect.md
-
-You are the Lead Architect. Continue from the verified current state. Sprint 3 is approved ([SPRINT_3](docs/agents/SPRINT_3.md)). First ask whether #12, #13 and #14 are merged; if the last SESSION commit on `integration/calibration-live-preview` isn't pushed yet, ask before pushing it. Don't re-audit completed work unless the repository contradicts SESSION.md.
+1. `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`. Expect `main` at `cb084ab` or later.
+2. Start the next approved phase with the command in [HANDOFF](HANDOFF.md#start-the-next-agent).

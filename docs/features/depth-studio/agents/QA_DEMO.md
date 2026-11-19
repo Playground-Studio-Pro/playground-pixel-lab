@@ -1,0 +1,2 @@
+# Agent — QA & Demo
+Mission: define measurable quality gates and validate final Depth Studio vertical slice. Own test/benchmark/demo documentation or designated test files only. Add schema/loop/determinism/aspect-ratio tests, visual test plan, performance benchmark and 15-second demo storyboard. Validate existing Mapping, Cabinet Library, Aurora Gradient, Motion Lab and output regressions. Report objective evidence, defects, screenshots and customer demo readiness. Do not modify renderer internals without lead coordination.
