@@ -47,7 +47,7 @@ test('debugging switches and variables are detected for packaged builds', () => 
   const clean = { argv: ['/Applications/Pixel Lab.app/Contents/MacOS/Pixel Lab', '-psn_0_123'], env: { HOME: '/Users/x', PIXEL_LAB_DEV_URL: 'http://127.0.0.1:3210/' }, hasSwitch: () => false };
   assert.deepEqual(debugAccessViolations(clean), []);
   assert.deepEqual(debugAccessViolations(), []);
-  for (const arg of ['--remote-debugging-port=9333', '--remote-debugging-pipe', '--inspect', '--inspect=9229', '--inspect-brk=0', '--inspect-port=9229', '--debug']) {
+  for (const arg of ['--remote-debugging-port=9333', '--remote-debugging-pipe', '--inspect', '--inspect=9229', '--inspect-brk=0', '--inspect-port=9229', '--debug', '--force-device-scale-factor=1']) {
     assert.equal(debugAccessViolations({ ...clean, argv: [...clean.argv, arg] }).length, 1, arg);
   }
   assert.deepEqual(debugAccessViolations({ ...clean, hasSwitch: name => name === 'remote-debugging-port' }), ['--remote-debugging-port']);

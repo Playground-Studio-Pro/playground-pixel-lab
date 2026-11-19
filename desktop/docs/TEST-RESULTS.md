@@ -232,3 +232,25 @@ Static smoke output on the dev Mac (MacBook Pro M1 Max, built-in display only):
 Unit fixtures: macOS 2× built-in and 1× external; Windows 125 % on 1920 × 1080 (exact) and 1366 × 768 (`devicePxExact: false`), 150 %; rotation 90; level 1 / level 2 / no match (other size, other label, internal vs external); D-2: same monitor on the same or a new id (reliable), **identical twins** both connected with old or new ids (ambiguous), a shared empty label (ambiguous), a lookalike differing only in `internal` (ambiguous); debounce of a burst.
 
 Not tested: real `display-added` / `removed` / `metrics-changed` events (needs plugging a monitor, task D7 **[monitor físico]**); Windows `dipToScreenRect` (stand-in function in tests; **Windows only, not claimed**). Known limit: with only the other identical twin connected, label + size can't tell it apart from the original (level 2, reliable); documented in the contract's risks.
+
+## D3. IPC validation (2026-11-18)
+
+`desktop/src/output-ipc.cjs` (pure): hand-written validators for `OutputOpenRequest`, `OutputSession`, `OutputClock`, `DisplayKey`, `OutputRenderReport` (including every optional field of 8.4, with its bounds) and `OutputId | '*'`; the section 5 item 4 1:1 comparison (`oneToOne` → `exact` / `pending` / `warning` / `error` with `NOT_ONE_TO_ONE`); `sizeMatchOf` with `croppedPx` / `blackPx`. Errors are `OutputIpcError` with a contract code. Main checks a project only by envelope and output id (`PROJECT_INVALID`, `UNKNOWN_OUTPUT`); deep validation stays in the control window and the output page. Settings must be plain JSON (no Dates, Maps, typed arrays, non-finite numbers), nested at most 64 deep, at most 1 MiB. Not wired to channels yet: `output:open` and the rest arrive with D5.
+
+Also in this PR:
+
+- `--force-device-scale-factor` joins the packaged refusal list (section 5 item 5).
+- `desktop/src/api.d.ts` imports `OutputControlApi` from `src/domain/physical-output.ts` instead of copying `DisplayInfo`.
+- `tests/desktop-contract-parity.test.ts` (root, vitest) keeps the CJS copies of states, error codes, render error codes, size matches, content rates, channel names, `MAX_OUTPUTS` and the `OutputId` pattern equal to the contract.
+- CI (`.github/workflows/ci.yml`) now runs `npm --prefix desktop ci --ignore-scripts` and `npm --prefix desktop test`.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 34/34 (10 new in `tests/output-ipc.test.cjs`; the debugging-switch test now includes the scale switch) |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass; 309/309 tests in 25 files (4 new parity tests) |
+| Desktop tests in a clean copy after `npm --prefix desktop ci --ignore-scripts` (no Electron binary) | 34/34, as CI will run them |
+| `test:smoke` (static) | pass |
+| `pack:mac`, packaged app with `--force-device-scale-factor=1` | exit 1, "refuses to start: debugging and display-scale switches are disabled in distributed builds (--force-device-scale-factor)" |
+| Unpackaged Electron with `--force-device-scale-factor=1` on the 2× built-in display | starts, `devicePixelRatio` = 1 (what O5's 1× run needs) |
+
+Not tested: the CI run on Linux itself until the PR's checks report (the electron-builder configuration test is plain JavaScript and should run there); validators against real messages from an output window (D4/D5, O4).
