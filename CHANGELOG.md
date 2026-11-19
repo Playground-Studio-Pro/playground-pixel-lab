@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Desktop app (Electron, macOS Apple Silicon): built, launched and tested offline, with project autosave, project file import and export and MP4 export working inside it. `npm --prefix desktop run pack:mac` makes an unsigned `.app`. Results in `desktop/docs/TEST-RESULTS.md`. No Windows support claimed.
 - Export MP4 in the Output Studio: Calibration test card or Depth Studio scene, for the master canvas, an output or a screen, at its exact size. Targets H.264 can't take at their own size are listed with the reason, never scaled. Frame rate, duration, progress and Cancel. Uses the browser H.264 exporter.
 - Studios: a switch between Mapping, Content, Engineering and Output. Content, Engineering and Output show their modules' panels, loaded on first use, or an empty state. Depth Studio now lives in the Content Studio.
 - Module sources in Live preview: the pattern menu also lists sources from modules. The Depth Studio scene and the calibration test card play across the mapped screens.
@@ -25,6 +26,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 - Repeatable performance tooling in `scripts/perf`.
 
 ### Changed
+- Inter and JetBrains Mono are bundled under `src/app/fonts/` (SIL OFL 1.1) and loaded with `next/font/local`, so builds no longer need network.
 - Package renamed to `playground-pixel-lab`.
 - `shadcn` moved to dev dependencies, which clears all 6 production audit findings.
 - Session state moved from `.claude/SESSION.md` to a tracked `SESSION.md`.

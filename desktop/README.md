@@ -1,10 +1,10 @@
-# Pixel Lab desktop foundation
+# Pixel Lab desktop
 
-Isolated Electron proof of concept for the existing Pixel Lab application. Shared application features and rendering code are unchanged. Root ESLint has a desktop-only CommonJS exception; root ESLint and TypeScript exclude generated desktop assets. Read [audit](docs/AUDIT.md), [test results](docs/TEST-RESULTS.md) and [Lead Architect handoff](docs/HANDOFF.md) before integration.
+Electron shell for the existing Pixel Lab application, built and run on macOS Apple Silicon in Alpha 0.1 Phase B (2026-11-18): it launches, works offline from the static `app://` build, and packages as an unsigned `.app`. See [test results](docs/TEST-RESULTS.md). Shared application features and rendering code are unchanged. Root ESLint has a desktop-only CommonJS exception; root ESLint and TypeScript exclude generated desktop assets. Read [audit](docs/AUDIT.md), [test results](docs/TEST-RESULTS.md) and [Lead Architect handoff](docs/HANDOFF.md) before integration.
 
 ## Development (macOS Apple Silicon)
 
-Requires Node 24, npm, dependencies installed locally from both committed npm lockfiles, network access for Electron and Google Fonts, and a normal macOS Apple Silicon desktop session permitting local servers and GUI processes. Do not symlink the worktree’s root node_modules to another checkout: Turbopack confines resolution to this worktree.
+Requires Node 24, npm, dependencies installed locally from both committed npm lockfiles, and a normal macOS Apple Silicon desktop session permitting local servers and GUI processes. Network is needed only to install: `npm --prefix desktop ci` downloads the Electron runtime, and the first `pack:mac` downloads electron-builder's own Electron copy. Builds need no network: fonts are committed under `src/app/fonts/`. If Electron's postinstall fails with `fetch failed`, rerun `npm --prefix desktop ci`. Do not symlink the worktree’s root node_modules to another checkout: Turbopack confines resolution to this worktree.
 
 ```sh
 cd /Users/miguelgontran/Play.Code/playground.pixel/agents/desktop-engineering
@@ -39,7 +39,7 @@ npm run dev
 npm run dist:win
 ```
 
-Windows staging uses a directory junction for installed web dependencies. Build on the native platform. The builder configuration declares macOS arm64 DMG/ZIP and Windows x64 NSIS; `--publish never` is explicit. Before packaging on either platform, run `npm ci` at the repository root and in `desktop/`. Windows 11 x64, Node 24, network access for the runtime/tool downloads and fonts, and permission to create the staging junction are required. No signing identity, update server, auto-update, telemetry service or paid dependency is provisioned. Development packages can omit FFmpeg; availability reports false. Release artifacts still need approved binary provenance, product icons, signing/notarization and native acceptance testing.
+Windows staging uses a directory junction for installed web dependencies. Build on the native platform. The builder configuration declares macOS arm64 DMG/ZIP and Windows x64 NSIS; `--publish never` is explicit. Before packaging on either platform, run `npm ci` at the repository root and in `desktop/`. Windows 11 x64, Node 24, network access for the runtime/tool downloads, and permission to create the staging junction are required. No signing identity, update server, auto-update, telemetry service or paid dependency is provisioned. Development packages can omit FFmpeg; availability reports false. Release artifacts still need approved binary provenance, product icons, signing/notarization and native acceptance testing.
 
 ## Security and optional integration API
 
@@ -58,13 +58,18 @@ Implementation follows [Electron security guidance](https://www.electronjs.org/d
 ## Verification
 
 ```sh
-npm test
+npm test            # desktop unit tests
+npm run test:smoke  # after build:web
 ```
 
-Desktop dependencies are isolated from the web bundle. Electron provides the native shell; electron-builder provides packaging. The lockfile records resolved versions. See [test results](docs/TEST-RESULTS.md) for measured dependency footprint and environment limitations. This foundation lives in the dedicated feature/desktop-engineering worktree. The original sibling directory is retained as a recovery backup and must not be used to validate this branch.
+Desktop dependencies are isolated from the web bundle. Electron provides the native shell; electron-builder provides packaging. The lockfile records resolved versions. This lives in the `feature/desktop-engineering` worktree (`agents/desktop-engineering`); work and validate here only. The older sibling copy at `~/Play.Code/playground.pixel/desktop` is a recovery backup and is not used for anything.
 
 ## Current limitations
 
-Production and desktop static builds are blocked here because Inter and JetBrains Mono cannot be fetched from Google Fonts. The Electron 43.8.10 runtime download fails with `getaddrinfo ENOTFOUND github.com`; macOS launch is therefore unverified. Do not substitute a cached older runtime or fallback fonts as evidence that the configured production app works. See [test results](docs/TEST-RESULTS.md).
+- **macOS only.** Windows packaging is configured but has never run; no Windows support is claimed.
+- **Unsigned.** `pack:mac` produces a 301 MB `.app` with only an ad-hoc signature and the default Electron icon. It runs on the Mac that built it; on another Mac, Gatekeeper blocks it until it's signed and notarized.
+- **MP4** goes through WebCodecs, which here used Chromium's software OpenH264 encoder. Verified for one 3072 × 1920 test card; speed on long animated exports isn't measured. FFmpeg is only an availability probe; nothing native encodes.
+- **No full-screen output** on an external monitor yet (Alpha 0.1 Phase C).
+- Browser and desktop data are separate; move projects with the project file.
 
-This branch starts from 10f9f74, which includes Depth Studio/WebGL2, Calibration, Live Preview and the WebCodecs MP4 encoder. The MP4 UI commit faf6d90 is not part of that baseline. FFmpeg remains an availability probe and design only; no native encoding is implemented.
+See [test results](docs/TEST-RESULTS.md) for what was and wasn't tested.
