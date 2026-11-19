@@ -186,3 +186,26 @@ Not covered: other Chromium switches that weaken security without being debugger
 ## Leftovers noticed
 
 - `desktop/tests/font-response.cjs` is a Google Fonts mock that nothing references, obsolete now that fonts are local. Left in place: deleting files was out of scope.
+
+# Phase C tasks
+
+Contract: [PHYSICAL_OUTPUT](../../docs/architecture/PHYSICAL_OUTPUT.md). One section per task, newest last.
+
+## D1. Window registry (2026-11-18)
+
+`desktop/src/windows.cjs` (pure, no Electron import) replaces the single `window` variable in `main.cjs` with a control window plus a map of output windows, limited by `MAX_OUTPUTS = 1`. Every IPC handler now checks the sender against a **role**: exact `WebContents` of the window registered for that role, main frame only, and a URL allowed for that role. The output route (`app://pixellab/output.html`, `<dev origin>/output`) is allowed only for output windows, and the control window may show anything on the origin except it. No output window is created yet (D5); nothing is relaxed.
+
+Also tightened: the control window now blocks `will-redirect` outside its allowed URLs, as it already did for `will-navigate`, and the Blob download check uses the registry's role.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 16/16 (the 6 existing tests unchanged, 10 new in `tests/windows.test.cjs`) |
+| `npm run typecheck`, `npm run lint`, `npm test` | pass, 302/302 |
+| `npm --prefix desktop run build:web`, `test:smoke` | pass, `DESKTOP_SMOKE_PASS` (the smoke test calls `ffmpegStatus()` through the checked IPC) |
+| `npm --prefix desktop run dev -- --smoke-test` | pass; dev server stopped with Electron |
+| Manual, static build: `location.href = "app://pixellab/output.html"` and `"https://example.com/"` from the control window | Both blocked; the page stays at `app://pixellab/` |
+| Manual: Export → Project file | Native Save As appears (Blob download still allowed for the control window); cancelled |
+
+New tests cover, for both `app://` and the dev origin: control channels reject an output window's sender and the reverse; an unregistered or invalid output id is rejected; child frames, foreign `WebContents`, a control window at the output route and foreign URLs are rejected; a destroyed window authorises nothing; `ALREADY_OPEN`, `TOO_MANY_OUTPUTS` and the output id pattern.
+
+Not tested: output-window sender checks against a real output window (none exists until D4/D5); `will-redirect` with a real redirect (the static app never redirects).
