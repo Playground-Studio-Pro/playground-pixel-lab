@@ -1,6 +1,6 @@
 # Physical Output Contract
 
-**Status: design agreed by Desktop and Output, waiting for the owner's approval.** Alpha 0.1 Phase C. Nothing here is implemented. Desktop Engineering wrote sections 1–7 (displays, windows, IPC, clock, scaling, tasks). Output Engineering wrote section 8 (rendering, sources, cadence, pixel tests, Resolume procedure) and reviewed sections 1–7 in 8.12. Desktop reviewed section 8 and answered 8.12 in 8.13; the accepted changes are applied in sections 1–7. Section 9 gives one implementation order for both lanes. The owner approves before any production code.
+**Status: approved by the owner on 2026-11-18, with changes to D-2, O-1 and D9 (see "Owner decisions"). Implementation authorised.** Alpha 0.1 Phase C. Nothing here is implemented. Desktop Engineering wrote sections 1–7 (displays, windows, IPC, clock, scaling, tasks). Output Engineering wrote section 8 (rendering, sources, cadence, pixel tests, Resolume procedure) and reviewed sections 1–7 in 8.12. Desktop reviewed section 8 and answered 8.12 in 8.13; the accepted changes are applied in sections 1–7. Section 9 gives one implementation order for both lanes. The owner approved the design and decided D-1…D-5 and O-1…O-9; the owner's changes are applied in sections 2, 7, 8.2 and 9.
 
 Scope: one Pixel Lab **output** (an `VideoOutput`, for example "OUT 1 · Processor A · 3072 × 1920") shown full screen, 1:1, with no interface, on a chosen **display** (a monitor or the input of an LED processor), from the Electron app. Built so several outputs on several displays can run at once, even though Alpha ships one.
 
@@ -102,21 +102,25 @@ new BrowserWindow({
 | opening | `output:ready`, session sent, report with `firstFrameDrawn: true` | live | Window shown inactive, full screen; sleep blocker held |
 | opening | Load failure, no `output:ready` within 10 s, or a report with `errorCode` and `firstFrameDrawn: false` | failed | `LOAD_FAILED` / `OPEN_TIMEOUT`; window black |
 | live | Report with `errorCode` after an `output:update` | live | Previous session keeps playing; `error` set |
-| live | Display removed | waiting-display | Window hidden at once, renderer kept |
-| waiting-display | Same display back (key match) | live | Re-placed, full screen again, `output:display` sent (D-2) |
+| live, held | Display removed | waiting-display | Window hidden at once, renderer kept; the output's clock is paused at the current frame |
+| waiting-display | Same display back, **reliable** key match (one candidate, see below) | held | Re-placed, full screen again, shown inactive on the paused frame, `output:display` sent; operator notified (D-2) |
+| waiting-display | A display back with an ambiguous or partial match | waiting-display | Nothing shown; operator notified with `DISPLAY_AMBIGUOUS` and must pick the display again |
+| held | `output:resume` from the control window | live | Clock restarts from the paused frame with a new epoch. **Never automatic** (D-2) |
 | live | `render-process-gone`, or `unresponsive` for 5 s | failed | Window kept black and on its display; control window told |
 | failed | `responsive` (after a hang) | live | |
 | failed | `output:retry` | opening | One reload of the fixed URL, latest session re-sent |
 | any | `output:close`, Esc in the output window, app quit | closed | Window destroyed; sleep blocker released with the last live output |
 
 ```ts
-type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'failed';
+type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'held' | 'failed';
+// held: on its display, full screen, paused, waiting for the operator to confirm. Reached only after a reconnect.
 ```
 
 ### Disconnect and reconnect
 
 - **Display removed.** Main hides the window at once (`hide()`) and moves to `waiting-display`. Otherwise macOS and Windows move orphaned windows to the primary display, which would cover the operator's screen with a full-screen test card. The window and its renderer are kept, so nothing reloads.
-- **Display back.** When a display arrives whose key matches (section 1), main re-places the window, re-applies full screen, shows it inactive and returns to `live`. Automatic resume vs waiting for the operator is owner decision D-2; the draft assumes automatic, since a flickering cable shouldn't need someone at the laptop.
+- **Display removed, clock.** Main pauses the output's clock at the frame on screen (`{ state: 'paused', frame }`), so nothing advances while the wall is dark.
+- **Display back (owner decision D-2).** Main detects the reconnect automatically. The match is **reliable** only when exactly one connected display matches the key at the first or second level of section 1 (same `electronId`, `label` and `devicePx`, or same `label` and `devicePx`) and no other display shares that `label` and `devicePx`. Then main re-places the window, re-applies full screen, shows it inactive on the paused frame, sends `output:display`, moves to `held` and pushes `output:status` with `reconnected: true`. The control window shows a notice ("OUT 1 is back on DELL U2720Q, paused at frame 1234") with a **Resume** button. Playback continues **only** after the operator confirms (`output:resume`). With an ambiguous or partial match (identical monitors, a different size, an empty label shared by two displays) nothing is shown: the output stays in `waiting-display` and the control window reports `DISPLAY_AMBIGUOUS`; the operator picks the display again or closes the output. **There is no automatic playback after a disconnect.**
 - **Metrics changed** (resolution, scale or rotation of the display in use). Main re-places the window to the new bounds, sends the new `DisplayInfo` to the output window on `output:display` (the page re-lays out its canvas without rebuilding the source) and reports the new `devicePx` to the control window. If the output no longer matches it updates `sizeMatch`. It never rescales content. A reconnect (above) sends `output:display` too.
 
 ### Renderer failure
@@ -165,6 +169,7 @@ interface ControlApi {   // window.pixelLabDesktop.output, control preload
   setClock(outputId: OutputId | '*', clock: OutputClock): Promise<void>;    // output:clock
   close(outputId: OutputId | '*'): Promise<void>;                           // output:close
   retry(outputId: OutputId): Promise<OutputStatus>;                         // output:retry
+  resume(outputId: OutputId): Promise<OutputStatus>;                        // output:resume, only from held (D-2)
   status(): Promise<OutputStatus[]>;                                        // output:status-all
   onStatus(cb: (s: OutputStatus) => void): () => void;                      // output:status (push)
   onDisplays(cb: (d: DisplayInfo[]) => void): () => void;                   // output:displays-changed (push)
@@ -179,6 +184,7 @@ interface OutputStatus {
   // Per axis, from the page's layout (8.3): output px past the display edge, display px past the output edge.
   croppedPx: { right: number; bottom: number } | null;
   blackPx: { right: number; bottom: number } | null;
+  reconnected: boolean;                 // true in held after a reconnect, until output:resume (D-2)
   render: OutputRenderReport | null;    // last report from the output window
   error: { code: OutputErrorCode | OutputRenderErrorCode; message: string } | null;  // render codes: 8.4
 }
@@ -231,6 +237,8 @@ type OutputErrorCode =
   | 'PROJECT_INVALID'        // envelope check fails in main (deep validation: control window and page)
   | 'LOAD_FAILED' | 'OPEN_TIMEOUT'
   | 'RENDERER_GONE' | 'RENDERER_UNRESPONSIVE'
+  | 'DISPLAY_AMBIGUOUS'      // a display came back but the match isn't reliable (D-2)
+  | 'NOT_RESUMABLE'          // output:resume when the output isn't held
   | 'NOT_ONE_TO_ONE';        // report shows devicePixelRatio or canvas size off (section 4)
 ```
 
@@ -318,9 +326,9 @@ Small, in order. Each one ends with `npm --prefix desktop test`, `npm run typech
 | D4 | **Output preload and route plumbing.** `output-preload.cjs` with `window.pixelLabOutput` only (`onSession`, `onClock`, `onDisplay`, `ready`, `report`); allowlisted URL per mode; `assetPath` serves `/output.html` | Smoke test extended: the output page has no `pixelLabDesktop`, no Node globals, sandbox and isolation on; navigating it elsewhere is blocked; a stub `output.html` loads under `app://` |
 | D5 | **Open and close on the built-in display** (with `allowControlDisplay`) | `output:open` → `live` within 2 s with a stub page; Esc closes it from main even while the page runs `while(true){}`; Close from the control window works; `powerSaveBlocker` active only while live (asserted with `isStarted`); window never steals focus |
 | D6 | **Full screen on an external display** [monitor físico] | Window covers the display exactly (`getBounds()` equals display bounds); no menu bar, Dock or title bar visible on that display; compared native vs simple full screen with "Displays have separate Spaces" on and off; the decision recorded |
-| D7 | **Disconnect and reconnect** [monitor físico] | Unplugging hides the window within 500 ms and nothing appears on the laptop screen; replugging the same monitor restores `live` on it within 2 s; a different monitor doesn't take it over |
+| D7 | **Disconnect and reconnect** [monitor físico] | Unplugging hides the window within 500 ms, nothing appears on the laptop screen and the clock pauses; replugging the same monitor shows the window on it within 2 s in `held`, on the paused frame, with the operator notice; **the frame number doesn't advance until `output:resume`**; a different monitor, or a second identical one, doesn't take it over (`DISPLAY_AMBIGUOUS`). Unit tests of the reliable-match rule and of the `held` transitions run on the dev Mac without a monitor |
 | D8 | **Failure handling** | Killing the output renderer (`process.crash()` in a dev-only hook) → `failed`, black window, status pushed within 1 s; a hung page → `RENDERER_UNRESPONSIVE` after 5 s; `output:retry` returns to `live` |
-| D9 | **Clock relay** | Two output windows (`MAX_OUTPUTS` raised in a test build, on two displays, one of them can be the control display with `allowControlDisplay`) [monitor físico] report the same frame number at the same timestamp within 1 frame at 30 fps over 10 minutes; pause and seek reach both within 100 ms |
+| D9 | **Clock relay — backlog, not an Alpha 0.1 criterion** (owner decision). The shared clock stays in the architecture; Alpha runs one output. When taken up: | Two output windows (`MAX_OUTPUTS` raised in a test build, on two displays, one of them can be the control display with `allowControlDisplay`) [monitor físico] report the same frame number at the same timestamp within 1 frame at 30 fps over 10 minutes; pause and seek reach both within 100 ms |
 | D10 | **1:1 check** [monitor físico], after O2, run together with O10 in the same monitor session | `NOT_ONE_TO_ONE` raised when a stub reports a wrong ratio; on the real external display at scale 1 and at scale 2, the report's `canvasPx` and `contentBoxDevicePx` match `devicePx`, and O10's pixel-grid photos pass |
 | D11 | **Field rehearsal** [monitor físico] | Laptop + external monitor or processor input: open, run 30 minutes with no display sleep, Esc, reopen, unplug and replug. Results with photos in TEST-RESULTS |
 
@@ -334,16 +342,18 @@ Small, in order. Each one ends with `npm --prefix desktop test`, `npm run typech
 - Large masters (Festival is 5120 × 1664) cost GPU memory per output window; two or more outputs need measuring before `MAX_OUTPUTS` goes above 1.
 - Changing `main.cjs` from one window to a registry touches the IPC security code; D1 must keep every existing test green before anything else lands.
 
-## Decisions for the owner
+## Owner decisions
+
+Decided 2026-11-18. Every draft position below is approved as written except D-2, changed by the owner, and O-1, approved with conditions. Also by owner decision: multi-display clock sync (D9) moves to the backlog and isn't an Alpha 0.1 criterion.
 
 | # | Question | Draft position |
 | --- | --- | --- |
 | D-1 | On renderer crash or hang: keep a black full-screen window, or close it | Keep black: closing shows the desktop on the wall |
-| D-2 | Monitor reconnects: resume automatically, or wait for the operator | Resume automatically on the same display |
+| D-2 | Monitor reconnects: resume automatically, or wait for the operator | **Owner: changed.** Detect automatically; restore the window only on a reliable match; stay paused (`held`); notify the operator; resume only after explicit confirmation. No automatic playback |
 | D-3 | Closing the control window while outputs run: keep them running, ask, or close them | Ask, with "Keep running" as default; quitting always closes all |
 | D-4 | Edits reach a live output: on "Update output" only, or immediately | Only on "Update output" |
 | D-5 | Allow an output on the control window's display (single-laptop rehearsal) | Allowed only with an explicit toggle, off by default |
-| O-1 | Output window: draw the whole master at scale 1 and cut, or render only the output's regions (needs a `FrameInput.clip` contract change) | Whole master and cut, as the MP4 export does; revisit only if O8 measures it too slow or `MAX_OUTPUTS` > 1 |
+| O-1 | Output window: draw the whole master at scale 1 and cut, or render only the output's regions (needs a `FrameInput.clip` contract change) | **Owner: approved with conditions.** Whole master and cut for Alpha 0.1; measure performance and memory with Festival Main Stage (5120 px) in O8; keep the renderer decoupled from the window and from the cut (8.2); region rendering documented as an evolution path, not implemented |
 | O-2 | Add the `pixel-grid` test card to the Output module, the Live preview and the MP4 export, not only the output window | Everywhere: the Resolume check needs it in MP4 |
 | O-3 | Motion Lab patterns on the physical output in Alpha | No: test card, pixel grid and Depth Studio only |
 | O-4 | Output size ≠ display size: anything drawn on the wall to show it | Nothing on the wall; warning with pixel counts in the control window only; the `display`-space grid outlines the output edge |
@@ -449,6 +459,20 @@ interface FrameInput {
 ```
 
 A source that ignores the hint stays correct. A test compares hinted vs unhinted pixels inside the clip for every source that honours it.
+
+**Owner conditions on O-1 (2026-11-18).**
+
+1. **Measure** frame time and memory with Festival Main Stage (5120 × 1664) in O8, for the calibration card, the pixel grid and Depth Studio. The numbers go in 8.9 and in the PR.
+2. **Keep three layers apart**, so region rendering can come later without rewriting the architecture:
+
+   | Layer | Owns | Must not know about |
+   | --- | --- | --- |
+   | Source (`FrameSource`, from `createOutputSource`) | Drawing master pixels for a frame | Windows, displays, outputs, slices |
+   | Composer (`targetSource` + `videoTargets`) | Which master rectangles go where in output px | Windows, IPC, how the source draws |
+   | Presenter (`OutputRuntime` + `outputLayout`) | The canvas, device px, cadence, reports | Mapping maths and source internals |
+
+   The output page talks to the composer only through `targetSource(source, target, master)`; the MP4 export uses the same call. No window code reaches into a source and no source reads the window.
+3. **Evolution path to region rendering** (documented, **not** implemented in Alpha): add the optional `FrameInput.clip` above through the Lead Architect; the composer passes the union of this output's `masterRect`s; sources opt in one at a time (calibration card and pixel grid first, Depth Studio last, with its own sub-frustum and a pixel-equality test); the presenter, IPC, windows and the MP4 path don't change. Trigger: O8 shows Festival can't hold the content rate, or `MAX_OUTPUTS` goes above 1.
 
 ### 8.3 Canvas size and placement
 
@@ -660,7 +684,7 @@ Small, in order. Each ends with `npm run typecheck && npm run lint && npm test` 
 | O5 | **Electron pixel tests, 1× and 2×** | O4, D5 | 0 mismatched probes at 2× (built-in display) and at 1× (`--force-device-scale-factor=1`), in `display` and `master` space; both mutation builds fail; `contentBoxDevicePx === devicePx` in every report |
 | O6 | **Output = MP4** | O5 | Hashes equal for Festival OUT 1 and OUT 2, frames 0 and 37, calibration card and pixel grid |
 | O7 | **Depth Studio on the output** | O4 | Festival plays Depth Studio at 1:1 when `depthMaxSize() ≥ 5120`; a master over the limit reports `MASTER_TOO_LARGE` and stays black (forced with a fake limit in a test); a lost WebGL context reports `GPU_UNAVAILABLE` and recovers on restore |
-| O8 | **Limits** | O4, O7 | Every "to measure" row in 8.9 filled with the Mac model, macOS and Electron version; frame time for Festival with both sources at 60 fps recorded |
+| O8 | **Limits and performance** | O4, O7 | Every "to measure" row in 8.9 filled with the Mac model, macOS and Electron version; frame time (median and 99th percentile) and memory (process and GPU) for Festival Main Stage at 5120 × 1664 with the calibration card, the pixel grid and Depth Studio at 30 and 60 fps recorded (owner condition on O-1) |
 | O9 | **Cadence on a real display** [monitor físico] | O4, D6 | Pixel grid with `motion: true`, 240 fps phone video of 10 s per content rate on a 60 Hz display (and 50 Hz if the monitor offers it): the counted pattern equals 8.6's table; 30 fps for 10 min with 0 `skippedFrames`; `measuredHz` within 2 % of the display's rate; the warning appears for uneven combinations |
 | O10 | **Physical 1:1** [monitor físico] | O5, D6, D10 | Close-up photos pass the criteria in 8.8 at scale 1 and scale 2; the macOS scaled mode visibly fails; `sizeMatch` warning text checked for a smaller output on a HiDPI display |
 | O11 | **Resolume Arena procedure** [monitor físico] | O2, O3 | 8.11 executed, every box filled with what was seen and photos, results in `docs/integrations/RESOLUME.md` |
@@ -766,7 +790,7 @@ Shell-side, the rest of section 8 needs nothing new: one canvas, no extra preloa
 
 ## 9. Implementation order (Desktop and Output)
 
-One order for both lanes. Steps on the same line can run in parallel. Nothing starts before the owner approves this document and decides D-1…D-5 and O-1…O-9.
+One order for both lanes. Steps on the same line can run in parallel. The owner approved this document on 2026-11-18. Each task lands as its own small PR with evidence: what it implements, tests passed, what wasn't tested, what depends on external hardware, remaining risks. Alpha 0.1 isn't declared done until step 9 passes.
 
 | Step | Task | Lane | Needs | Where |
 | --- | --- | --- | --- | --- |
@@ -784,7 +808,7 @@ One order for both lanes. Steps on the same line can run in parallel. Nothing st
 | 7 | O6 Output = MP4 | Output | O5 | Dev Mac |
 | 7 | O7 Depth Studio on the output | Output | O4 | Dev Mac |
 | 8 | O8 Measured limits | Output | O4, O7 | Dev Mac |
-| 9 | **One session with the external monitor**, in this order: D6 full screen (decides native vs simple full screen) → D7 disconnect / reconnect → D10 + O10 1:1 photos at scale 1, scale 2 and one scaled mode → O9 cadence (240 fps video) → D9 clock across two displays → O11 Resolume Arena procedure → D11 30-minute field rehearsal | Both | Steps 1–8; D6 first, since every later check needs the window in place | [monitor físico] |
+| 9 | **One session with the external monitor**, in this order: D6 full screen (decides native vs simple full screen) → D7 disconnect / reconnect → D10 + O10 1:1 photos at scale 1, scale 2 and one scaled mode → O9 cadence (240 fps video) → O11 Resolume Arena procedure → D11 30-minute field rehearsal | Both | Steps 1–8; D6 first, since every later check needs the window in place | [monitor físico] |
 
-D9 needs two displays, so it moves into the monitor session (the built-in display plus the external one with `allowControlDisplay`). If the monitor session finds a problem in D6, D7 or D10, the fix goes back to the dev Mac and the session repeats from D6.
+D9 (clock across two displays) is in the backlog by owner decision; it isn't part of this session. If the monitor session finds a problem in D6, D7 or D10, the fix goes back to the dev Mac and the session repeats from D6.
 
