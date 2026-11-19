@@ -11,6 +11,7 @@ import * as ops from "@/engines/project-ops";
 import { deleteSelection, duplicateSelection, groupSelection, tryEdit } from "@/state/actions";
 import { useCabinetLibrary } from "@/modules/engineering/library-store";
 import { opContext, selectedScreenIds, useApp, type AppState } from "@/state/store";
+import { useEffect, useRef } from "react";
 import { CommitField, Readout, Section, SelectField, intStep, requireWhole } from "./fields";
 
 const edit: AppState["edit"] = (change) => useApp.getState().edit(change);
@@ -91,6 +92,55 @@ function ProjectPanel() {
   );
 }
 
+/**
+ * A screen's color: the palette, or any color from the system picker. One undo step per choice: the picker
+ * commits on its `change` event (when it closes), not on every move. The test card keeps text readable on
+ * any color it is given.
+ */
+function ScreenColorField({ value, onCommit }: { value: string; onCommit(color: string): void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const commit = useRef(onCommit);
+  useEffect(() => {
+    commit.current = onCommit;
+  });
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const onChange = () => commit.current(el.value);
+    el.addEventListener("change", onChange);
+    return () => el.removeEventListener("change", onChange);
+  }, []);
+  const current = value.toUpperCase();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-xs font-normal text-muted-foreground">Color</Label>
+      <div className="flex items-center gap-1.5" role="group" aria-label="Screen color">
+        {ops.SCREEN_COLORS.map((color) => (
+          <button
+            key={color}
+            type="button"
+            aria-label={`Color ${color}`}
+            aria-pressed={current === color}
+            title={color}
+            onClick={() => onCommit(color)}
+            className={`size-5 rounded-sm border ${current === color ? "border-foreground ring-1 ring-foreground" : "border-border"}`}
+            style={{ backgroundColor: color }}
+          />
+        ))}
+        <input
+          ref={input}
+          key={current}
+          type="color"
+          aria-label="Custom screen color"
+          defaultValue={current.toLowerCase()}
+          className="ml-1 h-5 w-7 cursor-pointer rounded-sm border border-border bg-transparent p-0"
+        />
+        <span className="ml-auto font-mono text-xs text-muted-foreground tabular-nums">{current}</span>
+      </div>
+    </div>
+  );
+}
+
 function ScreenPanel({ id }: { id: Id }) {
   const project = useApp((s) => s.project)!;
   const mapping = useApp((s) => s.mapping)!;
@@ -104,6 +154,7 @@ function ScreenPanel({ id }: { id: Id }) {
     <>
       <Section title="Screen">
         <CommitField label="Name" value={screen.name} onCommit={(t) => edit((p) => ops.updateScreen(p, id, { name: t }))} />
+        <ScreenColorField value={screen.color} onCommit={(color) => tryEdit((p) => ops.updateScreen(p, id, { color }))} />
         <SelectField
           label="Cabinet"
           value={screen.cabinetId}

@@ -24,7 +24,9 @@ export interface OpContext {
 
 export class DomainError extends Error {}
 
-const SCREEN_COLORS = ["#2F6FE4", "#17A398", "#7A5FE8", "#D9902F", "#3FA34D", "#D2554A", "#B14FC9", "#5C8DA8"];
+/** Screen colors offered in the inspector and assigned to new screens in turn. */
+export const SCREEN_COLORS = ["#2F6FE4", "#17A398", "#7A5FE8", "#D9902F", "#3FA34D", "#D2554A", "#B14FC9", "#5C8DA8"] as const;
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const STAGE_GAP_UM = 1_000_000; // 1 m between auto-placed screens
 const MAX_ARRANGEMENT = 1000;
 
@@ -225,8 +227,12 @@ export function addScreen(project: Project, input: NewScreenInput, ctx: OpContex
   return appendScreen(project, screen, project.content.canvases[0].id, project.output.outputs[0].id, false);
 }
 
-export function updateScreen(project: Project, id: Id, patch: Partial<Pick<LedScreen, "name" | "cabinetId" | "columns" | "rows" | "groupId">>): Project {
+export function updateScreen(project: Project, id: Id, patch: Partial<Pick<LedScreen, "name" | "cabinetId" | "columns" | "rows" | "groupId" | "color">>): Project {
   if (patch.name !== undefined) requireName(patch.name, "A screen");
+  if (patch.color !== undefined) {
+    if (!HEX_COLOR.test(patch.color)) throw new DomainError("A screen color is a hex value such as #2F6FE4.");
+    patch = { ...patch, color: patch.color.toUpperCase() };
+  }
   if (patch.columns !== undefined) requireArrangement(patch.columns, "Columns");
   if (patch.rows !== undefined) requireArrangement(patch.rows, "Rows");
   if (patch.cabinetId !== undefined && !project.cabinets.some((c) => c.id === patch.cabinetId)) {
