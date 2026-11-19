@@ -254,3 +254,22 @@ Also in this PR:
 | Unpackaged Electron with `--force-device-scale-factor=1` on the 2× built-in display | starts, `devicePixelRatio` = 1 (what O5's 1× run needs) |
 
 Not tested: the CI run on Linux itself until the PR's checks report (the electron-builder configuration test is plain JavaScript and should run there); validators against real messages from an output window (D4/D5, O4).
+
+## D4. Output preload and allowlisted route (2026-11-19)
+
+- `desktop/src/output-window.cjs`: `outputWindowOptions` (frameless, black, hidden until placed; sandbox, isolation, no Node, no webviews, no background throttling, zoom 1, DevTools only unpackaged) and `createOutputWindow`, which denies popups, blocks `will-navigate` / `will-redirect` outside the output URL, blocks webviews, locks zoom after load and loads the one allowlisted URL (`app://pixellab/output.html`, `<dev origin>/output`).
+- `desktop/src/output-preload.cjs`: exposes only `window.pixelLabOutput` (`version`, `onSession`, `onClock`, `onDisplay`, `ready`, `report`), frozen. No `pixelLabDesktop` in output windows.
+- `main.cjs`: `openOutputWindow(outputId, bounds)` registers the window under its id (D1 registry, `MAX_OUTPUTS` 1) and drops it on close. `output:ready` and `output:report` are accepted only from a registered output window's main frame at its URL; reports pass `validateReport` and are limited to one per 450 ms (contract: at most 2 per second). Nothing calls `openOutputWindow` outside the smoke test yet: placement, full screen, Esc, the state machine and the control-window channels are D5.
+- `assetPath` already maps `app://pixellab/output.html` to `web/output.html`; now tested.
+- **Stub page.** The real page is Output's `src/app/output/page.tsx` (O4), exported as `output.html`, as the contract fixes it (8.1, 8.12 #12). Until it exists, `build:web` copies `desktop/resources/output-stub.html` (black, no external resources, `cursor: none`; calls `ready()` and sends one report) to `web/output.html`, and prints that it did. When O4's page is in the export, the stub isn't used.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 40/40 (6 new in `tests/output-window.test.cjs`: window options, allowlisted URL and navigation guards for `app://` and dev, `output.html` in `assetPath`, preload surface with a mocked `electron`, stub content) |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 349/349, lint 0 problems |
+| `build:web` | pass; prints "Output page not in the export yet (O4): using … output-stub.html" |
+| `test:smoke` (static) | pass. Opens an output window: URL `app://pixellab/output.html`; API keys exactly the six above; no `pixelLabDesktop`, `process` or `require`; `window.open` returns null; sandbox and isolation on; navigation to the editor and to `https://example.com/` blocked; the window is refused on control channels and accepted on its own; `ready` and a validated report reach main; closing it empties the registry |
+| `dev -- --smoke-test` | pass; the output part is skipped with a message, since the dev server has no `/output` until O4 |
+| `electron-builder --dir` | `app.asar` contains `output-preload.cjs`, `output-window.cjs`, `output-ipc.cjs`; `Resources/web/output.html` present |
+
+Not tested: the output window in dev mode (needs O4's page); a forged message from a non-output window on `output:ready` / `output:report` in a running app (covered by the registry's unit tests, not by the smoke test); anything about displays or full screen (D5, D6).
