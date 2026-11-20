@@ -1,4 +1,4 @@
-import { motionMarkerOp, patternWhite, pixelGridOps, type GridLabel, type GridOp, type GridPattern, type GridSize, type Rgb } from "@/engines/pixel-grid";
+import { masterGridRegions, motionMarkerOp, patternWhite, pixelGridOps, type GridLabel, type GridOp, type GridPattern, type GridSize, type Rgb } from "@/engines/pixel-grid";
 import type { FrameInput, FrameSource } from "@/preview/contract";
 
 /**
@@ -103,11 +103,7 @@ interface Region {
 function regions(input: FrameInput): Region[] {
   const mapping = input.context?.mapping;
   if (mapping && mapping.master.width === input.width && mapping.master.height === input.height) {
-    return mapping.screens.map((s) => {
-      const r = s.masterRect;
-      const title = `${s.name} · ${r.width} × ${r.height} · master ${r.x},${r.y} · out ${s.outputRect.x},${s.outputRect.y}`;
-      return { x: r.x, y: r.y, size: { w: r.width, h: r.height }, label: { originX: r.x, originY: r.y, title } };
-    });
+    return masterGridRegions(mapping.screens);
   }
   return input.screens.map((s) => ({
     x: s.x,
