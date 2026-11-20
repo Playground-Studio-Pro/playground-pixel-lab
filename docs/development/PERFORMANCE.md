@@ -263,3 +263,18 @@ Measured 2026-11-12: production build, gzip sizes from `npm run perf:bundle`. Be
 The largest app chunk went from 228.5 KB to 212.8 KB because the bundler moved shared code into a new 17.2 KB chunk; those two together are 230.0 KB (+1.5). No dependency was added. JetBrains Mono is self-hosted by `next/font` and not preloaded.
 
 **Not measured:** preview frame times. Playback repaints only the counter layer, without React state, but there is no before and after figure, so no performance claim is made. The 500-screen example was not opened in the dialog.
+
+## Output Engineering
+
+### Output page (`output.html`, PHYSICAL_OUTPUT O4)
+
+Measured 2026-11-19 on the static export (`npm --prefix desktop run build:web`), JS chunks referenced by each page's HTML. These are first-load sizes; the editor loads more later through `AppLoader`.
+
+| Page | Chunks | Raw | Gzip |
+| --- | --- | --- | --- |
+| `output.html` | 9 | 740 KiB | 230 KiB |
+| `index.html` (editor, for reference) | 7 | 561 KiB | 172 KiB |
+
+The output page imports nothing from the editor: no `state/store`, no module registry, no studio panels or workspace components (`tests/output-runtime.test.ts` walks its import graph). Its size is the three output sources (test card, pixel grid, Depth Studio's WebGL renderer), the project schema and the mapping engines.
+
+**Draw time, one output, in-app Chromium with the pane hidden** (a background page, so treat it as a rough figure): Festival Main Stage, Processor A (3072 × 1920 from a 5120 × 1664 master), median of 10 frames: calibration test card 22 ms, pixel grid 16 ms. Preparing a session (parse, mapping, source) took 0–10 ms. Not a frame-rate claim: O8 measures frame time, memory and the GPU path in the Electron output window on a visible display.
