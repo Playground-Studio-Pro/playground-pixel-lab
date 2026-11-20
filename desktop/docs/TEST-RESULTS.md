@@ -507,3 +507,18 @@ What changed:
 | `npm run test:smoke` with the stub copied over `web/output.html` | pass, no window shown. D7: paused at 18; seen [18] and [18]; drawn frame 19 after resume. The real page was put back afterwards |
 
 Not tested: the visible run (`test:smoke:output`), by instruction.
+
+## Output test mode for O6 (2026-11-20)
+
+`pixelLabOutput.testMode` is true only when `!app.isPackaged && --smoke-test`. Main adds `--pixellab-output-test-mode` to the output renderer through `webPreferences.additionalArguments` when it creates the window, and the preload reads it from `process.argv`. There's no URL query and no new IPC channel, and sandbox and context isolation are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Unit: `outputTestMode` false when packaged, false without `--smoke-test`, true in an unpackaged smoke run | pass |
+| Unit: `additionalArguments` empty unless `testMode === true` and unpackaged; the URL is unchanged; sandbox, isolation and no Node integration are kept | pass |
+| Unit: the preload reads it only from the argument; the API stays frozen | pass |
+| Hidden `test:smoke` (fresh `build:web`, real output page, sandboxed): `pixelLabOutput.testMode === true` | pass, no window shown |
+| `npm --prefix desktop test` | 80/80 |
+| Root typecheck, lint (2 existing warnings in `src/engines/pixel-probes.ts`), test 454 passed with 1 skipped, build | pass |
+
+Not tested in a live window: a normal development run reading `testMode === false`. Checking it would mean opening a visible output window; the unit tests cover it.

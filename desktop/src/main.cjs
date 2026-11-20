@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const { validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, debugAccessViolations } = require('./security.cjs');
 const { probeFFmpeg } = require('./native.cjs');
 const { createWindowRegistry, trustedURLForRole, outputURL } = require('./windows.cjs');
-const { createOutputWindow } = require('./output-window.cjs');
+const { createOutputWindow, outputTestMode } = require('./output-window.cjs');
 const { OUTPUT_CHANNELS, OutputIpcError } = require('./output-ipc.cjs');
 const { createOutputController, outputKeyAction } = require('./output-controller.cjs');
 const { smokeMode, virtualDisplay, smokeScript, repoFile, VIRTUAL_DISPLAY_ID } = require('./smoke-mode.cjs');
@@ -122,7 +122,7 @@ else {
       item.setSaveDialogOptions({ title: 'Export Pixel Lab file' });
     });
     function openOutputWindow(outputId, display) {
-      const window = createOutputWindow(BrowserWindow, { bounds: display.boundsDip, origin, isPackaged: app.isPackaged });
+      const window = createOutputWindow(BrowserWindow, { bounds: display.boundsDip, origin, isPackaged: app.isPackaged, testMode: outputTestMode({ isPackaged: app.isPackaged, argv: process.argv }) });
       try { windows.addOutput(outputId, window); } catch (error) { window.destroy(); throw error; }
       const contents = window.webContents;
       window.on('closed', () => { windows.removeOutput(outputId, window); outputs.onClosed(outputId); });

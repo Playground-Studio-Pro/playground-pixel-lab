@@ -119,10 +119,11 @@ async function smokeOutput(window, hooks, displays) {
 
   // D4 isolation checks on the live output page.
   const run = script => out.webContents.executeJavaScript(script);
-  const page = await run(`({ url: location.href, desktop: typeof window.pixelLabDesktop, node: typeof process, require: typeof require, api: window.pixelLabOutput ? Object.keys(window.pixelLabOutput).sort() : null, popup: String(window.open(location.origin)) })`);
+  const page = await run(`({ url: location.href, desktop: typeof window.pixelLabDesktop, node: typeof process, require: typeof require, api: window.pixelLabOutput ? Object.keys(window.pixelLabOutput).sort() : null, testMode: window.pixelLabOutput && window.pixelLabOutput.testMode, popup: String(window.open(location.origin)) })`);
   assert.equal(page.url, hooks.outputURL);
   assert.equal(page.desktop, 'undefined'); assert.equal(page.node, 'undefined'); assert.equal(page.require, 'undefined');
-  assert.deepEqual(page.api, ['onClock', 'onDisplay', 'onSession', 'ready', 'report', 'version']);
+  assert.deepEqual(page.api, ['onClock', 'onDisplay', 'onSession', 'ready', 'report', 'testMode', 'version']);
+  assert.equal(page.testMode, true, 'smoke run: pixelLabOutput.testMode is true');
   assert.equal(page.popup, 'null');
   const outPrefs = out.webContents.getLastWebPreferences();
   assert.equal(outPrefs.sandbox, true); assert.equal(outPrefs.contextIsolation, true); assert.equal(outPrefs.nodeIntegration, false);
