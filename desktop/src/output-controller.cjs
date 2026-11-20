@@ -242,17 +242,17 @@ function createOutputController({
 
     /**
      * output:update. A new session for an open output, same window. Accepted in opening, live and failed; the revision
-     * must go up. Main keeps it as the latest session (a retry re-sends it) and forwards it at once if the page already
+     * must go up (BAD_REQUEST); an output that isn't open, or '*', is UNKNOWN_OUTPUT. Main keeps it as the latest session (a retry re-sends it) and forwards it at once if the page already
      * has a session; otherwise output:ready sends it. Refused in waiting-display and held, so a new session can never
      * restart playback before output:resume (D-2). The state doesn't change: a session the page can't prepare comes
      * back as a report errorCode while the previous one keeps playing (section 2, "Renderer failure").
      */
     update(target, session) {
       const id = outputIdOrAll(target);
-      if (id === '*') throw new OutputIpcError('BAD_REQUEST', 'update takes one output id');
+      if (id === '*') throw new OutputIpcError('UNKNOWN_OUTPUT', 'update takes one open output id, not "*"');
       validateSession(session, { expectedOutputId: id });
       const r = records.get(id);
-      if (!r) throw new OutputIpcError('BAD_REQUEST', `Output ${id} is not open`);
+      if (!r) throw new OutputIpcError('UNKNOWN_OUTPUT', `Output ${id} is not open`);
       if (r.state === 'waiting-display' || r.state === 'held') {
         throw new OutputIpcError('BAD_REQUEST', `Output ${id} is ${r.state}: resume it before updating`);
       }

@@ -558,10 +558,10 @@ Not verified here: what reaches the cable, and how `colorSpace` reads with the d
 | --- | --- |
 | Unit: update while live forwards the session with the display; no new window, reload or close; the state stays live; `sessionRevision` follows the page's report | pass |
 | Unit: a session the page can't prepare leaves the output live with the error, cleared by the next good report | pass |
-| Unit: validation (same or lower revision, a session for another output, unknown key, output missing from the project, bad clock, `'*'`, bad id, an output that isn't open); nothing is sent for a refused update | pass |
+| Unit: validation: BAD_REQUEST for a same or lower revision, a session for another output, an unknown key, a bad clock or a bad id; UNKNOWN_OUTPUT for an output missing from the project, an output that isn't open, or `'*'`; nothing is sent for a refused update | pass |
 | Unit: while opening, ready sends the latest session and live needs the new revision; while failed, retry sends it | pass |
 | Unit: refused in waiting-display and held, accepted again after resume (D-2) | pass |
-| Hidden `test:smoke` (fresh `build:web`, real output page, virtual display): same revision refused with BAD_REQUEST; revision 2 paused on frame 42 is drawn within 3 s; state live throughout; same BrowserWindow and webContents | pass, no window shown |
+| Hidden `test:smoke` (fresh `build:web`, real output page, virtual display): same revision refused with BAD_REQUEST; `'*'` refused with UNKNOWN_OUTPUT; revision 2 paused on frame 42 is drawn within 3 s; state live throughout; same BrowserWindow and webContents | pass, no window shown |
 | `npm --prefix desktop test` | 87/87 |
 
 Not tested: the update step with the stub page (the real page is what ships), and in a visible window.

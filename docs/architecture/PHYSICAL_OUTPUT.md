@@ -265,7 +265,7 @@ type OutputErrorCode =
 
 **Update rules in main.** The window is never recreated and the state doesn't change.
 - **Validation:** the session goes through the same checks as `output:open`, and its `outputId` must equal the update's.
-- **Revision:** must be greater than the stored one; otherwise `BAD_REQUEST`. An update for an output that isn't open is `BAD_REQUEST` too.
+- **Revision:** must be greater than the stored one; otherwise `BAD_REQUEST`. An update for an output that isn't open, or for `'*'`, is `UNKNOWN_OUTPUT`.
 - **Accepted states:** `opening`, `live` and `failed`. In `opening` before `output:ready`, ready sends the latest session. After ready, it's forwarded at once, and `live` then needs a first frame of the new revision. In `failed`, it's stored and the next retry sends it.
 - **Refused states:** `waiting-display` and `held`, with `BAD_REQUEST`, so a new session (and its clock) can't restart playback before `output:resume` (D-2).
 

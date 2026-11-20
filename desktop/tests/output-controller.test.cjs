@@ -672,7 +672,7 @@ test('update the page cannot prepare: stays live with the error, cleared by the 
   assert.equal(t.controller.status('OUT1').error, null);
 });
 
-test('update validation: same checks as open, revision must go up, one output id, open outputs only', () => {
+test('update validation: same checks as open, revision must go up; UNKNOWN_OUTPUT for an output that is not open or "*"', () => {
   const t = liveSetup();
   assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(3))), 'BAD_REQUEST', 'same revision');
   assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(2))), 'BAD_REQUEST', 'lower revision');
@@ -680,9 +680,9 @@ test('update validation: same checks as open, revision must go up, one output id
   assert.equal(t.codeOf(() => t.controller.update('OUT1', { ...nextSession(4), extra: 1 })), 'BAD_REQUEST', 'unknown key');
   assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4, { projectText: project(['OTHER']) }))), 'UNKNOWN_OUTPUT');
   assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4, { clock: { state: 'paused' } }))), 'BAD_REQUEST', 'bad clock');
-  assert.equal(t.codeOf(() => t.controller.update('*', nextSession(4))), 'BAD_REQUEST');
+  assert.equal(t.codeOf(() => t.controller.update('*', nextSession(4))), 'UNKNOWN_OUTPUT');
   assert.equal(t.codeOf(() => t.controller.update('bad id!', nextSession(4))), 'BAD_REQUEST');
-  assert.equal(t.codeOf(() => t.controller.update('OUT2', nextSession(4, { outputId: 'OUT2' }))), 'BAD_REQUEST', 'not open');
+  assert.equal(t.codeOf(() => t.controller.update('OUT2', nextSession(4, { outputId: 'OUT2' }))), 'UNKNOWN_OUTPUT', 'not open');
   assert.ok(!t.log.some(l => l[0] === 'session' && l[2] !== 3), 'nothing sent for a refused update');
   assert.equal(t.controller.status('OUT1').state, 'live');
   assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4))), null, 'a refused update leaves the revision as it was');

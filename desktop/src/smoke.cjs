@@ -146,6 +146,8 @@ async function smokeOutput(window, hooks, displays) {
   const sameWindow = { id: out.id, contents: out.webContents.id };
   const stale = await control(`window.pixelLabDesktop.output.update('${id}', ${JSON.stringify(session)}).then(() => 'updated', e => e.message)`);
   assert.match(stale, /BAD_REQUEST/, 'update with the same revision refused');
+  const everyOutput = await control(`window.pixelLabDesktop.output.update('*', ${JSON.stringify({ ...session, revision: 2 })}).then(() => 'updated', e => e.message)`);
+  assert.match(everyOutput, /UNKNOWN_OUTPUT/, "update for '*' refused");
   const updated = { ...session, revision: 2, clock: { state: 'paused', frame: 42 } };
   const updateStatus = await control(`window.pixelLabDesktop.output.update('${id}', ${JSON.stringify(updated)})`);
   assert.equal(updateStatus.state, 'live');
