@@ -12,6 +12,7 @@ import { deleteSelection, duplicateSelection, groupSelection, tryEdit } from "@/
 import { useCabinetLibrary } from "@/modules/engineering/library-store";
 import { opContext, selectedScreenIds, useApp, type AppState } from "@/state/store";
 import { useEffect, useRef } from "react";
+import { useCabinetOptions } from "./cabinet-options";
 import { CommitField, Readout, Section, SelectField, intStep, requireWhole } from "./fields";
 
 const edit: AppState["edit"] = (change) => useApp.getState().edit(change);
@@ -147,6 +148,7 @@ function ScreenPanel({ id }: { id: Id }) {
   const select = useApp((s) => s.select);
   const screen = project.physical.screens.find((s) => s.id === id);
   const resolved = mapping.screens.find((s) => s.screenId === id);
+  const cabinetChoices = useCabinetOptions();
   if (!screen) return null;
   const NEW_CANVAS = "__new__";
 
@@ -158,8 +160,12 @@ function ScreenPanel({ id }: { id: Id }) {
         <SelectField
           label="Cabinet"
           value={screen.cabinetId}
-          items={project.cabinets.map((c) => ({ value: c.id, label: c.name }))}
-          onChange={(cabinetId) => tryEdit((p) => ops.updateScreen(p, id, { cabinetId }))}
+          items={cabinetChoices.map((o) => ({ value: o.cabinet.id, label: o.cabinet.name, group: o.group }))}
+          onChange={(cabinetId) => {
+            // A cabinet the project doesn't have yet is copied in and assigned in one edit: one undo reverts both.
+            const cabinet = cabinetChoices.find((o) => o.cabinet.id === cabinetId)?.cabinet;
+            tryEdit((p) => ops.updateScreen(cabinet ? ops.addCabinet(p, cabinet) : p, id, { cabinetId }));
+          }}
         />
         <div className="grid grid-cols-2 gap-2">
           <CommitField label="Columns" value={String(screen.columns)} step={intStep} onCommit={(t) => edit((p) => ops.updateScreen(p, id, { columns: requireWhole(t, "Columns") }))} />

@@ -3,7 +3,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 const fieldInput = "h-7 rounded px-2 text-[13px] tabular-nums md:text-[13px]";
@@ -109,6 +109,17 @@ export function requireWhole(text: string, what: string): number {
   return Number(text);
 }
 
+/** Consecutive items of the same group, in order. */
+function groupItems<T extends { group?: string }>(items: readonly T[]): { group: string | undefined; items: T[] }[] {
+  const out: { group: string | undefined; items: T[] }[] = [];
+  for (const item of items) {
+    const last = out.at(-1);
+    if (last && last.group === item.group) last.items.push(item);
+    else out.push({ group: item.group, items: [item] });
+  }
+  return out;
+}
+
 export function SelectField({
   label,
   value,
@@ -124,7 +135,8 @@ export function SelectField({
   ariaLabel?: string;
   triggerClassName?: string;
   value: string;
-  items: readonly { value: string; label: string }[];
+  /** Items with a `group` are shown under that heading, in runs of the same group. */
+  items: readonly { value: string; label: string; group?: string }[];
   onChange(value: string): void;
   className?: string;
   disabled?: boolean;
@@ -143,9 +155,16 @@ export function SelectField({
           <SelectValue className="truncate" />
         </SelectTrigger>
         <SelectContent>
-          {items.map((item) => (
-            <SelectItem key={item.value} value={item.value} className="text-[13px]">{item.label}</SelectItem>
-          ))}
+          {groupItems(items).map((g, i) =>
+            g.group === undefined ? (
+              g.items.map((item) => <SelectItem key={item.value} value={item.value} className="text-[13px]">{item.label}</SelectItem>)
+            ) : (
+              <SelectGroup key={`${g.group}-${i}`}>
+                <SelectLabel>{g.group}</SelectLabel>
+                {g.items.map((item) => <SelectItem key={item.value} value={item.value} className="text-[13px]">{item.label}</SelectItem>)}
+              </SelectGroup>
+            ),
+          )}
         </SelectContent>
       </Select>
     </div>
