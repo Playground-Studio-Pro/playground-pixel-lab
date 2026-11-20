@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCalibrationFrame, cabinetCells, cabinetLabelSize, cabinetLabelText, diagonalRuns, metres, ringRuns, rowLetters, type CalibrationFrame, type CalibrationMode, type CalibrationScreen, type CalNode, type LogoMode } from "@/components/shell/calibration/frame";
 import { calibrationTargets } from "@/components/shell/calibration/from-mapping";
-import { CAL_CHECKER, CAL_COLORS, CAL_LOGO_ASSET, CAL_MIN_TEXT, readableOn, tint } from "@/components/shell/calibration/tokens";
+import { CAL_CHECKER, CAL_LOGO_ASSET, CAL_MIN_TEXT, lighten, readableOn } from "@/components/shell/calibration/tokens";
 import { resolveMapping } from "@/engines/mapping";
 import { buildExample } from "@/examples";
 
@@ -128,7 +128,7 @@ describe("cabinet labels in the frame", () => {
   it("labels most cabinets and gives way where a screen's own plate, counters or the logo are", () => {
     const t = target("keynote");
     const count = (mode: CalibrationMode, logo: LogoMode) => texts(frameOf(t.screens, t.width, t.height, mode, logo)).filter((n) => CAB.test(n.text)).length;
-    expect({ io: count("identification", "off"), ic: count("identification", "center"), co: count("calibration", "off"), cc: count("calibration", "center") }).toEqual({ io: 117, ic: 125, co: 121, cc: 113 });
+    expect({ io: count("identification", "off"), ic: count("identification", "center"), co: count("calibration", "off"), cc: count("calibration", "center") }).toEqual({ io: 157, ic: 149, co: 121, cc: 113 });
   });
 
   it("are in still frames too, and skipped in cabinets too small to read", () => {
@@ -153,28 +153,27 @@ describe("identification in the stage test card style", () => {
   const f = frameOf(t.screens, t.width, t.height, "identification", "off");
   const rect = (x: number, y: number) => f.nodes.filter((n): n is Extract<CalNode, { kind: "rect" }> => n.kind === "rect" && n.x === x && n.y === y);
 
-  it("each cabinet is one of two tones of the screen's color, alternating like a checkerboard", () => {
+  it("each cabinet is the screen's color or a light tint of it, alternating like a checkerboard", () => {
     t.screens.forEach((s) => {
       for (const cell of cabinetCells(s)) {
-        const want = tint(s.accent, (cell.row + cell.column) % 2 === 0 ? CAL_CHECKER.light : CAL_CHECKER.dark);
+        const want = (cell.row + cell.column) % 2 === 0 ? lighten(s.accent, CAL_CHECKER.light) : s.accent;
         expect(rect(cell.box.x, cell.box.y).some((r) => r.width === cell.box.width && r.height === cell.box.height && r.fill === want), `${s.label} ${cabinetLabelText(cell)}`).toBe(true);
       }
     });
   });
 
-  it("keeps the 2 px seams, in black between the tones", () => {
+  it("keeps the 2 px seams, in a lighter tint between the tones", () => {
     const main = t.screens[1];
-    expect(f.nodes.some((n) => n.kind === "rect" && n.x === main.rect.x + 191 && n.width === 2 && n.height === main.rect.height && n.fill === CAL_COLORS.black)).toBe(true);
+    expect(f.nodes.some((n) => n.kind === "rect" && n.x === main.rect.x + 191 && n.width === 2 && n.height === main.rect.height && n.fill === lighten(main.accent, CAL_CHECKER.seam))).toBe(true);
   });
 
   it("cabinet labels pick black or white text, whichever reads on the cabinet's tone", () => {
     for (const color of ["#FFFFFF", "#E8B04A", "#4F8DF7", "#202020"]) {
-      for (const share of [CAL_CHECKER.light, CAL_CHECKER.dark]) {
-        const bg = tint(color, share);
+      for (const bg of [lighten(color, CAL_CHECKER.light), color]) {
         const fg = readableOn(bg);
         const lum = (hex: string) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
         const [a, b] = [lum(bg), lum(fg)].sort((p, q) => q - p);
-        expect((a + 0.05) / (b + 0.05), `${color} ${share}`).toBeGreaterThanOrEqual(4.5);
+        expect((a + 0.05) / (b + 0.05), `${color} on ${bg}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });
@@ -201,9 +200,11 @@ describe("identification in the stage test card style", () => {
     expect(metres(500_400)).toBe("0.500m");
     expect(metres(1_234_567)).toBe("1.235m");
     const ident = texts(f).map((n) => n.text);
-    expect(ident).toEqual(expect.arrayContaining(["MAIN WALL", "W 2688 x H 1536", "W 7.000m x H 4.000m"]));
-    // The plate sits around the screen's center.
-    const name = texts(f).find((n) => n.text === "MAIN WALL")!;
+    expect(ident).toEqual(expect.arrayContaining(["Main Wall", "W 2688 x H 1536", "W 7.000m x H 4.000m"]));
+    // The plate sits around the screen's center, small as on the reference card, the name on white.
+    const name = texts(f).find((n) => n.text === "Main Wall")!;
+    expect(name.fill).toBe("#000000");
+    expect(name.size).toBeLessThanOrEqual(Math.round(Math.sqrt(2688 * 1536) * 0.022));
     const main = t.screens[1].rect;
     expect(Math.abs(name.x + name.width / 2 - (main.x + main.width / 2))).toBeLessThanOrEqual(2);
   });

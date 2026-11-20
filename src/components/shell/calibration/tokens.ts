@@ -67,10 +67,14 @@ export const CAL_BASELINE = 0.78;
 export const CAL_CABINET = { ratio: 0.28, max: 96, margin: 0.15 } as const;
 
 /**
- * Identification field: each cabinet takes one of two tones of the screen's color, alternating like a
- * checkerboard, so every cabinet stands apart at a glance. Shares of the color mixed into black.
+ * Identification field, as on a stage test card: each cabinet takes the screen's color itself or a light tint of
+ * it (`light` of the way to white), alternating like a checkerboard, so every cabinet stands apart at a glance.
+ * Seams are a lighter tint still (`seam`). Labels pick black or white text by contrast (`readableOn`).
  */
-export const CAL_CHECKER = { light: 0.58, dark: 0.3 } as const;
+export const CAL_CHECKER = { light: 0.55, seam: 0.8 } as const;
+
+/** Centre plate text, as a share of the square root of the screen's area: small, as on the reference card. */
+export const CAL_PLATE = { ratio: 0.022, max: 120 } as const;
 
 /**
  * Motion on a moving test card, one period of `seconds` for everything, which divides every export duration
@@ -129,6 +133,12 @@ function luminance([r, g, b]: readonly number[]): number {
  * The accent a screen is drawn with: its project color, lifted toward white until it reads on a
  * dark field (contrast of at least 4.5:1 against black). Falls back to the palette by index.
  */
+/** `hex` mixed `share` of the way to white. */
+export function lighten(hex: string, share: number): string {
+  const rgb = channels(hex) ?? [255, 255, 255];
+  return toHex(rgb.map((v) => v + (255 - v) * share));
+}
+
 /** Black or white, whichever reads better on `hex` (WCAG contrast). */
 export function readableOn(hex: string): "#000000" | "#FFFFFF" {
   const l = luminance(channels(hex) ?? [0, 0, 0]);

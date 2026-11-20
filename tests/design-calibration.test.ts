@@ -167,7 +167,7 @@ describe("calibration labels", () => {
     expect(calib).toEqual(expect.arrayContaining(["SCR-01", "SCR-02", "SCR-03", "LEFT SIDE", "MAIN WALL", "RIGHT SIDE", "2688 × 1536 PX", "768 × 1536 PX", "X 768  Y 0", "X 3456  Y 0", "OUT 1 · MEDIA SERVER", "TOP"]));
     // Identification's center plate, as on a stage test card: physical size from the mapping's micrometres.
     const ident = labels(keynote("identification", "center").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
-    expect(ident).toEqual(expect.arrayContaining(["SCR-01", "SCR-02", "SCR-03", "LEFT SIDE", "MAIN WALL", "RIGHT SIDE", "W 2688 x H 1536", "W 768 x H 1536", "W 7.000m x H 4.000m", "W 2.000m x H 4.000m", "TOP"]));
+    expect(ident).toEqual(expect.arrayContaining(["Left Side", "Main Wall", "Right Side", "W 2688 x H 1536", "W 768 x H 1536", "W 7.000m x H 4.000m", "W 2.000m x H 4.000m", "TOP"]));
     // Calibration adds the last pixel of each screen on the master canvas.
     const texts = labels(keynote("calibration").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
     expect(texts).toEqual(expect.arrayContaining(["X 3455  Y 1535", "X 4223  Y 1535", "CAB 14 × 8 · 192 × 192 PX", "GRID 48 PX", "CONTENT 30 FPS"]));
@@ -214,7 +214,9 @@ describe("calibration labels", () => {
     for (const [width, height] of [[96, 1024], [3840, 216], [192, 192], [64, 64]] as const) {
       for (const mode of MODES) {
         const texts = labels(single(width, height, mode, "off").frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
-        expect(texts, `${width}×${height} ${mode}`).toContain("SCR-01");
+        // Calibration names a screen by its identifier; identification by its name, as on a stage test card.
+        if (mode === "calibration") expect(texts, `${width}×${height} ${mode}`).toContain("SCR-01");
+        else expect(texts.some((t) => t.startsWith("Stage")), `${width}×${height} ${mode}`).toBe(true);
       }
     }
     // Long names shrink first, then are shortened with an ellipsis, never cut by the screen edge.
@@ -228,7 +230,7 @@ describe("calibration labels", () => {
     for (const mode of MODES) {
       const frame = buildCalibrationFrame({ width: master.width, height: master.height, screens: master.screens, mode, logo: { mode: "off", aspect: ASPECT }, fps: 30 });
       const texts = labels(frame).flatMap((l) => (l.kind === "text" ? [l.text] : []));
-      expect(texts, mode).toEqual(expect.arrayContaining(master.screens.map((s) => s.label)));
+      expect(texts, mode).toEqual(expect.arrayContaining(master.screens.map((s) => (mode === "calibration" ? s.label : s.name))));
       // The smaller screen owns the shared band: none of the wall's labels are in it.
       const wall = master.screens.findIndex((s) => s.name === "Center Wall");
       const header = master.screens.find((s) => s.name === "Header")!;
