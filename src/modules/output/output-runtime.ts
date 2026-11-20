@@ -2,6 +2,8 @@ import type { ContentFps } from "@/domain/motion";
 import type { DisplayInfo, OutputClock, OutputRenderErrorCode, OutputRenderReport, OutputWindowApi, OutputWindowSession, Size } from "@/domain/physical-output";
 import { cadencePattern, contentFrame, medianInterval, needsReanchor, outputLayout, type OutputLayout, type RefreshGrid } from "@/engines/output-layout";
 import { CHROMIUM_CANVAS_LIMITS, OutputSessionError, prepareSession, type PrepareEnv, type PreparedSession } from "./output-session";
+import { createOutputSource } from "./output-sources";
+import { targetSource } from "./target-source";
 
 /**
  * The output window's presenter (PHYSICAL_OUTPUT 8.1, 8.3, 8.4, 8.6): one canvas, sized to the display's device
@@ -88,6 +90,30 @@ export class OutputRuntime {
     api.onDisplay((display) => this.setDisplay(display));
     api.ready();
     this.env.requestFrame((t) => this.tick(t));
+  }
+
+  /**
+   * Test reference (task O6, hidden smoke runs only): frame `frame` of the session on screen, drawn the way the MP4
+   * exporter draws it — a fresh `createOutputSource` → `targetSource` on an off-screen canvas the output's size — and
+   * hashed over the area that reaches the display. Read-only: it doesn't touch the live frame, clock, session or
+   * reports, and keeps nothing. `null` when no session is drawn.
+   */
+  async referenceFrame(frame: number): Promise<{ hash: string; width: number; height: number; visible: Size } | null> {
+    const live = this.live;
+    if (!live || !Number.isSafeInteger(frame) || frame < 0) return null;
+    const { prepared } = live;
+    const { target, master } = prepared;
+    const createSource = this.env.prepare?.createSource ?? createOutputSource;
+    const source = await createSource(prepared.sourceId, prepared.sourceSettings, { width: master.width, height: master.height });
+    const canvas = document.createElement("canvas");
+    canvas.width = target.width;
+    canvas.height = target.height;
+    const ctx = canvas.getContext("2d", { alpha: false })!;
+    targetSource(source, target, master).draw(ctx, { ...master, width: target.width, height: target.height, frame, fps: live.fps }, { scale: 1, fontFamily: "sans-serif" });
+    const visible = { width: Math.min(target.width, live.display.devicePx.width), height: Math.min(target.height, live.display.devicePx.height) };
+    const pixels = ctx.getImageData(0, 0, visible.width, visible.height).data;
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", pixels));
+    return { hash: [...digest].map((b) => b.toString(16).padStart(2, "0")).join(""), width: target.width, height: target.height, visible };
   }
 
   /** Stops reacting to the window. The loop ends at its next callback. */
@@ -323,4 +349,19 @@ export function browserRuntimeEnv(depthMaxSize: () => number | null): OutputRunt
       return { ...CHROMIUM_CANVAS_LIMITS, maxTextureSize, depthMaxSize: depthMaxSize() };
     },
   };
+}
+
+/** What the page installs on `window` for hidden smoke runs. */
+export type OutputReferenceHook = (frame: number) => Promise<{ hash: string; width: number; height: number; visible: Size } | null>;
+
+/**
+ * Installs `__pixelLabOutputReference` on `target` (the page's `window`) only when the output preload says this is a
+ * hidden smoke run (`pixelLabOutput.testMode === true`, set by Desktop's main, never in a packaged build). Without the
+ * flag nothing is defined. Returns a function that removes it.
+ */
+export function installOutputReference(target: object, api: object, runtime: Pick<OutputRuntime, "referenceFrame">): () => void {
+  if ((api as { testMode?: unknown }).testMode !== true) return () => {};
+  const hook: OutputReferenceHook = (frame) => runtime.referenceFrame(frame);
+  Object.defineProperty(target, "__pixelLabOutputReference", { value: hook, configurable: true, enumerable: false, writable: false });
+  return () => void delete (target as Record<string, unknown>).__pixelLabOutputReference;
 }

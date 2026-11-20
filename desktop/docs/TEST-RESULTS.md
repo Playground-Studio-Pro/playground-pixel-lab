@@ -508,6 +508,20 @@ What changed:
 
 Not tested: the visible run (`test:smoke:output`), by instruction.
 
+## Output test mode for O6 (2026-11-20)
+
+`pixelLabOutput.testMode` is true only when `!app.isPackaged && --smoke-test`. Main adds `--pixellab-output-test-mode` to the output renderer through `webPreferences.additionalArguments` when it creates the window, and the preload reads it from `process.argv`. There's no URL query and no new IPC channel, and sandbox and context isolation are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Unit: `outputTestMode` false when packaged, false without `--smoke-test`, true in an unpackaged smoke run | pass |
+| Unit: `additionalArguments` empty unless `testMode === true` and unpackaged; the URL is unchanged; sandbox, isolation and no Node integration are kept | pass |
+| Unit: the preload reads it only from the argument; the API stays frozen | pass |
+| Hidden `test:smoke` (fresh `build:web`, real output page, sandboxed): `pixelLabOutput.testMode === true` | pass, no window shown |
+| `npm --prefix desktop test` | 80/80 |
+| Root typecheck, lint (2 existing warnings in `src/engines/pixel-probes.ts`), test 454 passed with 1 skipped, build | pass |
+
+Not tested in a live window: a normal development run reading `testMode === false`. Checking it would mean opening a visible output window; the unit tests cover it.
 ## Output colour: sRGB profile requirement (2026-11-20)
 
 Chromium colour-manages output frames to the display's profile: on the built-in XDR display, pure green (0,255,0) reads back as (1,255,0) in `capturePage` (O5). Decision C: the app doesn't force a colour profile. The output display's macOS profile must be sRGB IEC61966-2.1 (PHYSICAL_OUTPUT section 2, Colour). `test:smoke` passes `--force-color-profile=srgb` for deterministic captures only.

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const Module = require('node:module');
-const { outputWindowOptions, createOutputWindow } = require('../src/output-window.cjs');
+const { outputWindowOptions, createOutputWindow, outputTestMode, TEST_MODE_ARG } = require('../src/output-window.cjs');
 const { assetPath } = require('../src/security.cjs');
 
 test('output window options keep every restriction of the control window', () => {
@@ -83,7 +83,8 @@ test('the output preload exposes only the output API', () => {
   } finally { Module._load = original; }
   assert.deepEqual(Object.keys(exposed), ['pixelLabOutput']);
   const api = exposed.pixelLabOutput;
-  assert.deepEqual(Object.keys(api).sort(), ['onClock', 'onDisplay', 'onSession', 'ready', 'report', 'version']);
+  assert.deepEqual(Object.keys(api).sort(), ['onClock', 'onDisplay', 'onSession', 'ready', 'report', 'testMode', 'version']);
+  assert.equal(api.testMode, false, 'no test argument, no test mode');
   assert.equal(Object.isFrozen(api), true);
   let session = null;
   api.onSession(s => { session = s; });
@@ -99,4 +100,41 @@ test('the stub page loads nothing from outside and stays black', () => {
   assert.doesNotMatch(html, /\b(src|href)\s*=/i, 'no external scripts, styles or images');
   assert.match(html, /background: #000/);
   assert.match(html, /cursor: none/);
+});
+
+test('test mode: false when packaged, false without --smoke-test, true in an unpackaged smoke run', () => {
+  const smoke = ['electron', '.', '--smoke-test'];
+  assert.equal(outputTestMode({ isPackaged: true, argv: smoke }), false);
+  assert.equal(outputTestMode({ isPackaged: false, argv: ['electron', '.'] }), false);
+  assert.equal(outputTestMode({ isPackaged: false, argv: ['electron', '.', '--smoke-testing'] }), false);
+  assert.equal(outputTestMode({ isPackaged: false, argv: smoke }), true);
+  const bounds = { x: 0, y: 0, width: 640, height: 360 };
+  assert.deepEqual(outputWindowOptions({ bounds, isPackaged: false }).webPreferences.additionalArguments, []);
+  assert.deepEqual(outputWindowOptions({ bounds, isPackaged: false, testMode: 'yes' }).webPreferences.additionalArguments, [], 'exactly true');
+  assert.deepEqual(outputWindowOptions({ bounds, isPackaged: true, testMode: true }).webPreferences.additionalArguments, [], 'never packaged');
+  const on = outputWindowOptions({ bounds, isPackaged: false, testMode: true }).webPreferences;
+  assert.deepEqual(on.additionalArguments, [TEST_MODE_ARG]);
+  assert.equal(on.sandbox, true); assert.equal(on.contextIsolation, true); assert.equal(on.nodeIntegration, false);
+  const { FakeWindow } = fakeBrowserWindow();
+  const win = createOutputWindow(FakeWindow, { bounds, origin: 'app://pixellab/', isPackaged: false, testMode: true });
+  assert.equal(win.loaded, 'app://pixellab/output.html', 'no query: the URL is unchanged');
+  assert.deepEqual(win.options.webPreferences.additionalArguments, [TEST_MODE_ARG]);
+});
+
+test('the output preload reads test mode only from the argument main adds', () => {
+  const load = argv => {
+    const exposed = {};
+    const electron = { contextBridge: { exposeInMainWorld: (name, api) => { exposed[name] = api; } }, ipcRenderer: { on: () => {}, send: () => {} } };
+    const original = Module._load; const originalArgv = process.argv;
+    Module._load = function (request, ...rest) { return request === 'electron' ? electron : original.call(this, request, ...rest); };
+    process.argv = argv;
+    try { delete require.cache[require.resolve('../src/output-preload.cjs')]; require('../src/output-preload.cjs'); }
+    finally { Module._load = original; process.argv = originalArgv; }
+    return exposed.pixelLabOutput;
+  };
+  assert.equal(load(['renderer', TEST_MODE_ARG]).testMode, true);
+  assert.equal(load(['renderer', '--smoke-test']).testMode, false);
+  assert.equal(load(['renderer']).testMode, false);
+  const api = load(['renderer', TEST_MODE_ARG]);
+  assert.throws(() => { 'use strict'; api.testMode = false; }, TypeError, 'frozen: the page cannot change it');
 });

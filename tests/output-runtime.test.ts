@@ -6,7 +6,7 @@ import { EMERALD_CHAMBER, normalizeDepthConfig } from "@/engines/depth/config";
 import { resolveMapping } from "@/engines/mapping";
 import { videoTargets } from "@/engines/video-targets";
 import { buildExample } from "@/examples";
-import { OutputRuntime, type OutputRuntimeEnv } from "@/modules/output/output-runtime";
+import { installOutputReference, OutputRuntime, type OutputRuntimeEnv } from "@/modules/output/output-runtime";
 import { OutputSessionError, prepareSession } from "@/modules/output/output-session";
 import { createOutputSource } from "@/modules/output/output-sources";
 import { serializeProject } from "@/persistence/schema";
@@ -19,7 +19,7 @@ import { pixelTestProject } from "./fixtures/pixel-test";
 // them recording stand-ins, so the runtime and the composer run as they do in the window.
 const recordingContext = () =>
   new Proxy({} as Record<string, unknown>, {
-    get: (t, k) => (k in t ? t[k as string] : k === "createImageData" ? (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }) : k === "createPattern" ? () => ({ setTransform() {} }) : () => {}),
+    get: (t, k) => (k in t ? t[k as string] : k === "createImageData" ? (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }) : k === "createPattern" ? () => ({ setTransform() {} }) : k === "getImageData" ? (_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }) : () => {}),
     set: (t, k, v) => ((t[k as string] = v), true),
   });
 if (typeof document === "undefined") {
@@ -175,7 +175,7 @@ function harness(opts: { dpr?: number } = {}) {
     }
   };
   const settle = () => new Promise((r) => setTimeout(r, 0));
-  return { api, callbacks, reports, canvas, frames, fills, run, settle, ready: () => ready, contexts: () => contexts, contentBox: (s: Size) => contentBox!(s), now: () => now };
+  return { api, callbacks, reports, canvas, frames, fills, run, settle, runtime, ready: () => ready, contexts: () => contexts, contentBox: (s: Size) => contentBox!(s), now: () => now };
 }
 
 describe("OutputRuntime (PHYSICAL_OUTPUT 8.1, 8.3, 8.4)", () => {
@@ -303,6 +303,48 @@ describe("OutputRuntime (PHYSICAL_OUTPUT 8.1, 8.3, 8.4)", () => {
     expect(h.contexts()).toBe(contexts + 1);
     // Redrawn at once on the new backing store: black over all of it, then the output.
     expect(h.fills).toContain("#000:0,0,2560,1440");
+  });
+});
+
+// ── Test reference for O6 (hidden smoke runs only) ────────────────────────────
+
+describe("output reference hook (O6)", () => {
+  const runtime = { referenceFrame: async () => null };
+  it("is absent unless the output preload sets testMode === true", () => {
+    for (const api of [{}, { testMode: false }, { testMode: "true" }, { testMode: 1 }]) {
+      const win: Record<string, unknown> = {};
+      installOutputReference(win, api, runtime);
+      expect("__pixelLabOutputReference" in win, JSON.stringify(api)).toBe(false);
+    }
+  });
+
+  it("with testMode it is installed, not enumerable, and removed on cleanup", () => {
+    const win: Record<string, unknown> = {};
+    const remove = installOutputReference(win, { testMode: true }, runtime);
+    expect(typeof win.__pixelLabOutputReference).toBe("function");
+    expect(Object.keys(win)).toEqual([]);
+    remove();
+    expect("__pixelLabOutputReference" in win).toBe(false);
+  });
+
+  it("draws the requested frame through a fresh source and target, and leaves the live output alone", async () => {
+    const h = harness();
+    h.callbacks.session!(session({ revision: 7, display: display({ width: 1600, height: 900 }) }));
+    await h.settle();
+    h.run(31);
+    const drawnBefore = [...h.frames];
+    const reportsBefore = h.reports.length;
+    const ref = await (h as unknown as { runtime: OutputRuntime }).runtime.referenceFrame(37);
+    // The fake source records every frame it draws: the live one (0) and, once, the reference's 37.
+    expect(h.frames).toEqual([...drawnBefore, 37]);
+    expect(ref).toMatchObject({ width: 1920, height: 1080, visible: { width: 1600, height: 900 } });
+    expect(ref!.hash).toMatch(/^[0-9a-f]{64}$/);
+    h.run(31);
+    // No redraw of the live frame, the same revision, the clock untouched.
+    expect(h.frames).toEqual([...drawnBefore, 37]);
+    expect(h.reports.at(-1)).toMatchObject({ sessionRevision: 7, frame: 0 });
+    expect(h.reports.length).toBeGreaterThan(reportsBefore);
+    expect(await (h as unknown as { runtime: OutputRuntime }).runtime.referenceFrame(-1)).toBeNull();
   });
 });
 
