@@ -121,6 +121,22 @@ describe("status → what the operator sees", () => {
   it("waiting for a disconnected monitor: paused, Close only", () => {
     expect(outputView(status({ state: "waiting-display" }), names)).toMatchObject({ badge: "Waiting", actions: ["close"] });
   });
+  it("waiting with DISPLAY_AMBIGUOUS: says the monitor can't be matched, keeps Close", () => {
+    const v = outputView(status({ state: "waiting-display", error: { code: "DISPLAY_AMBIGUOUS", message: "two displays match" } }), names);
+    expect(v).toMatchObject({ badge: "Waiting", tone: "error", actions: ["close"] });
+    expect(v.message).toBe(`${errorText("DISPLAY_AMBIGUOUS")} OUT 1 is paused.`);
+  });
+  it("waiting with CONTROL_DISPLAY: the monitor came back but shows Pixel Lab, keeps Close", () => {
+    const v = outputView(status({ state: "waiting-display", error: { code: "CONTROL_DISPLAY", message: "That display shows the Pixel Lab window" } }), names);
+    expect(v).toMatchObject({ badge: "Waiting", tone: "error", actions: ["close"] });
+    expect(v.message).toBe("DELL U2723QE came back, but it now shows Pixel Lab, so OUT 1 stays off it. Close the output, or move Pixel Lab to another screen.");
+  });
+  it("closed with DISPLAY_NOT_FOUND: explains why the output went away, offers Open", () => {
+    const v = outputView(status({ state: "closed", error: { code: "DISPLAY_NOT_FOUND", message: "display removed" } }), names);
+    expect(v).toMatchObject({ state: "closed", badge: "Closed", tone: "error", actions: ["open"], escHint: false, message: errorText("DISPLAY_NOT_FOUND") });
+    // Without an error, closed stays quiet.
+    expect(outputView(status({ state: "closed" }), names).message).toBeNull();
+  });
   it("held: back on the monitor, paused at frame N, Resume and Close; never resumed by itself", () => {
     const v = outputView(status({ state: "held", reconnected: true, render: { frame: 412 } as OutputStatus["render"] }), names);
     expect(v).toMatchObject({ badge: "Held", actions: ["resume", "close"], escHint: true });

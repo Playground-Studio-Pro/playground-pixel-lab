@@ -146,8 +146,17 @@ export function outputView(status: OutputStatus | null, names: { output: string;
       return { state, badge: "Opening", tone: "busy", message: `Opening ${names.output} on ${on}…`, fit: null, actions: ["close"], escHint: true };
     case "live":
       return { state, badge: "Live", tone: errorLine ? "warn" : "ok", message: errorLine ?? `${names.output} is on ${on}.`, fit: fitText(status!), actions: ["close"], escHint: true };
-    case "waiting-display":
-      return { state, badge: "Waiting", tone: "warn", message: `${on} was disconnected. ${names.output} is paused and waits for it to come back.`, fit: null, actions: ["close"], escHint: false };
+    case "waiting-display": {
+      // D7 stays here when a monitor comes back but can't take the output: tell the operator why, or they'd wait forever.
+      const code = status?.error?.code;
+      const message =
+        code === "CONTROL_DISPLAY"
+          ? `${on} came back, but it now shows Pixel Lab, so ${names.output} stays off it. Close the output, or move Pixel Lab to another screen.`
+          : code
+            ? `${errorText(code)} ${names.output} is paused.`
+            : `${on} was disconnected. ${names.output} is paused and waits for it to come back.`;
+      return { state, badge: "Waiting", tone: code ? "error" : "warn", message, fit: null, actions: ["close"], escHint: false };
+    }
     case "held": {
       const frame = status?.render?.frame;
       return {
@@ -163,7 +172,8 @@ export function outputView(status: OutputStatus | null, names: { output: string;
     case "failed":
       return { state, badge: "Failed", tone: "error", message: errorLine ?? "The output failed.", fit: null, actions: ["retry", "close"], escHint: true };
     default:
-      return { state: "closed", badge: "Closed", tone: "idle", message: null, fit: null, actions: ["open"], escHint: false };
+      // Closed by D7 when the monitor disappears while opening or failed: say why. The next open pushes a new status.
+      return { state: "closed", badge: "Closed", tone: errorLine ? "error" : "idle", message: errorLine, fit: null, actions: ["open"], escHint: false };
   }
 }
 
