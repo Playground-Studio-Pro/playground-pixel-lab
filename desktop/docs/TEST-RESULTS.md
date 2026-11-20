@@ -522,3 +522,30 @@ Not tested: the visible run (`test:smoke:output`), by instruction.
 | Root typecheck, lint (2 existing warnings in `src/engines/pixel-probes.ts`), test 454 passed with 1 skipped, build | pass |
 
 Not tested in a live window: a normal development run reading `testMode === false`. Checking it would mean opening a visible output window; the unit tests cover it.
+## Output colour: sRGB profile requirement (2026-11-20)
+
+Chromium colour-manages output frames to the display's profile: on the built-in XDR display, pure green (0,255,0) reads back as (1,255,0) in `capturePage` (O5). Decision C: the app doesn't force a colour profile. The output display's macOS profile must be sRGB IEC61966-2.1 (PHYSICAL_OUTPUT section 2, Colour). `test:smoke` passes `--force-color-profile=srgb` for deterministic captures only.
+
+`appendSwitch` measurements (Electron 43, O5 script, fresh `build:web`):
+
+| How the switch was set | O5 green |
+| --- | --- |
+| `appendSwitch('force-color-profile', 'srgb')` near the top of `main.cjs` (`getSwitchValue` read `srgb`) | (1,255,0), fail at 2× and 1× |
+| The same call on the first line of `main.cjs` | (1,255,0), fail |
+| `--force-color-profile=srgb` on the command line | exact, pass |
+| `--force-color-profile=display-p3-d65` on the command line, plus `appendSwitch` | (2,255,0): the command line wins |
+
+`Display.colorSpace` on this Mac: no switch gives `{primaries:P3, …}`; `--force-color-profile=srgb` gives `{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}`. `colorDepth` is 30 in both runs.
+
+Results with the new `test:smoke`, after a fresh `build:web`:
+
+| Run | Result |
+| --- | --- |
+| `npm --prefix desktop run test:smoke -- --smoke-script=desktop/tests/smoke-scripts/o5-pixels.cjs` (2×) | pass: display space 84,884 probes and master space 119,317 probes, 0 mismatched; no window shown |
+| The same with `--force-device-scale-factor=1` added after the script (npm passes it after the `.`, and Chromium accepts it there) | pass at scale 1: 84,846 probes and 119,285 probes, 0 mismatched; no window shown |
+| `npm --prefix desktop run test:smoke` | pass, no window shown |
+| Hidden smoke: every display reports `colorSpace` and `colorDepth` to the renderer (built-in and virtual both `{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}`, 30 bits, under the harness switch) | pass |
+| `npm --prefix desktop test` | 79/79 |
+| Root typecheck, lint (2 warnings already on main, in `src/engines/pixel-probes.ts`), test 454 passed with 1 skipped, build | pass |
+
+Not verified here: what reaches the cable, and how `colorSpace` reads with the display profile set to sRGB IEC61966-2.1. Both need the physical session (changing the display profile is a system setting).

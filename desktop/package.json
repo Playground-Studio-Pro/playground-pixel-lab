@@ -5,11 +5,12 @@
   "description": "Isolated Pixel Lab Electron foundation",
   "author": "Pixel Lab",
   "main": "src/main.cjs",
+  "//": "test:smoke passes --force-color-profile=srgb as a test-harness setting only: Chromium then skips colour-managing frames to this Mac's display profile, so capturePage pixel tests (O5) are deterministic. The app itself never forces it; the output display's macOS profile must be sRGB IEC61966-2.1 (docs/architecture/PHYSICAL_OUTPUT.md section 2, Colour).",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "start": "electron .",
     "test": "node --test tests/*.test.cjs",
-    "test:smoke": "electron . --smoke-test",
+    "test:smoke": "electron --force-color-profile=srgb . --smoke-test",
     "test:smoke:output": "electron . --smoke-test --smoke-output-visible",
     "stage": "node scripts/stage.mjs",
     "build:web": "node scripts/build-web.mjs",

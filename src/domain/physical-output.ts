@@ -55,6 +55,14 @@ export interface DisplayInfo {
   readonly refreshHz: number;
   readonly hostsControlWindow: boolean;
   readonly hostsOutput: OutputId | null;
+  /**
+   * Electron Display.colorSpace: Chromium's description of the display's colour profile, at most 512 characters,
+   * e.g. "{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}" for sRGB. It reports a --force-color-profile
+   * override instead of the display's profile when one is set (the test:smoke harness sets one). Absent when unknown.
+   */
+  readonly colorSpace?: string;
+  /** Electron Display.colorDepth: bits per pixel, e.g. 30. Absent when unknown. */
+  readonly colorDepth?: number;
 }
 
 // ── Output state and clock (sections 2 and 4) ───────────────────────────────

@@ -108,3 +108,18 @@ test('debounce collapses a burst of display events into one call', () => {
   d(); d.cancel(); advance(500);
   assert.equal(calls, 1);
 });
+
+test('colour space and depth: copied when Electron gives them, bounded, left out otherwise', () => {
+  const srgb = '{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}';
+  const a = toDisplayInfo({ ...builtIn, colorSpace: srgb, colorDepth: 30 }, mac);
+  assert.equal(a.colorSpace, srgb);
+  assert.equal(a.colorDepth, 30);
+  const none = toDisplayInfo(builtIn, mac);
+  assert.equal('colorSpace' in none, false);
+  assert.equal('colorDepth' in none, false);
+  const bad = toDisplayInfo({ ...builtIn, colorSpace: '', colorDepth: 24.5 }, mac);
+  assert.equal('colorSpace' in bad, false);
+  assert.equal('colorDepth' in bad, false);
+  assert.equal(toDisplayInfo({ ...builtIn, colorSpace: 'x'.repeat(600), colorDepth: -1 }, mac).colorSpace.length, 512);
+  assert.equal('colorDepth' in toDisplayInfo({ ...builtIn, colorDepth: -1 }, mac), false);
+});

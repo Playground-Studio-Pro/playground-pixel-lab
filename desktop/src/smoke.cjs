@@ -23,6 +23,8 @@ module.exports = async function smoke(window, app, hooks = null) {
     assert.ok([0, 90, 180, 270].includes(d.rotation));
   }
   assert.equal(displays.filter(d => d.primary).length, 1);
+  // Colour profile reaches the renderer (PHYSICAL_OUTPUT section 2, Colour). Under test:smoke's switch it reads sRGB.
+  for (const d of displays) assert.ok(typeof d.colorSpace === 'string' && d.colorSpace.length > 0 && Number.isSafeInteger(d.colorDepth), `colorSpace and colorDepth for ${d.label}`);
   const prefs = window.webContents.getLastWebPreferences();
   assert.equal(prefs.sandbox, true);
   assert.equal(prefs.contextIsolation, true);
@@ -41,7 +43,7 @@ module.exports = async function smoke(window, app, hooks = null) {
     assert.deepEqual(hooks.smokeViolations, [], 'hidden run: no window was ever shown');
     assert.ok(BrowserWindow.getAllWindows().every(w => !w.isVisible()), 'hidden run: no window visible');
   }
-  console.log('DESKTOP_SMOKE_PASS', JSON.stringify({ output, script, title: state.title, sandbox: true, isolated: true, indexedDB: storage, ffmpeg: status, displays: displays.map(d => ({ label: d.label, internal: d.internal, primary: d.primary, scaleFactor: d.scaleFactor, devicePx: d.devicePx, devicePxExact: d.devicePxExact, refreshHz: d.refreshHz, hostsControlWindow: d.hostsControlWindow })) }));
+  console.log('DESKTOP_SMOKE_PASS', JSON.stringify({ output, script, title: state.title, sandbox: true, isolated: true, indexedDB: storage, ffmpeg: status, displays: displays.map(d => ({ label: d.label, internal: d.internal, primary: d.primary, scaleFactor: d.scaleFactor, devicePx: d.devicePx, devicePxExact: d.devicePxExact, refreshHz: d.refreshHz, hostsControlWindow: d.hostsControlWindow, colorSpace: d.colorSpace, colorDepth: d.colorDepth })) }));
   app.exit(0);
 };
 
