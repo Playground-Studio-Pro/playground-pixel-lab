@@ -98,7 +98,7 @@ test('the smoke session is a real project with valid test card settings, accepte
 
 test('package scripts: test:smoke has no visible flag; test:smoke:output does not set the environment key itself', () => {
   const { scripts } = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-  assert.equal(scripts['test:smoke'], 'electron . --smoke-test');
+  assert.equal(scripts['test:smoke'], 'electron --force-color-profile=srgb . --smoke-test', 'hidden; sRGB for deterministic captures, a Chromium switch before the app path');
   assert.match(scripts['test:smoke:output'], /--smoke-output-visible/);
   assert.doesNotMatch(scripts['test:smoke:output'], /PIXELLAB_ALLOW_VISIBLE_OUTPUT|--allow-control-display/);
   for (const [name, value] of Object.entries(scripts)) if (name !== 'test:smoke:output') assert.doesNotMatch(value, /--smoke-output-visible|PIXELLAB_ALLOW_VISIBLE_OUTPUT/, name);
