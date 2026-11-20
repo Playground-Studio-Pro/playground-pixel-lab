@@ -94,6 +94,12 @@ new BrowserWindow({
 - **Independent close:** closing an output window changes nothing in the control window except its status. Quitting the app closes every output window. Closing the control window while outputs run is an owner decision (D-3).
 - **Sleep:** while at least one output is `live`, main holds one `powerSaveBlocker.start('prevent-display-sleep')`; it stops when the last output leaves `live`. One blocker for all outputs, reference-counted.
 - **Content protection is off.** `setContentProtection` would black the window out in screen recordings and some capture setups.
+- **Colour: the output display's macOS profile must be sRGB IEC61966-2.1.** Output sends the same RGB values as the MP4 only on a display using that profile.
+  - **Why the app doesn't force it:** by default Chromium colour-manages each frame to the display's profile. On the dev Mac's XDR display, pure green (0,255,0) reads back as (1,255,0) at 1× and 2× (O5). With `--force-color-profile=srgb`, Chromium tags frames as sRGB instead, but macOS WindowServer still converts them to the display's ColorSync profile. Either way, the values on the cable are unchanged only when that profile is sRGB, which makes both paths an identity transform. So the app never sets the switch.
+  - **Test harness only:** `capturePage` reads Chromium's buffer, not the cable. `test:smoke` passes `--force-color-profile=srgb` so pixel probes are deterministic on any Mac. A passing O5 therefore proves what Chromium draws, not what reaches the LED processor.
+  - **Measured (Electron 43):** `app.commandLine.appendSwitch('force-color-profile', 'srgb')` has no effect, even on the first line of `main.cjs`: `getSwitchValue` reads `srgb`, but green still reads back as (1,255,0). Chromium reads the switch before `main.cjs` runs, so only the command line works. A value given there also wins over `appendSwitch`.
+  - **Reported to the page:** each `DisplayInfo` may carry `colorSpace` (Electron `Display.colorSpace`) and `colorDepth`. sRGB reads as `{primaries:BT709, transfer:SRGB, …}`; the XDR display's own profile reads as `primaries:P3`. Under the test-harness switch it always reads sRGB. The page's warning when a display isn't sRGB is Output's (later PR).
+  - **Physical check** [monitor físico], in the monitor session right after D6: set the output display's profile to *sRGB IEC61966-2.1* (System Settings → Displays → Colour profile). Record the real `DisplayInfo.colorSpace` string in TEST-RESULTS (from a normal run, not `test:smoke`, whose switch overrides it), so Output's warning can be checked against it; BT709/SRGB is expected. Then check at the LED processor or a capture card that pure green reads exactly (0,255,0) and the test card's greys read their exact values.
 
 ### State machine (one output)
 
@@ -810,7 +816,7 @@ One order for both lanes. Steps on the same line can run in parallel. The owner 
 | 7 | O6 Output = MP4 | Output | O5 | Dev Mac |
 | 7 | O7 Depth Studio on the output | Output | O4 | Dev Mac |
 | 8 | O8 Measured limits | Output | O4, O7 | Dev Mac |
-| 9 | **One session with the external monitor**, in this order: D6 full screen (decides native vs simple full screen) → D7 disconnect / reconnect → D10 + O10 1:1 photos at scale 1, scale 2 and one scaled mode → O9 cadence (240 fps video) → O11 Resolume Arena procedure → D11 30-minute field rehearsal | Both | Steps 1–8; D6 first, since every later check needs the window in place | [monitor físico] |
+| 9 | **One session with the external monitor**, in this order: D6 full screen (decides native vs simple full screen) → sRGB colour check (section 2, Colour) → D7 disconnect / reconnect → D10 + O10 1:1 photos at scale 1, scale 2 and one scaled mode → O9 cadence (240 fps video) → O11 Resolume Arena procedure → D11 30-minute field rehearsal | Both | Steps 1–8; D6 first, since every later check needs the window in place | [monitor físico] |
 
 D9 (clock across two displays) is in the backlog by owner decision; it isn't part of this session. If the monitor session finds a problem in D6, D7 or D10, the fix goes back to the dev Mac and the session repeats from D6.
 

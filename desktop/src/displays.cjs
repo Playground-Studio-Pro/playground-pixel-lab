@@ -3,6 +3,7 @@
 // The shape of DisplayInfo / DisplayKey mirrors src/domain/physical-output.ts (PR #21).
 
 const ROTATIONS = new Set([0, 90, 180, 270]);
+const MAX_COLOR_SPACE_CHARS = 512;
 
 /**
  * Device-px framebuffer size of a display.
@@ -55,6 +56,9 @@ function toDisplayInfo(display, { platform, primaryId, controlBounds = null, out
     refreshHz: Number.isFinite(display.displayFrequency) && display.displayFrequency > 0 ? display.displayFrequency : 0,
     hostsControlWindow: centreInside(controlBounds, b),
     hostsOutput: outputOnDisplay.get(display.id) ?? null,
+    // Optional: Chromium's colour profile for the display (PHYSICAL_OUTPUT section 2, Colour). Left out when unknown.
+    ...(typeof display.colorSpace === 'string' && display.colorSpace ? { colorSpace: display.colorSpace.slice(0, MAX_COLOR_SPACE_CHARS) } : {}),
+    ...(Number.isSafeInteger(display.colorDepth) && display.colorDepth > 0 ? { colorDepth: display.colorDepth } : {}),
   };
 }
 
