@@ -263,6 +263,12 @@ type OutputErrorCode =
 
 `output:update` replaces the session of a live output. The output window prepares the new session to the side and swaps at the next frame only once it's fully prepared; if preparing fails, the previous session keeps playing and the report carries the error. A first session that fails leaves the window black (`opening` → `failed`). Main keeps the latest session per output, so a retry re-sends it without asking the control window; `OutputStatus.sessionRevision` is the revision the page reports drawing, not the last one sent.
 
+**Update rules in main.** The window is never recreated and the state doesn't change.
+- **Validation:** the session goes through the same checks as `output:open`, and its `outputId` must equal the update's.
+- **Revision:** must be greater than the stored one; otherwise `BAD_REQUEST`. An update for an output that isn't open is `BAD_REQUEST` too.
+- **Accepted states:** `opening`, `live` and `failed`. In `opening` before `output:ready`, ready sends the latest session. After ready, it's forwarded at once, and `live` then needs a first frame of the new revision. In `failed`, it's stored and the next retry sends it.
+- **Refused states:** `waiting-display` and `held`, with `BAD_REQUEST`, so a new session (and its clock) can't restart playback before `output:resume` (D-2).
+
 ## 4. Data, sources and clock
 
 **Session.** The output window receives `projectText` and parses it with the shared `parseProjectFile`, then `resolveMapping`, exactly as the editor does. No second mapping path. The source is created by id from its frozen settings (`createOutputSource`, section 8.5), not looked up in the module registry, whose sources read the editor's live stores. For the test card the settings are mode and logo; for Depth Studio they're the whole `DepthSceneConfig`, because Depth Studio's config isn't saved in the project yet (`depth-store.ts` waits for its `modules[id]` section). Which settings each source needs is Output's part (8.5). Desktop only carries them, bounded and as JSON.

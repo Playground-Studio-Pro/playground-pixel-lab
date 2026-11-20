@@ -636,3 +636,93 @@ test('DISPLAY_BUSY ignores an output that is waiting for its display', () => {
   // A new output may take a display that matches nothing busy.
   assert.equal(t.controller.open(request('OUT2', builtIn, { allowControlDisplay: true })).state, 'opening');
 });
+
+// ── Update output: a new session for an open output, same window ─────────────
+const nextSession = (revision, extra = {}) => ({ ...request().session, revision, source: { id: 'pixel-grid', settings: { motion: true } }, ...extra });
+
+test('update while live: session forwarded with the display, same window, state stays live, revision drawn later', () => {
+  const t = liveSetup();
+  const opens = t.log.filter(l => l[0] === 'open').length;
+  const s = t.controller.update('OUT1', nextSession(4));
+  assert.equal(s.state, 'live');
+  assert.equal(s.sessionRevision, 3, 'still the revision the page reports drawing');
+  assert.deepEqual(t.log.at(-1), ['session', 'OUT1', 4, 2]);
+  assert.equal(t.log.filter(l => l[0] === 'open').length, opens, 'no new window');
+  assert.ok(!t.log.some(l => l[0] === 'reload' || l[0] === 'close'));
+  t.tick(500);
+  t.controller.onReport('OUT1', report({ sessionRevision: 4, frame: 7 }));
+  const after = t.controller.status('OUT1');
+  assert.equal(after.state, 'live');
+  assert.equal(after.sessionRevision, 4);
+  assert.equal(after.render.frame, 7);
+  assert.equal(t.started.size, 1, 'sleep blocker kept');
+});
+
+test('update the page cannot prepare: stays live with the error, cleared by the next good report', () => {
+  const t = liveSetup();
+  t.controller.update('OUT1', nextSession(4));
+  t.tick(500);
+  t.controller.onReport('OUT1', report({ errorCode: 'SOURCE_SETTINGS_INVALID', error: 'bad settings' }));
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'live');
+  assert.equal(s.sessionRevision, 3, 'previous session keeps playing');
+  assert.equal(s.error.code, 'SOURCE_SETTINGS_INVALID');
+  t.tick(500);
+  t.controller.onReport('OUT1', report());
+  assert.equal(t.controller.status('OUT1').error, null);
+});
+
+test('update validation: same checks as open, revision must go up, one output id, open outputs only', () => {
+  const t = liveSetup();
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(3))), 'BAD_REQUEST', 'same revision');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(2))), 'BAD_REQUEST', 'lower revision');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4, { outputId: 'OUT2' }))), 'BAD_REQUEST', 'session for another output');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', { ...nextSession(4), extra: 1 })), 'BAD_REQUEST', 'unknown key');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4, { projectText: project(['OTHER']) }))), 'UNKNOWN_OUTPUT');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4, { clock: { state: 'paused' } }))), 'BAD_REQUEST', 'bad clock');
+  assert.equal(t.codeOf(() => t.controller.update('*', nextSession(4))), 'BAD_REQUEST');
+  assert.equal(t.codeOf(() => t.controller.update('bad id!', nextSession(4))), 'BAD_REQUEST');
+  assert.equal(t.codeOf(() => t.controller.update('OUT2', nextSession(4, { outputId: 'OUT2' }))), 'BAD_REQUEST', 'not open');
+  assert.ok(!t.log.some(l => l[0] === 'session' && l[2] !== 3), 'nothing sent for a refused update');
+  assert.equal(t.controller.status('OUT1').state, 'live');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4))), null, 'a refused update leaves the revision as it was');
+});
+
+test('update while opening: before ready it waits for ready; after ready it is sent and live needs the new revision', () => {
+  const t = setup();
+  t.controller.open(request());
+  t.controller.update('OUT1', nextSession(4));
+  assert.ok(!t.log.some(l => l[0] === 'session'), 'the page is not listening yet');
+  t.controller.onReady('OUT1');
+  assert.deepEqual(t.log.at(-1), ['session', 'OUT1', 4, 2], 'ready sends the latest session');
+  t.controller.update('OUT1', nextSession(5));
+  assert.deepEqual(t.log.at(-1), ['session', 'OUT1', 5, 2]);
+  assert.equal(t.pending(), 1, 'one first-frame timeout');
+  t.controller.onReport('OUT1', report({ sessionRevision: 4 }));
+  assert.equal(t.controller.status('OUT1').state, 'opening', 'an older revision does not make it live');
+  t.tick(500);
+  t.controller.onReport('OUT1', report({ sessionRevision: 5 }));
+  assert.equal(t.controller.status('OUT1').state, 'live');
+});
+
+test('update while failed: kept as the latest session, and retry sends it', () => {
+  const t = liveSetup();
+  t.controller.onRendererGone('OUT1', 'crashed');
+  assert.equal(t.controller.update('OUT1', nextSession(4)).state, 'failed');
+  t.controller.retry('OUT1');
+  t.controller.onReady('OUT1');
+  assert.deepEqual(t.log.at(-1), ['session', 'OUT1', 4, 2]);
+});
+
+test('update refused while waiting for the display or held, so playback never restarts before resume (D-2)', () => {
+  const t = liveOn();
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.equal(t.controller.status('OUT1').state, 'waiting-display');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4))), 'BAD_REQUEST');
+  t.controller.onDisplaysChanged([builtIn, external]);
+  assert.equal(t.controller.status('OUT1').state, 'held');
+  assert.equal(t.codeOf(() => t.controller.update('OUT1', nextSession(4))), 'BAD_REQUEST');
+  assert.ok(!t.log.some(l => l[0] === 'session' && l[2] === 4));
+  t.controller.resume('OUT1');
+  assert.equal(t.controller.update('OUT1', nextSession(4)).state, 'live');
+});

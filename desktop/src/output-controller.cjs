@@ -8,8 +8,10 @@
 // D7: display removed → waiting-display (hidden, clock paused); same display back with a reliable match (D-2) → held,
 // shown on the paused frame; output:resume → live. Never automatic playback after a disconnect. Metrics changes
 // re-place the window and send output:display.
+// Update: output:update replaces the session of an open output without recreating its window (section 4). The page
+// prepares it to the side and swaps when ready; the state stays as it is.
 const {
-  validateOpenRequest, validateReport, outputIdOrAll, oneToOne, sizeMatchOf, OutputIpcError, MAX_OUTPUTS,
+  validateOpenRequest, validateSession, validateReport, outputIdOrAll, oneToOne, sizeMatchOf, OutputIpcError, MAX_OUTPUTS,
 } = require('./output-ipc.cjs');
 const { matchDisplay, reliableMatch } = require('./displays.cjs');
 
@@ -235,6 +237,34 @@ function createOutputController({
       r.timer = timers.setTimeout(() => fail(r, 'OPEN_TIMEOUT', 'The output page did not report ready within 10 s'), OPEN_TIMEOUT_MS);
       watch(r);
       push(r);
+      return statusOf(r);
+    },
+
+    /**
+     * output:update. A new session for an open output, same window. Accepted in opening, live and failed; the revision
+     * must go up. Main keeps it as the latest session (a retry re-sends it) and forwards it at once if the page already
+     * has a session; otherwise output:ready sends it. Refused in waiting-display and held, so a new session can never
+     * restart playback before output:resume (D-2). The state doesn't change: a session the page can't prepare comes
+     * back as a report errorCode while the previous one keeps playing (section 2, "Renderer failure").
+     */
+    update(target, session) {
+      const id = outputIdOrAll(target);
+      if (id === '*') throw new OutputIpcError('BAD_REQUEST', 'update takes one output id');
+      validateSession(session, { expectedOutputId: id });
+      const r = records.get(id);
+      if (!r) throw new OutputIpcError('BAD_REQUEST', `Output ${id} is not open`);
+      if (r.state === 'waiting-display' || r.state === 'held') {
+        throw new OutputIpcError('BAD_REQUEST', `Output ${id} is ${r.state}: resume it before updating`);
+      }
+      if (session.revision <= r.session.revision) {
+        throw new OutputIpcError('BAD_REQUEST', `session.revision must be greater than ${r.session.revision}`);
+      }
+      r.session = session;
+      if (r.sessionSent) {
+        sendSession(id, { ...session, display: r.display });
+        // Opening waits for a first frame of this revision; give the page the full first-frame time for it.
+        if (r.state === 'opening') { clearTimer(r); r.timer = timers.setTimeout(() => fail(r, 'OPEN_TIMEOUT', 'The output page reported ready but drew no first frame within 10 s'), FIRST_FRAME_TIMEOUT_MS); }
+      }
       return statusOf(r);
     },
 
