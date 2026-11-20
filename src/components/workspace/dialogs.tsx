@@ -1,21 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BUILTIN_CABINETS, toProjectCabinet } from "@/domain/cabinets";
+import { BUILTIN_CABINETS } from "@/domain/cabinets";
 import { formatMm, parsePx } from "@/domain/units";
 import { computeScreenSpec } from "@/engines/physical";
 import { CabinetLibraryDialog } from "@/modules/engineering/cabinet-library-dialog";
-import { useCabinetLibrary } from "@/modules/engineering/library-store";
 import * as ops from "@/engines/project-ops";
 import { reportError } from "@/state/actions";
 import { exportPng, exportSvg, type MapSource } from "@/state/export-actions";
 import { opContext, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
+import { useCabinetOptions } from "./cabinet-options";
 import { Readout, SelectField } from "./fields";
 import { formatDate } from "./start-screen";
 
@@ -97,19 +97,6 @@ function OpenProjectDialog() {
   );
 }
 
-function useCabinetOptions() {
-  const project = useApp((s) => s.project);
-  const entries = useCabinetLibrary((s) => s.entries);
-  const initLibrary = useCabinetLibrary((s) => s.init);
-  useEffect(() => void initLibrary(), [initLibrary]);
-  return useMemo(() => {
-    const inProject = project?.cabinets ?? [];
-    const ids = new Set(inProject.map((c) => c.id));
-    // The project's own copies first, then generic profiles, then the cabinet library.
-    return [...inProject, ...[...BUILTIN_CABINETS, ...entries.map(toProjectCabinet)].filter((c) => !ids.has(c.id))];
-  }, [project, entries]);
-}
-
 function AddScreenDialog() {
   const project = useApp((s) => s.project)!;
   const edit = useApp((s) => s.edit);
@@ -118,7 +105,8 @@ function AddScreenDialog() {
   const startCabinet = useUi((s) => s.startCabinetFromAddScreen);
   const preferred = useUi((s) => s.addScreenCabinetId);
   const draft = useUi((s) => s.addScreenDraft);
-  const options = useCabinetOptions();
+  const cabinetChoices = useCabinetOptions();
+  const options = useMemo(() => cabinetChoices.map((o) => o.cabinet), [cabinetChoices]);
   const lastUsed = project.physical.screens.at(-1)?.cabinetId;
   const [cabinetId, setCabinetId] = useState(preferred ?? lastUsed ?? options[0]?.id ?? BUILTIN_CABINETS[0].id);
   const [name, setName] = useState(draft?.name ?? `Screen ${project.physical.screens.length + 1}`);
@@ -159,7 +147,7 @@ function AddScreenDialog() {
           className="flex-1"
           label="Cabinet"
           value={cabinetId}
-          items={options.map((c) => ({ value: c.id, label: c.name }))}
+          items={cabinetChoices.map((o) => ({ value: o.cabinet.id, label: o.cabinet.name, group: o.group }))}
           onChange={setCabinetId}
         />
         <Button type="button" variant="outline" size="sm" className="h-7 rounded" onClick={() => startCabinet({ name, columns, rows })}>Library</Button>

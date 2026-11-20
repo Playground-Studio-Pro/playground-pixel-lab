@@ -100,3 +100,91 @@ export const YESTECH_MG6S_P26_INDOOR: LibraryCabinet = {
 };
 
 export const SEED_LIBRARY_CABINETS: readonly LibraryCabinet[] = [YESTECH_MG6S_P26_INDOOR];
+
+/**
+ * A cabinet from the researched catalog (docs/engineering/LED_HARDWARE_CATALOG.md). Read-only and shipped with the
+ * app, so every user sees it without a library reset. A project stores a plain `CabinetProfile` copy
+ * (`toProjectCabinet`), marked `builtin` so it can't be edited in place, like the generic profiles.
+ * `null` means "not stated by a source": never a guessed value.
+ */
+export interface CatalogCabinet extends CabinetProfile, CabinetSpecs {
+  readonly source: "builtin";
+  readonly supplier: string;
+  readonly model: string;
+  /** Where each value comes from, and that it isn't checked against the manufacturer's PDF yet. */
+  readonly datasheetNote: string;
+}
+
+const UNCHECKED = "Not checked against the manufacturer's PDF yet (docs/engineering/LED_HARDWARE_CATALOG.md).";
+
+function catalog(entry: Omit<CatalogCabinet, "source" | "widthUm" | "heightUm" | "nominalPitchUm" | "pixelsX" | "pixelsY"> & { wMm: number; hMm: number; x: number; y: number; pitchMm: number }): CatalogCabinet {
+  const { wMm, hMm, x, y, pitchMm, ...rest } = entry;
+  return { ...rest, widthUm: mmToUm(wMm), heightUm: mmToUm(hMm), pixelsX: px(x), pixelsY: px(y), nominalPitchUm: mmToUm(pitchMm), source: "builtin" };
+}
+
+/** Researched cabinets, shown after the generic profiles. Values per the catalog doc, in integer units. */
+export const CATALOG_CABINETS: readonly CatalogCabinet[] = [
+  catalog({
+    id: "catalog-roe-bp2v2",
+    name: "ROE Black Pearl BP2V2",
+    supplier: "ROE Visual",
+    model: "Black Pearl BP2V2",
+    wMm: 500, hMm: 500, x: 176, y: 176, pitchMm: 2.84,
+    weightG: 9_350,
+    maxPowerMw: 190_000,
+    typicalPowerMw: 95_000,
+    refreshRateHz: null,
+    environment: "indoor",
+    datasheetNote: `${UNCHECKED} Sources: ROE BP2V2 brochure 2024-02-03 [1], Rentex [2]. 500 × 500 × 90 mm, 176 × 176 px, 2.84 mm, 9.35 kg, 190 / 95 W. ROE has also published 160 / 80 W (older spec sheet) and 185 / 92 W (2021 brochure); the newest, 190 / 95 W, is used until the current PDF confirms it.`,
+  }),
+  catalog({
+    id: "catalog-absen-pl39-v10",
+    name: "Absen PL3.9 V10",
+    supplier: "Absen",
+    model: "PL3.9 V10",
+    wMm: 500, hMm: 500, x: 128, y: 128, pitchMm: 3.91,
+    weightG: 7_700,
+    maxPowerMw: 135_000,
+    typicalPowerMw: 45_000,
+    refreshRateHz: null,
+    environment: "indoor",
+    datasheetNote: `${UNCHECKED} Sources: Absen spec sheet V20221201 [7], Full Compass [8]. 500 × 500 × 88 mm, 128 × 128 px, 3.91 mm, 7.7 kg. Power derived from 540 / 180 W/m² × 0.25 m² = 135 / 45 W (the cut sheet may show 680 / 230 W/m²). Refresh 3840 Hz is stated only by a retailer, so it is left empty.`,
+  }),
+  catalog({
+    id: "catalog-unilumin-upad-iv-26",
+    name: "Unilumin Upad IV 2.6",
+    supplier: "Unilumin",
+    model: "Upad IV 2.6",
+    wMm: 500, hMm: 500, x: 192, y: 192, pitchMm: 2.6,
+    weightG: 6_300,
+    maxPowerMw: 120_000,
+    typicalPowerMw: 40_000,
+    refreshRateHz: null,
+    environment: "indoor",
+    datasheetNote: `${UNCHECKED} Sources: 4Wall [9], Hartford Rents [10] (distributors). 500 × 500 × 70 mm, 192 × 192 px, 2.6 mm, 6.3 kg, 120 / 40 W. Refresh 3840 Hz is stated only by a distributor, so it is left empty.`,
+  }),
+  catalog({
+    id: "catalog-yestech-mg6s-p26",
+    name: "Yestech MG6S P2.6 Indoor",
+    supplier: "Yestech",
+    model: "MG6S P2.6",
+    wMm: 500, hMm: 500, x: 192, y: 192, pitchMm: 2.604,
+    weightG: null,
+    maxPowerMw: 112_500,
+    typicalPowerMw: 37_500,
+    refreshRateHz: null,
+    environment: "indoor",
+    datasheetNote: `${UNCHECKED} Sources: Yestech MG6S series page [12], distributors [13][14]. 500 × 500 × 73 mm, 192 × 192 px, nominal pitch 500 mm ÷ 192 px = 2.604 mm. Power derived from 450 / 150 W/m² × 0.25 m² = 112.5 / 37.5 W. Weight differs by variant (6.7 kg cube, 5.7 kg front service), so it is left empty. Refresh is stated as ≥ 3840 Hz, so it is left empty.`,
+  }),
+];
+
+/** The plain profile a project stores for a catalog cabinet. */
+export function catalogProfile(entry: CatalogCabinet): CabinetProfile {
+  const { id, name, widthUm, heightUm, pixelsX, pixelsY, nominalPitchUm } = entry;
+  return { id, name, widthUm, heightUm, pixelsX, pixelsY, nominalPitchUm, source: "builtin" };
+}
+
+/** Same name and geometry: a library copy of a catalog cabinet (the old Yestech seed) is shown once. */
+export function sameCabinetProfile(a: CabinetProfile, b: CabinetProfile): boolean {
+  return a.name === b.name && a.widthUm === b.widthUm && a.heightUm === b.heightUm && a.pixelsX === b.pixelsX && a.pixelsY === b.pixelsY && a.nominalPitchUm === b.nominalPitchUm;
+}
