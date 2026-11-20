@@ -372,3 +372,55 @@ Not tested:
 - A page that hangs while `opening`; the open and first-frame timeouts cover that case.
 - Esc after a crash. Close was used instead, since `sendInputEvent` needs a live renderer.
 - Retry or failures with O4's real page, and anything on an external display (D6, D7).
+
+## Smoke tests no longer show windows (2026-11-19)
+
+Since D5, `npm run test:smoke` opened the output window full screen on the display that shows the Pixel Lab window, several times per run (open, reopen, hang and Esc; with D8 also crash, retry and two long hangs). On 2026-11-19 those black full-screen windows appeared over the owner's desktop during repeated runs. The smoke set `allowControlDisplay: true` itself.
+
+What changed:
+- **`desktop/src/smoke-mode.cjs`** (pure). `smokeMode` returns `null` unless `!app.isPackaged && --smoke-test`. Otherwise:
+  - By default the run is **hidden**.
+  - **Visible** needs `--smoke-output-visible` **and** `PIXELLAB_ALLOW_VISIBLE_OUTPUT=1`. The flag alone stops the run with a message.
+  - The control window's display needs a third key, `--allow-control-display`.
+  - `smokeOpenRequest` adds `allowControlDisplay` only with the third key.
+- **Hidden run** (`main.cjs`, smoke only):
+  - Presentation hook: `showOutputWindow` does nothing, so there's no `showInactive`, `setAlwaysOnTop` or `setSimpleFullScreen`.
+  - The output opens on a virtual display that exists only in this run, with the primary display's geometry and no control window. So the request needs no `allowControlDisplay`, and the output window's webPreferences, URL, session and report are the same as in a real open.
+  - The editor window isn't shown either.
+  - Any window that fires `show` is hidden again and fails the run.
+- **Visible run** (`npm run test:smoke:output`, owner's permission only):
+  - It uses an external display, or the control display only with the third key, and prints the target first.
+  - The visibility, focus, always-on-top, full-screen and bounds assertions moved here.
+  - Dead-man switch: every visible output window is destroyed after 20 s.
+- **Real session.** The smoke sends `tests/fixtures/pixel-test.pixellab.json` with valid test card settings (`{ mode: 'identification', logo: 'off' }`), so it works with the stub and with Output's page.
+- **Unchanged:** packaged builds, normal launches, Electron security and full screen. CI still doesn't run the smoke.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 66/66 after merging D8, with 8 new in `tests/smoke-mode.test.cjs` |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 409/409, lint 0 problems. One root test (`design-calibration`) timed out once at load average ~35 and passed on rerun |
+| `npm run test:smoke` (hidden), after merging D8 from `main` | pass three times, **no window shown at any point** (no `show` event on any window, none visible at the end); D8 steps hidden: crash → failed 27 ms, retry → live 81–107 ms, hang → unresponsive 5.8 s, back to live 1–2 ms |
+| Flag without the environment variable | refused: "Visible output smoke refused: it needs both …", exit 1, nothing opened |
+
+What the hidden run checked:
+- The control display is refused without `allowControlDisplay`, and a malformed request → `BAD_REQUEST`.
+- The output goes `opening` → `live` in 108 ms on the virtual display. The window is not visible, not on top and not full screen, at the display's size, with the sleep blocker held.
+- `ALREADY_OPEN` for a second open, and D4's isolation checks pass.
+- Close from the control window works.
+- Esc while the page is hung → `closed` in 2 ms.
+- D8's steps, also hidden on the virtual display: crash → `RENDERER_GONE`, retry → `live`, an 8 s hang → `RENDERER_UNRESPONSIVE` → back to `live`, Esc after a hang, Close after a crash. The window stays unseen throughout; the "stays on screen" checks apply only to the visible run.
+
+**Integration scripts** (requested for Output's hidden O4 test). `--smoke-script=<repository path>`:
+- It works in hidden runs only; a visible run refuses it, and outside `!app.isPackaged && --smoke-test` nothing of it exists.
+- The script runs after the checks with `api.control` (the editor window, to use the real control IPC), `outputs`, `windows`, `listDisplays`, `virtualDisplayId` and `importProjectFile(path)`.
+- `importProjectFile` sets a repository `.json` on the editor's "Import project file" input through the editor's in-process debugger (no port). The page's own change handler then runs `importProject`, the existing path.
+- Paths are confined to the repository and kept out of `node_modules`.
+- Each smoke run now uses a fresh, empty profile in the temp folder. Before this change, a project imported in one run reopened at the next start and broke the start-screen check.
+
+| Check | Result |
+| --- | --- |
+| `test:smoke -- --smoke-script=desktop/tests/smoke-scripts/import-and-open.cjs`, twice in a row | pass both times, hidden, no window shown. "Pixel test" was imported through the input and opened in the editor; output `pixel-3` was opened through the control IPC on the virtual display. First frame in 249 ms and 104 ms; `devicePixelRatio` 2 = `scaleFactor` 2; `canvasPx` 3600 × 2338 = `devicePx` |
+| `test:smoke` without a script, after those | pass, hidden |
+| Unit tests | 58/58, with 1 more for the script and import path rules |
+
+Not run: **the visible run (`test:smoke:output`)**, by instruction; it needs the owner's permission. The 20 s dead-man switch is therefore unexercised.

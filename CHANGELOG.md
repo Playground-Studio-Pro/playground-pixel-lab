@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Desktop smoke tests no longer put windows on screen: `test:smoke` runs the output window hidden on a virtual display, and the full-screen check is a separate `test:smoke:output` that needs two explicit keys (three for the laptop screen) and closes each window after 20 s.
 - Desktop output window (Phase C, D5): the main process opens an output on a display and closes it with Close, Esc or quit, through validated IPC from the control window, with the open → live → closed states, full screen without taking focus and display sleep blocked only while live. Built-in display only so far, with a black stub page until the Output page lands.
 - Desktop output failures (Phase C, D8): a crashed output renderer or a page that stops answering for 5 s marks the output failed and leaves a black or frozen window on the display instead of closing it; Retry reloads it with the same session, and a hung page that recovers goes back to live by itself.
 - Desktop app (Electron, macOS Apple Silicon): built, launched and tested offline, with project autosave, project file import and export and MP4 export working inside it. `npm --prefix desktop run pack:mac` makes an unsigned `.app`. Results in `desktop/docs/TEST-RESULTS.md`. No Windows support claimed.
