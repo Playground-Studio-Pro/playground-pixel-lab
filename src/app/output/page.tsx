@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { OutputWindowApi } from "@/domain/physical-output";
 import { depthMaxSize } from "@/modules/depth-studio/source";
-import { browserRuntimeEnv, OutputRuntime } from "@/modules/output/output-runtime";
+import { browserRuntimeEnv, installOutputReference, OutputRuntime } from "@/modules/output/output-runtime";
 
 /**
  * The output window's page (PHYSICAL_OUTPUT 8.1), exported as output.html. One canvas and nothing else: no
@@ -37,7 +37,12 @@ export default function OutputPage() {
     }
     const runtime = new OutputRuntime(browserRuntimeEnv(depthMaxSize));
     runtime.start(api, canvas.current!);
-    return () => runtime.stop();
+    // Hidden smoke runs only: a read-only reference of the MP4 exporter's frame N (O6). Absent without the flag.
+    const removeReference = installOutputReference(window, api, runtime);
+    return () => {
+      removeReference();
+      runtime.stop();
+    };
   }, []);
   return (
     <>
