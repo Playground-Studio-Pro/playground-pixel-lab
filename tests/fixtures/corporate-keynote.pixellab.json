@@ -1,0 +1,137 @@
+{
+  "format": "playground-pixel-lab/project",
+  "project": {
+    "schemaVersion": 2,
+    "id": "keynote-1",
+    "meta": {
+      "name": "Corporate Keynote",
+      "client": "Playground Studio",
+      "venue": "Demo",
+      "notes": "",
+      "createdAt": "2026-11-07T00:00:00.000Z",
+      "updatedAt": "2026-11-07T00:00:00.000Z",
+      "revision": 0
+    },
+    "cabinets": [
+      {
+        "id": "builtin-500x500-p26",
+        "name": "Generic 500×500 P2.6",
+        "widthUm": 500000,
+        "heightUm": 500000,
+        "pixelsX": 192,
+        "pixelsY": 192,
+        "nominalPitchUm": 2604,
+        "source": "builtin"
+      }
+    ],
+    "physical": {
+      "screens": [
+        {
+          "id": "keynote-4",
+          "name": "Left Side",
+          "cabinetId": "builtin-500x500-p26",
+          "columns": 4,
+          "rows": 8,
+          "groupId": null,
+          "color": "#2F6FE4",
+          "stageX": 0,
+          "stageY": 0
+        },
+        {
+          "id": "keynote-5",
+          "name": "Main Wall",
+          "cabinetId": "builtin-500x500-p26",
+          "columns": 14,
+          "rows": 8,
+          "groupId": null,
+          "color": "#17A398",
+          "stageX": 3000000,
+          "stageY": 0
+        },
+        {
+          "id": "keynote-6",
+          "name": "Right Side",
+          "cabinetId": "builtin-500x500-p26",
+          "columns": 4,
+          "rows": 8,
+          "groupId": null,
+          "color": "#7A5FE8",
+          "stageX": 11000000,
+          "stageY": 0
+        }
+      ],
+      "groups": []
+    },
+    "content": {
+      "master": {
+        "mode": "auto"
+      },
+      "canvases": [
+        {
+          "id": "keynote-2",
+          "name": "Main canvas",
+          "originX": 0,
+          "originY": 0
+        }
+      ],
+      "regions": [
+        {
+          "screenId": "keynote-4",
+          "canvasId": "keynote-2",
+          "x": 0,
+          "y": 0,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "keynote-5",
+          "canvasId": "keynote-2",
+          "x": 768,
+          "y": 0,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "keynote-6",
+          "canvasId": "keynote-2",
+          "x": 3456,
+          "y": 0,
+          "allowOverlap": false
+        }
+      ]
+    },
+    "output": {
+      "outputs": [
+        {
+          "id": "keynote-3",
+          "name": "Media server",
+          "sizing": {
+            "mode": "auto"
+          }
+        }
+      ],
+      "slices": [
+        {
+          "screenId": "keynote-4",
+          "outputId": "keynote-3",
+          "followsContent": true,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "screenId": "keynote-5",
+          "outputId": "keynote-3",
+          "followsContent": true,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "screenId": "keynote-6",
+          "outputId": "keynote-3",
+          "followsContent": true,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    "modules": {}
+  }
+}

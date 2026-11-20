@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { DisplayInfo, JsonValue, OutputClock, OutputRenderReport, OutputWindowApi, OutputWindowSession, Size } from "@/domain/physical-output";
@@ -333,4 +333,16 @@ describe("output page imports", () => {
     expect(rel).toContain("src/modules/output/output-runtime.ts");
     expect(rel.filter((f) => /src\/state\/store|src\/modules\/registry|studio-panel|src\/components\/workspace/.test(f))).toEqual([]);
   });
+});
+
+// ── Project files the Electron integration script imports and opens (desktop/tests/smoke-scripts/o4-output-page.cjs)
+
+describe("example project fixtures for the output integration script", () => {
+  for (const [file, id] of [["tests/fixtures/corporate-keynote.pixellab.json", "keynote"], ["tests/fixtures/festival-main-stage.pixellab.json", "festival"]] as const) {
+    it(`${file} is the current ${id} example, serialized (regenerate with UPDATE_FIXTURES=1)`, () => {
+      const text = serializeProject(buildExample(id));
+      if (process.env.UPDATE_FIXTURES || !existsSync(file)) writeFileSync(file, text);
+      expect(readFileSync(file, "utf8")).toBe(text);
+    });
+  }
 });
