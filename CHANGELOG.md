@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Output colour requirement: the output display's macOS profile must be sRGB IEC61966-2.1 for the LED processor to receive the MP4's exact RGB values (documented with a physical-session check). The hidden smoke test forces sRGB in Chromium so its pixel probes are deterministic; the app itself doesn't.
 - Desktop output reconnect (Phase C, D7): unplugging the output's display hides the window at once and pauses it on the current frame; when the same display comes back and can be identified reliably, the output reappears paused and plays again only after Resume. Lookalike or ambiguous displays never take it over.
 - Desktop smoke tests no longer put windows on screen: `test:smoke` runs the output window hidden on a virtual display, and the full-screen check is a separate `test:smoke:output` that needs two explicit keys (three for the laptop screen) and closes each window after 20 s.
 - Desktop output window (Phase C, D5): the main process opens an output on a display and closes it with Close, Esc or quit, through validated IPC from the control window, with the open → live → closed states, full screen without taking focus and display sleep blocked only while live. Built-in display only so far, with a black stub page until the Output page lands.

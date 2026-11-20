@@ -507,3 +507,29 @@ What changed:
 | `npm run test:smoke` with the stub copied over `web/output.html` | pass, no window shown. D7: paused at 18; seen [18] and [18]; drawn frame 19 after resume. The real page was put back afterwards |
 
 Not tested: the visible run (`test:smoke:output`), by instruction.
+
+## Output colour: sRGB profile requirement (2026-11-20)
+
+Chromium colour-manages output frames to the display's profile: on the built-in XDR display, pure green (0,255,0) reads back as (1,255,0) in `capturePage` (O5). Decision C: the app doesn't force a colour profile. The output display's macOS profile must be sRGB IEC61966-2.1 (PHYSICAL_OUTPUT section 2, Colour). `test:smoke` passes `--force-color-profile=srgb` for deterministic captures only.
+
+`appendSwitch` measurements (Electron 43, O5 script, fresh `build:web`):
+
+| How the switch was set | O5 green |
+| --- | --- |
+| `appendSwitch('force-color-profile', 'srgb')` near the top of `main.cjs` (`getSwitchValue` read `srgb`) | (1,255,0), fail at 2× and 1× |
+| The same call on the first line of `main.cjs` | (1,255,0), fail |
+| `--force-color-profile=srgb` on the command line | exact, pass |
+| `--force-color-profile=display-p3-d65` on the command line, plus `appendSwitch` | (2,255,0): the command line wins |
+
+`Display.colorSpace` on this Mac: no switch gives `{primaries:P3, …}`; `--force-color-profile=srgb` gives `{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}`. `colorDepth` is 30 in both runs.
+
+Results with the new `test:smoke`, after a fresh `build:web`:
+
+| Run | Result |
+| --- | --- |
+| `npm --prefix desktop run test:smoke -- --smoke-script=desktop/tests/smoke-scripts/o5-pixels.cjs` (2×) | pass: display space 84,884 probes and master space 119,317 probes, 0 mismatched; no window shown |
+| The same with `--force-device-scale-factor=1` added after the script (npm passes it after the `.`, and Chromium accepts it there) | pass at scale 1: 84,846 probes and 119,285 probes, 0 mismatched; no window shown |
+| `npm --prefix desktop run test:smoke` | pass, no window shown |
+| `npm --prefix desktop test` | 78/78 |
+
+Not verified here: what reaches the cable, and how `colorSpace` reads with the display profile set to sRGB IEC61966-2.1. Both need the physical session (changing the display profile is a system setting).
