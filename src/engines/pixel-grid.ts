@@ -234,3 +234,20 @@ export function gridPixelAt(ops: readonly GridOp[], x: number, y: number): Rgb |
 export function expectedGridPixel(size: GridSize, label: GridLabel, options: GridOptions, x: number, y: number): Rgb | "text" {
   return gridPixelAt(pixelGridOps(size, label, options), x, y);
 }
+
+/** One screen's grid rectangle on the master canvas, labelled with where it is on the master and the output. */
+export interface GridRegion {
+  readonly x: number;
+  readonly y: number;
+  readonly size: GridSize;
+  readonly label: GridLabel;
+}
+
+/** The master canvas's grid rectangles, one per screen, in mapping order (later ones draw over earlier ones). */
+export function masterGridRegions(screens: readonly { readonly name: string; readonly masterRect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }; readonly outputRect: { readonly x: number; readonly y: number } }[]): GridRegion[] {
+  return screens.map((s) => {
+    const r = s.masterRect;
+    const title = `${s.name} · ${r.width} × ${r.height} · master ${r.x},${r.y} · out ${s.outputRect.x},${s.outputRect.y}`;
+    return { x: r.x, y: r.y, size: { w: r.width, h: r.height }, label: { originX: r.x, originY: r.y, title } };
+  });
+}
