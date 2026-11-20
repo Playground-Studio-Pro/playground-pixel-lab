@@ -92,7 +92,7 @@ new BrowserWindow({
 - **Zoom locked:** `setVisualZoomLevelLimits(1, 1)`, and main swallows ⌘ +/−/0 and Ctrl +/−/0 in `before-input-event`.
 - **Esc closes, in main:** `webContents.on('before-input-event')` on the output window: Esc `keyDown` → close this output. It runs in the main process, so it works even when the output renderer is hung. A global shortcut is **not** registered (it would steal Esc from other apps); Esc works when the output window has focus, and the control window always has a Close button and `output:close`.
 - **Independent close:** closing an output window changes nothing in the control window except its status. Quitting the app closes every output window. Closing the control window while outputs run is an owner decision (D-3).
-- **Sleep:** while at least one output is `live`, main holds one `powerSaveBlocker.start('prevent-display-sleep')`; it stops when the last output leaves `live`. One blocker for all outputs, reference-counted.
+- **Sleep:** while at least one output is `live` or `held`, main holds one `powerSaveBlocker.start('prevent-display-sleep')`; it stops when the last output leaves those states. One blocker for all outputs. `held` keeps it because the window is on the monitor showing the paused frame while the operator decides to Resume, and a sleeping display would black out the LED wall. `waiting-display` releases it: there's no monitor to keep awake. Decided after the D7 review.
 - **Content protection is off.** `setContentProtection` would black the window out in screen recordings and some capture setups.
 - **Colour: the output display's macOS profile must be sRGB IEC61966-2.1.** Output sends the same RGB values as the MP4 only on a display using that profile.
   - **Why the app doesn't force it:** by default Chromium colour-manages each frame to the display's profile. On the dev Mac's XDR display, pure green (0,255,0) reads back as (1,255,0) at 1× and 2× (O5). With `--force-color-profile=srgb`, Chromium tags frames as sRGB instead, but macOS WindowServer still converts them to the display's ColorSync profile. Either way, the values on the cable are unchanged only when that profile is sRGB, which makes both paths an identity transform. So the app never sets the switch.
@@ -109,14 +109,14 @@ new BrowserWindow({
 | opening | `output:ready`, session sent, report with `firstFrameDrawn: true` | live | Window shown inactive, full screen; sleep blocker held |
 | opening | Load failure, no `output:ready` within 10 s, or a report with `errorCode` and `firstFrameDrawn: false` | failed | `LOAD_FAILED` / `OPEN_TIMEOUT`; window black |
 | live | Report with `errorCode` after an `output:update` | live | Previous session keeps playing; `error` set |
-| live, held | Display removed | waiting-display | Window hidden at once, renderer kept; the output's clock is paused at the current frame |
-| waiting-display | Same display back, **reliable** key match (one candidate, see below) | held | Re-placed, full screen again, shown inactive on the paused frame, `output:display` sent; operator notified (D-2) |
+| live, held | Display removed | waiting-display | Window hidden at once, renderer kept; the output's clock is paused at the current frame; sleep blocker released |
+| waiting-display | Same display back, **reliable** key match (one candidate, see below) | held | Re-placed, full screen again, shown inactive on the paused frame, `output:display` sent; sleep blocker held again; operator notified (D-2) |
 | waiting-display | A display back with an ambiguous or partial match | waiting-display | Nothing shown; operator notified with `DISPLAY_AMBIGUOUS` and must pick the display again |
 | held | `output:resume` from the control window | live | Clock restarts from the paused frame with a new epoch. **Never automatic** (D-2) |
 | live | `render-process-gone`, or `unresponsive` for 5 s | failed | Window kept black and on its display; control window told |
 | failed | `responsive` (after a hang) | live | |
 | failed | `output:retry` | opening | One reload of the fixed URL, latest session re-sent |
-| any | `output:close`, Esc in the output window, app quit | closed | Window destroyed; sleep blocker released with the last live output |
+| any | `output:close`, Esc in the output window, app quit | closed | Window destroyed; sleep blocker released with the last live or held output |
 
 ```ts
 type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'held' | 'failed';
