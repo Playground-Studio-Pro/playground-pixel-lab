@@ -2,14 +2,19 @@
 // Pure: no Electron import. main.cjs passes in the window operations, the display list, the sleep blocker and the
 // status push, and forwards window events (ready, report, load failure, closed) here.
 //
-// D5 covers closed → opening → live, opening → failed (LOAD_FAILED / OPEN_TIMEOUT), and any → closed (Close, Esc,
-// quit). Disconnect and reconnect (waiting-display, held, resume) are D7; renderer crash and hang, and retry, are D8.
+// D5: closed → opening → live, opening → failed (LOAD_FAILED / OPEN_TIMEOUT), any → closed (Close, Esc, quit).
+// D8: renderer gone or hung → failed (RENDERER_GONE / RENDERER_UNRESPONSIVE), hung → answering again → back,
+// failed → retry → opening, and a first-frame timeout after ready. Disconnect and reconnect (waiting-display, held,
+// resume) are D7.
 const {
   validateOpenRequest, validateReport, outputIdOrAll, oneToOne, sizeMatchOf, OutputIpcError, MAX_OUTPUTS,
 } = require('./output-ipc.cjs');
 const { matchDisplay } = require('./displays.cjs');
 
 const OPEN_TIMEOUT_MS = 10000;        // section 2: no output:ready within 10 s → OPEN_TIMEOUT
+const FIRST_FRAME_TIMEOUT_MS = 10000; // ready but no first frame within 10 s more → OPEN_TIMEOUT too
+const PROBE_INTERVAL_MS = 1000;       // main asks the renderer for a trivial answer this often
+const UNRESPONSIVE_MS = 5000;         // section 2: unresponsive for 5 s → RENDERER_UNRESPONSIVE
 const MIN_REPORT_INTERVAL_MS = 450;   // section 3: at most 2 reports per second
 const SLEEP_BLOCKER_TYPE = 'prevent-display-sleep';
 
@@ -21,9 +26,15 @@ const SLEEP_BLOCKER_TYPE = 'prevent-display-sleep';
  * @param deps.sendSession (outputId, OutputWindowSession) => void
  * @param deps.pushStatus (OutputStatus) => void        to the control window
  * @param deps.blocker { start(type) => id, stop(id) }   Electron's powerSaveBlocker
+ * @param deps.reloadWindow (outputId) => void          loads the fixed URL again (retry)
+ * @param deps.probe (outputId) => Promise               settles when the renderer's main thread answers
+ *
+ * Hang detection uses main's own probe, not Electron's `unresponsive` event: measured on Electron 43, a page hung for
+ * 25 s never raised `unresponsive`, with or without synthetic input, and an output window gets no real input.
  */
 function createOutputController({
   listDisplays, openWindow, showWindow, closeWindow, sendSession, pushStatus, blocker,
+  reloadWindow = () => {}, probe = () => new Promise(() => {}),
   timers = { setTimeout, clearTimeout }, now = Date.now, maxOutputs = MAX_OUTPUTS,
 }) {
   const records = new Map();   // outputId → record
@@ -57,9 +68,11 @@ function createOutputController({
   const clearTimer = r => { if (r.timer !== null) { timers.clearTimeout(r.timer); r.timer = null; } };
 
   function fail(r, code, message) {
-    if (r.state !== 'opening') return;
+    if (r.state !== 'opening' && r.state !== 'live' && !(r.state === 'failed' && code === 'RENDERER_GONE')) return;
     clearTimer(r);
+    r.failedFrom = r.state === 'failed' ? r.failedFrom : r.state;
     r.state = 'failed';
+    r.renderError = null;
     r.error = { code, message };
     showWindow(r.outputId, r.display);   // D-1: a black full-screen window, never the desktop
     syncBlocker();
@@ -84,6 +97,32 @@ function createOutputController({
     push(r);
   }
 
+  // Every second: probe the renderer if no probe is pending, and fail a live output that hasn't answered for 5 s.
+  function watch(r) {
+    r.watchdog = timers.setTimeout(() => {
+      if (records.get(r.outputId) !== r) return;
+      if (!r.probing) {
+        r.probing = true;
+        Promise.resolve().then(() => probe(r.outputId)).then(() => { r.probing = false; alive(r); }, () => { r.probing = false; });
+      }
+      if (r.state === 'live' && now() - r.aliveAt >= UNRESPONSIVE_MS) {
+        fail(r, 'RENDERER_UNRESPONSIVE', `The output page has not answered for ${Math.round((now() - r.aliveAt) / 1000)} s`);
+      }
+      watch(r);
+    }, PROBE_INTERVAL_MS);
+  }
+  function alive(r) {
+    if (records.get(r.outputId) !== r) return;
+    r.aliveAt = now();
+    // Section 2: responsive after a hang → back to live (the frozen frame starts moving again).
+    if (r.state === 'failed' && r.error && r.error.code === 'RENDERER_UNRESPONSIVE' && r.failedFrom === 'live') {
+      r.state = 'live';
+      r.error = null;
+      syncBlocker();
+      push(r);
+    }
+  }
+
   return {
     /** output:open. Throws OutputIpcError with the section 3 code; returns the opening status. */
     open(payload) {
@@ -101,10 +140,29 @@ function createOutputController({
       const r = {
         outputId: id, state: 'opening', display, session: request.session, sessionSent: false,
         render: null, reportAt: -Infinity, error: null, renderError: null, oneToOne: null, oneToOneError: null, timer: null,
+        aliveAt: now(), probing: false, watchdog: null, failedFrom: null,
       };
       records.set(id, r);
       try { openWindow(id, display); } catch (error) { records.delete(id); throw error; }
       r.timer = timers.setTimeout(() => fail(r, 'OPEN_TIMEOUT', 'The output page did not report ready within 10 s'), OPEN_TIMEOUT_MS);
+      watch(r);
+      push(r);
+      return statusOf(r);
+    },
+
+    /** output:retry. Only from failed: one reload of the fixed URL; the latest session is re-sent on ready. */
+    retry(target) {
+      const id = outputIdOrAll(target);
+      if (id === '*') throw new OutputIpcError('BAD_REQUEST', 'retry takes one output id');
+      const r = records.get(id);
+      if (!r || r.state !== 'failed') return this.status(id);
+      clearTimer(r);
+      Object.assign(r, {
+        state: 'opening', sessionSent: false, render: null, reportAt: -Infinity, error: null, renderError: null,
+        oneToOne: null, oneToOneError: null, aliveAt: now(), failedFrom: null, probing: false,
+      });
+      r.timer = timers.setTimeout(() => fail(r, 'OPEN_TIMEOUT', 'The output page did not report ready within 10 s'), OPEN_TIMEOUT_MS);
+      reloadWindow(id);
       push(r);
       return statusOf(r);
     },
@@ -130,6 +188,8 @@ function createOutputController({
       clearTimer(r);
       sendSession(outputId, { ...r.session, display: r.display });
       r.sessionSent = true;
+      r.aliveAt = now();
+      if (r.state === 'opening') r.timer = timers.setTimeout(() => fail(r, 'OPEN_TIMEOUT', 'The output page reported ready but drew no first frame within 10 s'), FIRST_FRAME_TIMEOUT_MS);
     },
 
     /** output:report. Returns false when dropped (rate limit or invalid payload). */
@@ -141,6 +201,8 @@ function createOutputController({
       let report;
       try { report = validateReport(payload); } catch { return false; }
       r.reportAt = t;
+      r.aliveAt = t;
+      if (r.state === 'failed') { alive(r); if (r.state === 'failed') return true; }
       r.render = report;
       r.renderError = report.errorCode ? { code: report.errorCode, message: report.error || report.errorCode } : null;
       if (r.state === 'opening') {
@@ -157,11 +219,18 @@ function createOutputController({
       if (r) fail(r, 'LOAD_FAILED', `The output page failed to load${description ? ` (${description})` : ''}`);
     },
 
+    /** render-process-gone on the output window. The window stays, black (D-1); only retry or close leave failed. */
+    onRendererGone(outputId, reason) {
+      const r = records.get(outputId);
+      if (r) fail(r, 'RENDERER_GONE', `The output renderer stopped${reason ? ` (${reason})` : ''}`);
+    },
+
     /** The window is gone (Close, Esc, quit, or destroyed elsewhere). */
     onClosed(outputId) {
       const r = records.get(outputId);
       if (!r) return;
       clearTimer(r);
+      if (r.watchdog !== null) { timers.clearTimeout(r.watchdog); r.watchdog = null; }
       records.delete(outputId);
       syncBlocker();
       pushStatus(closedStatus(outputId));
@@ -177,4 +246,7 @@ function outputKeyAction(input) {
   return null;
 }
 
-module.exports = { createOutputController, outputKeyAction, OPEN_TIMEOUT_MS, MIN_REPORT_INTERVAL_MS, SLEEP_BLOCKER_TYPE };
+module.exports = {
+  createOutputController, outputKeyAction, OPEN_TIMEOUT_MS, FIRST_FRAME_TIMEOUT_MS, PROBE_INTERVAL_MS, UNRESPONSIVE_MS,
+  MIN_REPORT_INTERVAL_MS, SLEEP_BLOCKER_TYPE,
+};
