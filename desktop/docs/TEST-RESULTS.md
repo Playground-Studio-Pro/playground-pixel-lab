@@ -530,6 +530,8 @@ Results with the new `test:smoke`, after a fresh `build:web`:
 | `npm --prefix desktop run test:smoke -- --smoke-script=desktop/tests/smoke-scripts/o5-pixels.cjs` (2×) | pass: display space 84,884 probes and master space 119,317 probes, 0 mismatched; no window shown |
 | The same with `--force-device-scale-factor=1` added after the script (npm passes it after the `.`, and Chromium accepts it there) | pass at scale 1: 84,846 probes and 119,285 probes, 0 mismatched; no window shown |
 | `npm --prefix desktop run test:smoke` | pass, no window shown |
-| `npm --prefix desktop test` | 78/78 |
+| Hidden smoke: every display reports `colorSpace` and `colorDepth` to the renderer (built-in and virtual both `{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}`, 30 bits, under the harness switch) | pass |
+| `npm --prefix desktop test` | 79/79 |
+| Root typecheck, lint (2 warnings already on main, in `src/engines/pixel-probes.ts`), test 454 passed with 1 skipped, build | pass |
 
 Not verified here: what reaches the cable, and how `colorSpace` reads with the display profile set to sRGB IEC61966-2.1. Both need the physical session (changing the display profile is a system setting).
