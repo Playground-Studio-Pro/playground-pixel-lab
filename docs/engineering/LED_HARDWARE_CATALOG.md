@@ -2,7 +2,7 @@
 
 Candidate cabinets and processors for the Engineering Studio's dropdowns, and how a NovaStar system is configured. The Lead Architect wrote it on 2026-11-20 at the owner's request.
 
-**Status: research, not in the app.** Nothing here is built. Alpha 0.1 doesn't change: this is input for the Engineering work (LED Engineering tasks E2–E4), which the owner schedules after Alpha 0.1. No value goes into the app until someone has checked it against the manufacturer's PDF for the exact variant, and filled in the **Checked** column.
+**Status: research.** Since #44 (2026-11-20) four cabinets are in the app's dropdowns as read-only catalog entries (BP2V2, PL3.9 V10, Upad IV 2.6, MG6S), each noting that its values aren't checked against the PDF. Processors and the calculations aren't built. Alpha 0.1 doesn't change: this is input for the Engineering work (LED Engineering tasks E2–E4), which the owner schedules after Alpha 0.1. The owner chose to ship four cabinets before the PDF check, marked as unchecked. The **Checked** column is still filled only after reading the manufacturer's PDF for the exact variant.
 
 ## Rules for every value
 
