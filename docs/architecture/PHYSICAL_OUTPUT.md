@@ -86,6 +86,7 @@ new BrowserWindow({
 
 - **URL, fixed:** `app://pixellab/output.html` packaged, `http://127.0.0.1:<port>/output` in development. It's one route in an allowlist held by main; any other URL in an output window is refused by `will-navigate` and by the IPC sender check. The route is a separate Next page (`src/app/output/page.tsx`, Output Engineering's), so the output window doesn't load the editor. **Needed in the asset handler:** `assetPath` must serve `/output.html` (static export writes `output.html`); no other path mapping changes.
 - **Preload, minimal:** `output-preload.cjs` exposes only `window.pixelLabOutput` (section 3). It has none of the control window's project-file functions.
+- **Test mode:** `pixelLabOutput.testMode` is true only when main's smoke condition holds (`!app.isPackaged && --smoke-test`). Main adds a fixed argument to the output renderer through `webPreferences.additionalArguments` when it creates the window, and the preload reads it from `process.argv`. No URL query, no IPC channel, and nothing the page can set. It is false in packaged builds and in normal development runs. The output page uses it to enable hidden-test-only helpers (O6) and stays inactive without it.
 - **Full screen without interface:** after `ready-to-show`, main calls `setBounds(display.bounds)`, `setAlwaysOnTop(true, 'screen-saver')`, `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })`, then on macOS `setSimpleFullScreen(true)` (no Spaces animation, menu bar and Dock hidden on that display) and on Windows `setFullScreen(true)`. Whether macOS native full screen or simple full screen behaves better with "Displays have separate Spaces" on and off must be tested on a real monitor (task D6).
 - **Cursor:** the output page sets `cursor: none` on `html`. The window never takes focus by itself (`showInactive()`), so the control window keeps the keyboard. macOS shows the cursor again whenever it moves over the window; that's acceptable and is listed in the risks.
 - **Zoom locked:** `setVisualZoomLevelLimits(1, 1)`, and main swallows ⌘ +/−/0 and Ctrl +/−/0 in `before-input-event`.
@@ -199,6 +200,7 @@ interface OutputApi {    // window.pixelLabOutput, output preload
   onDisplay(cb: (d: DisplayInfo) => void): void;     // output:display (metrics change, reconnect; no session rebuild)
   ready(): void;                                     // output:ready  (page loaded, listening)
   report(r: OutputRenderReport): void;               // output:report (≤ 2 per second)
+  readonly testMode: boolean;                        // true only in an unpackaged --smoke-test run (O6), see below
 }
 
 // What the output window measures and sends back. Output fills it; Desktop checks it.

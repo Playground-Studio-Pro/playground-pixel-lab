@@ -4,8 +4,17 @@
 const path = require('node:path');
 const { outputURL, trustedURLForRole } = require('./windows.cjs');
 
+// Hidden-test-only marker for the output page (O6). Main adds it to the renderer's argv through additionalArguments,
+// only in an unpackaged smoke run; the page can't set it. The preload turns it into pixelLabOutput.testMode.
+const TEST_MODE_ARG = '--pixellab-output-test-mode';
+
+/** Main's smoke condition: true only in an unpackaged --smoke-test run. */
+function outputTestMode({ isPackaged, argv = [] }) {
+  return !isPackaged && argv.includes('--smoke-test');
+}
+
 /** BrowserWindow options for an output window. Pure, so tests can check every security flag. */
-function outputWindowOptions({ bounds, isPackaged }) {
+function outputWindowOptions({ bounds, isPackaged, testMode = false }) {
   return {
     x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
     show: false, frame: false, transparent: false, hasShadow: false,
@@ -18,6 +27,7 @@ function outputWindowOptions({ bounds, isPackaged }) {
       webSecurity: true, webviewTag: false,
       backgroundThrottling: false,
       zoomFactor: 1, spellcheck: false, devTools: !isPackaged,
+      additionalArguments: testMode === true && !isPackaged ? [TEST_MODE_ARG] : [],
     },
   };
 }
@@ -26,8 +36,8 @@ function outputWindowOptions({ bounds, isPackaged }) {
  * Creates an output window and loads its one URL. Returns the window; the caller registers it in the window registry
  * under its outputId before the page can talk to main.
  */
-function createOutputWindow(BrowserWindow, { bounds, origin, isPackaged }) {
-  const window = new BrowserWindow(outputWindowOptions({ bounds, isPackaged }));
+function createOutputWindow(BrowserWindow, { bounds, origin, isPackaged, testMode = false }) {
+  const window = new BrowserWindow(outputWindowOptions({ bounds, isPackaged, testMode }));
   const contents = window.webContents;
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   const guard = (event, url) => { if (!trustedURLForRole(url, origin, 'output')) event.preventDefault(); };
@@ -40,4 +50,4 @@ function createOutputWindow(BrowserWindow, { bounds, origin, isPackaged }) {
   return window;
 }
 
-module.exports = { outputWindowOptions, createOutputWindow };
+module.exports = { outputWindowOptions, createOutputWindow, outputTestMode, TEST_MODE_ARG };
