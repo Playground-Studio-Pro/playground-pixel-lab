@@ -10,13 +10,14 @@ contextBridge.exposeInMainWorld('pixelLabDesktop', Object.freeze({
   openProject: () => ipcRenderer.invoke('project:open'),
   saveProject: (text, suggestedName) => ipcRenderer.invoke('project:save', { text, suggestedName }),
   ffmpegStatus: () => ipcRenderer.invoke('ffmpeg:status'),
-  // Physical output (Phase C). D5: displays, open, close and status; D8: retry; D7: resume. update and clock come later.
+  // Physical output (Phase C). D5: displays, open, close and status; D8: retry; D7: resume; update. setClock comes later.
   // A rejected open carries the error code first in its message ("DISPLAY_BUSY: ...").
   output: Object.freeze({
     listDisplays: () => ipcRenderer.invoke('output:list-displays'),
     open: request => ipcRenderer.invoke('output:open', request),
     close: outputId => ipcRenderer.invoke('output:close', outputId),
     status: () => ipcRenderer.invoke('output:status-all'),
+    update: (outputId, session) => ipcRenderer.invoke('output:update', outputId, session),
     retry: outputId => ipcRenderer.invoke('output:retry', outputId),
     resume: outputId => ipcRenderer.invoke('output:resume', outputId),
     onStatus: callback => subscribe('output:status', callback),

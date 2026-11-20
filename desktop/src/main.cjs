@@ -237,6 +237,7 @@ else {
     outputHandler(OUTPUT_CHANNELS.open, payload => outputs.open(payload));
     outputHandler(OUTPUT_CHANNELS.close, target => { outputs.close(target); });
     outputHandler(OUTPUT_CHANNELS.statusAll, () => outputs.statusAll());
+    outputHandler(OUTPUT_CHANNELS.update, (outputId, session) => outputs.update(outputId, session));
     outputHandler(OUTPUT_CHANNELS.retry, outputId => outputs.retry(outputId));
     outputHandler(OUTPUT_CHANNELS.resume, outputId => outputs.resume(outputId));
     // Messages from output windows. ipcMain.on can't answer, so an untrusted sender or a bad payload is dropped.

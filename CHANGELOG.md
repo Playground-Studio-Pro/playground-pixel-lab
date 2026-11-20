@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Update output (desktop): the control window can send a new session to an open output, and the output window swaps to it without being closed or recreated. Refused while the output waits for its display or is held after a reconnect, so playback never restarts before Resume.
 - Desktop output test mode (for O6): the output page sees `pixelLabOutput.testMode` as true only in an unpackaged `--smoke-test` run, so hidden-test-only helpers stay off in packaged builds and normal runs. Main sets it when it creates the window; the page can't change it.
 - Output colour requirement: the output display's macOS profile must be sRGB IEC61966-2.1 for the LED processor to receive the MP4's exact RGB values (documented with a physical-session check). The hidden smoke test forces sRGB in Chromium so its pixel probes are deterministic; the app itself doesn't.
 - Desktop output reconnect (Phase C, D7): unplugging the output's display hides the window at once and pauses it on the current frame; when the same display comes back and can be identified reliably, the output reappears paused and plays again only after Resume. Lookalike or ambiguous displays never take it over.

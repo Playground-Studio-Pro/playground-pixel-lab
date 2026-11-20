@@ -52,6 +52,8 @@ module.exports = async function smoke(window, app, hooks = null) {
 const fs = require('node:fs');
 const path = require('node:path');
 
+const lastSentSession = (hooks, id) => [...hooks.sentToOutput].reverse().find(m => m.outputId === id && m.channel === 'output:session')?.value;
+
 async function smokeOutput(window, hooks, displays) {
   const assert = require('node:assert/strict');
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -138,6 +140,26 @@ async function smokeOutput(window, hooks, displays) {
   assert.throws(() => hooks.windows.assertSender(ev, { kind: 'control' }), 'output window rejected on control channels');
   assert.doesNotThrow(() => hooks.windows.assertSender(ev, { kind: 'output', outputId: id }));
   const outFocused = out.isFocused();
+
+  // Update output: a new session for the live output through the control IPC. Same window, state stays live, and the
+  // page draws the new revision (paused on a different frame).
+  const sameWindow = { id: out.id, contents: out.webContents.id };
+  const stale = await control(`window.pixelLabDesktop.output.update('${id}', ${JSON.stringify(session)}).then(() => 'updated', e => e.message)`);
+  assert.match(stale, /BAD_REQUEST/, 'update with the same revision refused');
+  const everyOutput = await control(`window.pixelLabDesktop.output.update('*', ${JSON.stringify({ ...session, revision: 2 })}).then(() => 'updated', e => e.message)`);
+  assert.match(everyOutput, /UNKNOWN_OUTPUT/, "update for '*' refused");
+  const updated = { ...session, revision: 2, clock: { state: 'paused', frame: 42 } };
+  const updateStatus = await control(`window.pixelLabDesktop.output.update('${id}', ${JSON.stringify(updated)})`);
+  assert.equal(updateStatus.state, 'live');
+  const updateStates = new Set();
+  await until(() => { const st = hooks.outputs.status(id); updateStates.add(st.state); return st.sessionRevision === 2 && st.render && st.render.frame === 42; }, 3000, 'the page draws the updated session');
+  assert.deepEqual([...updateStates], ['live'], 'live throughout the update');
+  const afterUpdate = hooks.windows.output(id);
+  assert.equal(hooks.windows.outputIds().length, 1);
+  assert.deepEqual({ id: afterUpdate.id, contents: afterUpdate.webContents.id }, sameWindow, 'the window was not recreated');
+  assert.equal(lastSentSession(hooks, id).revision, 2);
+  neverShown();
+  const update = { revision: 2, frame: 42, states: [...updateStates], sameWindow: true };
 
   // 2. Close from the control window.
   await control(`window.pixelLabDesktop.output.close('${id}')`);
@@ -302,5 +324,5 @@ async function smokeOutput(window, hooks, displays) {
   neverShown();
   const d7 = { removeToHiddenMs: removed.ms, pausedFrame: paused.frame, framesWhileWaiting: whileWaiting, framesWhileHeld: whileHeld, reconnectToHeldMs: held.ms, resumedClock: after, drawnAfterResume: resumedFrame };
 
-  return { mode: visible ? 'visible' : 'hidden (no window shown)', target: display.label, d7, d8, url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
+  return { mode: visible ? 'visible' : 'hidden (no window shown)', target: display.label, update, d7, d8, url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
 }
