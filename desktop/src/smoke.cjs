@@ -221,32 +221,40 @@ async function smokeOutput(window, hooks, displays) {
   ], 'D8 status pushes');
   const d8 = { crashToFailedMs: crash.ms, retryToLiveMs: retryMs, hangToUnresponsiveMs: unresponsiveMs, hangEndToLiveMs: recoverMs - 8000 };
 
-  // D7 (simulated display lists; the real unplug is for the monitor session): removed → waiting-display, hidden,
-  // clock paused; a lookalike → DISPLAY_AMBIGUOUS; same display back → held on the paused frame; resume → live.
+  // D7 (simulated display lists; the real unplug is for the monitor session): removed → waiting-display, clock paused;
+  // a lookalike → DISPLAY_AMBIGUOUS; same display back → held on the paused frame; resume → live. Works with any output
+  // page: it checks the frame the page reports drawing (status.render.frame) and the messages main sent it.
   const sharedNow = () => performance.timeOrigin + performance.now();
   const playing = { ...request(), session: { ...request().session, clock: { state: 'playing', fps: 30, startFrame: 0, epochMs: sharedNow() } } };
   await control(`window.pixelLabDesktop.output.open(${JSON.stringify(playing)})`);
-  await until(() => stateOf() === 'live', 2000, 'live (D7)');
+  await until(() => stateOf() === 'live', 5000, 'live (D7)');
   win = hooks.windows.output(id);
-  await sleep(1000);
-  const stubClock = async () => JSON.parse(await win.webContents.executeJavaScript('document.body.dataset.clock || "null"'));
+  const drawnFrame = () => hooks.outputs.status(id).render?.frame ?? null;
+  const lastSent = channel => [...hooks.sentToOutput].reverse().find(m => m.outputId === id && m.channel === channel)?.value ?? null;
+  // Frames reported over `ms` (the page reports every 500 ms): what it actually drew in that window.
+  const framesOver = async ms => { const seen = new Set(); const end = Date.now() + ms; while (Date.now() < end) { seen.add(drawnFrame()); await sleep(100); } return [...seen]; };
+  const advancing = async what => { const a = drawnFrame(); await until(() => drawnFrame() !== null && a !== null && drawnFrame() > a, 3000, what); return drawnFrame(); };
+  await advancing('frames advancing while live');
   const real = hooks.listDisplays();
   const tRemove = Date.now();
-hooks.outputs.onDisplaysChanged(real.filter(d => d.electronId !== display.electronId));
+  hooks.outputs.onDisplaysChanged(real.filter(d => d.electronId !== display.electronId));
   const removed = { ms: Date.now() - tRemove, state: stateOf(), visible: win.isVisible(), blocking: blocking(), display: hooks.outputs.status(id).display };
   assert.equal(removed.state, 'waiting-display');
   assert.equal(removed.visible, false, 'hidden at once');
   assert.equal(removed.blocking, false);
   assert.equal(removed.display, null);
-  await sleep(200);
-  const paused = await stubClock();
-  assert.equal(paused.state, 'paused', 'clock paused on the output page');
-  assert.ok(paused.frame >= 25 && paused.frame <= 45, `paused near frame 30, got ${paused.frame}`);
+  const paused = lastSent('output:clock');
+  assert.equal(paused?.state, 'paused', 'main sent a paused clock');
+  assert.ok(paused.frame >= 1, `paused on a frame after playing, got ${paused.frame}`);
+  await sleep(700);   // the page applies the clock and reports at least once
+  const whileWaiting = await framesOver(1200);
+  assert.deepEqual(whileWaiting, [paused.frame], `the page draws the paused frame while waiting, saw ${whileWaiting}`);
   const twin = { ...display, electronId: 999999, key: { ...display.key, electronId: 999999 }, hostsControlWindow: false, primary: false };
   hooks.outputs.onDisplaysChanged([...real.filter(d => d.electronId !== display.electronId), twin, { ...display, electronId: 999998, key: { ...display.key, electronId: 999998 }, hostsControlWindow: false, primary: false }]);
   assert.equal(stateOf(), 'waiting-display');
   assert.equal(errorOf(), 'DISPLAY_AMBIGUOUS', 'identical twins never take the output');
   assert.equal(win.isVisible(), false);
+  const sentBefore = hooks.sentToOutput.length;
   const tBack = Date.now();
   hooks.outputs.onDisplaysChanged(real);
   await sleep(300);
@@ -260,16 +268,19 @@ hooks.outputs.onDisplaysChanged(real.filter(d => d.electronId !== display.electr
   assert.deepEqual(held.bounds, display.boundsDip);
   if (process.platform === 'darwin') assert.equal(held.simpleFullScreen, visible);
   neverShown();
-  assert.deepEqual(JSON.parse(await win.webContents.executeJavaScript('document.body.dataset.display || "null"')), display.boundsDip, 'output:display sent');
-  await sleep(1000);
-  assert.deepEqual(await stubClock(), paused, 'the frame does not advance while held');
+  const reconnectMessages = hooks.sentToOutput.slice(sentBefore).filter(m => m.outputId === id);
+  assert.deepEqual(reconnectMessages.map(m => m.channel), ['output:display'], 'reconnect sends output:display and no clock');
+  assert.deepEqual(reconnectMessages[0].value.boundsDip, display.boundsDip);
+  const whileHeld = await framesOver(1200);
+  assert.deepEqual(whileHeld, [paused.frame], `the frame does not advance while held, saw ${whileHeld}`);
   assert.equal(stateOf(), 'held', 'never resumes by itself');
   const resumed = await control(`window.pixelLabDesktop.output.resume('${id}')`);
   assert.equal(resumed.state, 'live');
   assert.equal(resumed.reconnected, false);
-  await sleep(100);
-  const after = await stubClock();
+  const after = lastSent('output:clock');
   assert.equal(after.state, 'playing'); assert.equal(after.startFrame, paused.frame); assert.equal(after.fps, 30);
+  const resumedFrame = await advancing('frames advancing again after resume');
+  assert.ok(resumedFrame > paused.frame, `drawn frame ${resumedFrame} after resume, paused at ${paused.frame}`);
   assert.equal(blocking(), true);
   assert.match(await control(`window.pixelLabDesktop.output.resume('${id}').then(() => 'resumed', e => e.message)`), /NOT_RESUMABLE/);
   // Metrics change on the display in use: output:display sent with the new geometry, still live, then back. The window's
@@ -277,15 +288,16 @@ hooks.outputs.onDisplaysChanged(real.filter(d => d.electronId !== display.electr
   const shrunk = { ...display, boundsDip: { ...display.boundsDip, height: display.boundsDip.height - 100 } };
   hooks.outputs.onDisplaysChanged(real.map(d => (d.electronId === display.electronId ? shrunk : d)));
   await sleep(400);
-  const metrics = { sent: JSON.parse(await win.webContents.executeJavaScript('document.body.dataset.display')), state: stateOf(), visible: win.isVisible() };
+  const metrics = { sent: lastSent('output:display')?.boundsDip, state: stateOf(), visible: win.isVisible() };
   assert.deepEqual(metrics.sent, shrunk.boundsDip); assert.equal(metrics.state, 'live'); assert.equal(metrics.visible, visible);
   hooks.outputs.onDisplaysChanged(real);
   await sleep(400);
+  assert.deepEqual(lastSent('output:display')?.boundsDip, display.boundsDip);
   assert.deepEqual(win.getBounds(), display.boundsDip);
   await control(`window.pixelLabDesktop.output.close('${id}')`);
   await until(() => stateOf() === 'closed' && hooks.windows.outputIds().length === 0, 2000, 'close (D7)');
   neverShown();
-  const d7 = { removeToHiddenMs: removed.ms, pausedFrame: paused.frame, reconnectToHeldMs: held.ms, resumedClock: after };
+  const d7 = { removeToHiddenMs: removed.ms, pausedFrame: paused.frame, framesWhileWaiting: whileWaiting, framesWhileHeld: whileHeld, reconnectToHeldMs: held.ms, resumedClock: after, drawnAfterResume: resumedFrame };
 
   return { mode: visible ? 'visible' : 'hidden (no window shown)', target: display.label, d7, d8, url: page.url, api: page.api, liveMs: live.ms, escWhileHungMs: escMs, focusedWhileLive: live.focused || outFocused, simpleFullScreen: live.simpleFullScreen, bounds, blockerWhileLive: live.blocking, states: [...new Set(states)] };
 }
