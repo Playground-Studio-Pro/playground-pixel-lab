@@ -484,3 +484,26 @@ Not tested:
 - **Real `display-added` / `display-removed` / `display-metrics-changed` events.** The smoke test calls the same handler with simulated lists.
 - **Picking a different display for a waiting output.** There's no API for it; the operator closes and reopens.
 - **The output page** (O4) receiving `output:display` and the paused clock. Only the stub was used.
+
+## Smoke D7 steps with Output's real page (2026-11-19)
+
+Since O4 (#38), `build:web` exports Output's own `output.html`, so the smoke loads the real page instead of the stub. D7's smoke steps read the clock the stub stored in `data-` attributes, so `main` failed with `Cannot read properties of null (reading 'state')`. The product wasn't affected, and CI doesn't run Electron.
+
+What changed:
+- **D7 steps check what the page draws.** They read `status.render.frame`, the frame in the page's latest report:
+  - it advances while live;
+  - it stays exactly the paused frame for 1.2 s while waiting and again while held;
+  - it advances again after `resume()`.
+- **Messages to the page.** Main records what it sends to output windows (smoke runs only, `sentToOutput`), so the steps check the paused clock, the resumed clock and `output:display` without asking the page.
+- **Hidden runs skip `hide()` as well as `show`**, so a run that never shows its window never changes its presentation, and the page keeps drawing as in a real run. Visible runs and the app are unchanged.
+- **Stub** (used only when the export has no output page): reports every 500 ms with the frame its clock gives, like the real page, instead of a counter. It no longer writes `data-` attributes.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 78/78 |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 426/426, lint 0 problems |
+| Fresh `build:web`, then `npm run test:smoke` (real O4 page) | pass, **no window shown**. D7: paused at frame 35; frames seen while waiting [35] and while held [35]; drawn frame 37 after resume |
+| `test:smoke -- --smoke-script=desktop/tests/smoke-scripts/o4-output-page.cjs` (real page) | pass, no window shown; the script's page = MP4 hashes are equal |
+| `npm run test:smoke` with the stub copied over `web/output.html` | pass, no window shown. D7: paused at 18; seen [18] and [18]; drawn frame 19 after resume. The real page was put back afterwards |
+
+Not tested: the visible run (`test:smoke:output`), by instruction.

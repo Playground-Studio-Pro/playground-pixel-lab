@@ -30,6 +30,8 @@ const smokeOutput = smokeMode({ isPackaged: app.isPackaged, argv: process.argv, 
 const hiddenSmoke = Boolean(smokeOutput && !smokeOutput.visible);
 // Hidden smoke runs show no window at all: any window that appears is hidden again and fails the run.
 const smokeViolations = [];
+// Smoke runs only: what main sent to output windows, so the smoke checks messages without asking the page.
+const smokeSent = [];
 if (hiddenSmoke) {
   app.on('browser-window-created', (_event, window) => window.on('show', () => {
     smokeViolations.push(`a window was shown (${window.getTitle() || 'untitled'})`);
@@ -158,12 +160,19 @@ else {
     }
     // D7: display removed. Hidden at once, renderer kept; leaving full screen first so the OS has nothing to move.
     function hideOutputWindow(outputId) {
+      // Presentation hook: a hidden smoke run never changes the window's presentation (it was never shown), so the
+      // page keeps drawing as in a real run and its reports stay meaningful.
+      if (hiddenSmoke) return;
       const window = windows.output(outputId);
       if (!window || window.isDestroyed()) return;
       if (isFull(window)) setFull(window, false);
       window.hide();
     }
-    const sendToOutput = (outputId, channel, value) => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.webContents.send(channel, value); };
+    const sendToOutput = (outputId, channel, value) => {
+      const window = windows.output(outputId);
+      if (window && !window.isDestroyed()) window.webContents.send(channel, value);
+      if (smoke) smokeSent.push({ outputId, channel, value });
+    };
     const outputs = createOutputController({
       listDisplays: () => listDisplays(),
       openWindow: openOutputWindow,
@@ -266,7 +275,7 @@ else {
     if (smoke) {
       const webRoot = path.join(__dirname, '..', 'web');
       await require('./smoke.cjs')(windows.control, app, {
-        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin), listDisplays, mode: smokeOutput, smokeViolations,
+        windows, outputs, powerSaveBlocker, outputURL: outputURL(origin), listDisplays, mode: smokeOutput, smokeViolations, sentToOutput: smokeSent,
         script: smokeScriptPath && (() => runSmokeScript(smokeScriptPath)),
         outputPageAvailable: async () => {
           if (!devURL) return fs.access(path.join(webRoot, 'output.html')).then(() => true, () => false);

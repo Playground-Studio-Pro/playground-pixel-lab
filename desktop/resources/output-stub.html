@@ -10,18 +10,21 @@
 <body data-output-stub="1">
 <script>
   // Mirrors the real page's handshake: listen, tell main it's ready, and once a session arrives report a first frame
-  // (here: the black page) with that session's revision, then once a second.
+  // (here: the black page) with that session's revision, then every 500 ms. The frame comes from the clock, as on the
+  // real page (section 4), so a paused clock reports a still frame.
   const api = window.pixelLabOutput;
   if (api) {
-    let revision = null, frame = 0;
+    let revision = null, clock = { state: 'paused', frame: 0 };
+    const frameNow = () => clock.state === 'paused' ? clock.frame
+      : clock.startFrame + Math.max(0, Math.floor((performance.timeOrigin + performance.now() - clock.epochMs) * clock.fps / 1000));
     const report = () => {
       const w = Math.round(innerWidth * devicePixelRatio), h = Math.round(innerHeight * devicePixelRatio);
-      api.report({ sessionRevision: revision, firstFrameDrawn: true, frame: frame++, devicePixelRatio, viewportCss: { width: innerWidth, height: innerHeight },
+      api.report({ sessionRevision: revision, firstFrameDrawn: true, frame: frameNow(), devicePixelRatio, viewportCss: { width: innerWidth, height: innerHeight },
         canvasPx: { width: w, height: h }, outputPx: { width: Math.max(1, w), height: Math.max(1, h) }, browserFps: 0, lateFrames: 0, skippedFrames: 0, contentBoxDevicePx: null, sourceId: 'stub' });
     };
-    api.onSession(session => { document.body.dataset.clock = JSON.stringify(session.clock); const first = revision === null; revision = session.revision; requestAnimationFrame(report); if (first) setInterval(report, 1000); });
-    // Last clock and display received, readable by the desktop smoke test (main-side executeJavaScript).
-    api.onClock(c => { document.body.dataset.clock = JSON.stringify(c); }); api.onDisplay(d => { document.body.dataset.display = JSON.stringify(d.boundsDip); });
+    api.onSession(session => { clock = session.clock; const first = revision === null; revision = session.revision; requestAnimationFrame(report); if (first) setInterval(report, 500); });
+    api.onClock(c => { clock = c; });
+    api.onDisplay(() => {});
     api.ready();
   } else console.log('Pixel Lab output stub: no output preload, staying black.');
 </script>
