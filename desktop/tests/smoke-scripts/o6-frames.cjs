@@ -62,23 +62,55 @@ module.exports = async function o6Frames(api) {
         assert.equal(state, 'live', JSON.stringify(api.outputs.status(out.id).error));
         const window = api.windows.output(out.id);
         assert.equal(window.isVisible(), false, 'never shown');
-        await until(() => api.outputs.status(out.id).render?.frame === frame, 3000, `frame ${frame} drawn`);
-        await sleep(100);
+        // A report of this session with frame N drawn and the canvas laid out. (A report from before the session also
+        // says frame 0, with a 1 × 1 canvas, so frame alone isn't enough.)
+        await until(() => {
+          const r = api.outputs.status(out.id).render;
+          return r && r.firstFrameDrawn && r.sessionRevision === 1 && r.frame === frame && r.contentBoxDevicePx ? r : null;
+        }, 5000, `frame ${frame} drawn and laid out`);
         const hasHook = await window.webContents.executeJavaScript(`typeof window.__pixelLabOutputReference === 'function'`);
         assert.ok(hasHook, 'the reference hook needs the output preload\'s testMode (hidden smoke runs only)');
         const ref = await window.webContents.executeJavaScript(`window.__pixelLabOutputReference(${frame})`);
-        const image = await window.webContents.capturePage();
-        const size = image.getSize();
-        assert.deepEqual(size, D, 'capture is the display\'s device pixels');
-        const page = captureHash(image.toBitmap(), size.width, ref.visible.width, ref.visible.height);
+        // The page's canvas must equal the reference at once: that is the presenter drawing frame N.
+        const canvas = await window.webContents.executeJavaScript(`(async () => { const g = document.querySelector('canvas').getContext('2d');
+          const d = g.getImageData(0, 0, ${ref.visible.width}, ${ref.visible.height}).data; const b = await crypto.subtle.digest('SHA-256', d);
+          return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); })()`);
+        // The captured frame follows once Chromium has composited it: a few short retries for that latency, counted.
+        let page = null, attempts = 0, lastImage = null;
+        for (; attempts < 10; attempts++) {
+          const image = await window.webContents.capturePage();
+          lastImage = image;
+          const size = image.getSize();
+          assert.deepEqual(size, D, 'capture is the display\'s device pixels');
+          page = captureHash(image.toBitmap(), size.width, ref.visible.width, ref.visible.height);
+          if (page === ref.hash) break;
+          await sleep(100);
+        }
+        // When the capture still differs, say where: pixels that differ from the page's canvas, and the first few.
+        let captureVsCanvas = null;
+        if (page !== ref.hash) {
+          const { width: vw, height: vh } = ref.visible;
+          const canvasPx = await window.webContents.executeJavaScript(`Array.from(document.querySelector('canvas').getContext('2d').getImageData(0, 0, ${vw}, ${vh}).data)`);
+          const bmp = lastImage.toBitmap(), stride = lastImage.getSize().width;
+          let count = 0; const first = []; let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+          for (let y = 0; y < vh; y++) for (let x = 0; x < vw; x++) {
+            const i = (y * stride + x) * 4, o = (y * vw + x) * 4;
+            const got = [bmp[i + 2], bmp[i + 1], bmp[i]], want = canvasPx.slice(o, o + 3);
+            if (got[0] !== want[0] || got[1] !== want[1] || got[2] !== want[2]) {
+              count++; minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+              if (first.length < 3) first.push({ x, y, canvas: want, capture: got });
+            }
+          }
+          captureVsCanvas = { count, box: count ? [minX, minY, maxX, maxY] : null, first };
+        }
         const report = api.outputs.status(out.id).render;
         await control(`window.pixelLabDesktop.output.close('${out.id}')`);
         await until(() => api.outputs.status(out.id).state === 'closed' && api.windows.outputIds().length === 0, 3000, 'closed');
-        results.push({ output: c.label, size: [ref.width, ref.height], visible: [ref.visible.width, ref.visible.height], source: source.id, frame, reportedFrame: report.frame, equal: page === ref.hash, hash: page.slice(0, 16), reference: ref.hash.slice(0, 16) });
+        results.push({ output: c.label, size: [ref.width, ref.height], visible: [ref.visible.width, ref.visible.height], source: source.id, frame, reportedFrame: report.frame, canvasEqual: canvas === ref.hash, equal: page === ref.hash, captureAttempts: attempts + 1, captureVsCanvas, hash: page.slice(0, 16), reference: ref.hash.slice(0, 16) });
       }
     }
   }
-  const failed = results.filter(r => !r.equal);
+  const failed = results.filter(r => !r.equal || !r.canvasEqual);
   assert.equal(failed.length, 0, `output window !== exporter at: ${JSON.stringify(failed)}`);
   // Different frames really differ (the content moves), so equality isn't trivially one picture.
   for (const c of CASES) for (const s of SOURCES) {
