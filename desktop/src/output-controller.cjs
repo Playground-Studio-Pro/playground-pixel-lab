@@ -4,12 +4,14 @@
 //
 // D5: closed → opening → live, opening → failed (LOAD_FAILED / OPEN_TIMEOUT), any → closed (Close, Esc, quit).
 // D8: renderer gone or hung → failed (RENDERER_GONE / RENDERER_UNRESPONSIVE), hung → answering again → back,
-// failed → retry → opening, and a first-frame timeout after ready. Disconnect and reconnect (waiting-display, held,
-// resume) are D7.
+// failed → retry → opening, and a first-frame timeout after ready.
+// D7: display removed → waiting-display (hidden, clock paused); same display back with a reliable match (D-2) → held,
+// shown on the paused frame; output:resume → live. Never automatic playback after a disconnect. Metrics changes
+// re-place the window and send output:display.
 const {
   validateOpenRequest, validateReport, outputIdOrAll, oneToOne, sizeMatchOf, OutputIpcError, MAX_OUTPUTS,
 } = require('./output-ipc.cjs');
-const { matchDisplay } = require('./displays.cjs');
+const { matchDisplay, reliableMatch } = require('./displays.cjs');
 
 const OPEN_TIMEOUT_MS = 10000;        // section 2: no output:ready within 10 s → OPEN_TIMEOUT
 const FIRST_FRAME_TIMEOUT_MS = 10000; // ready but no first frame within 10 s more → OPEN_TIMEOUT too
@@ -28,6 +30,10 @@ const SLEEP_BLOCKER_TYPE = 'prevent-display-sleep';
  * @param deps.blocker { start(type) => id, stop(id) }   Electron's powerSaveBlocker
  * @param deps.reloadWindow (outputId) => void          loads the fixed URL again (retry)
  * @param deps.probe (outputId) => Promise               settles when the renderer's main thread answers
+ * @param deps.hideWindow (outputId) => void            leaves full screen and hides it, renderer kept (D7)
+ * @param deps.sendClock (outputId, OutputClock) => void
+ * @param deps.sendDisplay (outputId, DisplayInfo) => void
+ * @param deps.sharedNow () => number                   performance.timeOrigin + performance.now(), the clock epochs use
  *
  * Hang detection uses main's own probe, not Electron's `unresponsive` event: measured on Electron 43, a page hung for
  * 25 s never raised `unresponsive`, with or without synthetic input, and an output window gets no real input.
@@ -35,6 +41,8 @@ const SLEEP_BLOCKER_TYPE = 'prevent-display-sleep';
 function createOutputController({
   listDisplays, openWindow, showWindow, closeWindow, sendSession, pushStatus, blocker,
   reloadWindow = () => {}, probe = () => new Promise(() => {}),
+  hideWindow = () => {}, sendClock = () => {}, sendDisplay = () => {},
+  sharedNow = () => performance.timeOrigin + performance.now(),
   timers = { setTimeout, clearTimeout }, now = Date.now, maxOutputs = MAX_OUTPUTS,
 }) {
   const records = new Map();   // outputId → record
@@ -52,23 +60,24 @@ function createOutputController({
     return {
       outputId: r.outputId,
       state: r.state,
-      display: r.display,
+      display: r.state === 'waiting-display' ? null : r.display,
       sessionRevision: drawn ? drawn.sessionRevision : null,
       ...sizeMatchOf(drawn ? drawn.outputPx : null, r.display ? r.display.devicePx : null),
-      reconnected: false,
+      reconnected: r.reconnected,
       render: r.render,
       error: r.renderError || r.oneToOneError || r.error,
     };
   }
-  const closedStatus = outputId => ({
+  const closedStatus = (outputId, error = null) => ({
     outputId, state: 'closed', display: null, sessionRevision: null, sizeMatch: 'unknown', croppedPx: null, blackPx: null,
-    reconnected: false, render: null, error: null,
+    reconnected: false, render: null, error,
   });
   const push = r => pushStatus(statusOf(r));
   const clearTimer = r => { if (r.timer !== null) { timers.clearTimeout(r.timer); r.timer = null; } };
 
   function fail(r, code, message) {
-    if (r.state !== 'opening' && r.state !== 'live' && !(r.state === 'failed' && code === 'RENDERER_GONE')) return;
+    if (r.state !== 'opening' && r.state !== 'live' && r.state !== 'held' && !(r.state === 'failed' && code === 'RENDERER_GONE')) return;
+    r.reconnected = false;
     clearTimer(r);
     r.failedFrom = r.state === 'failed' ? r.failedFrom : r.state;
     r.state = 'failed';
@@ -123,6 +132,83 @@ function createOutputController({
     }
   }
 
+  // ── D7: displays ───────────────────────────────────────────────────────────
+  const frameAt = (clock, t) => clock.state === 'paused' ? clock.frame : clock.startFrame + Math.max(0, Math.floor((t - clock.epochMs) * clock.fps / 1000));
+  const sameRect = (a, b) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  const geometryChanged = (a, b) => !sameRect(a.boundsDip, b.boundsDip) || a.scaleFactor !== b.scaleFactor
+    || a.devicePx.width !== b.devicePx.width || a.devicePx.height !== b.devicePx.height || a.rotation !== b.rotation;
+  const setClock = (r, clock) => { r.session = { ...r.session, clock }; sendClock(r.outputId, clock); };
+  const sameError = (a, b) => (a && a.code) === (b && b.code);
+
+  // Section 2, "Display removed": hide at once (or the OS moves the window onto the operator's screen), keep the
+  // renderer, pause the clock at the frame on screen.
+  function displayRemoved(r) {
+    if (r.state === 'opening' || r.state === 'failed') {
+      // Not covered by the state table: nothing is playing, so the output closes and the control window is told why.
+      r.closeError = { code: 'DISPLAY_NOT_FOUND', message: `The output's display (${r.display.label || 'unnamed'}) was disconnected` };
+      closeWindow(r.outputId);
+      return;
+    }
+    if (r.state === 'live') {
+      const clock = r.session.clock;
+      r.pausedFrame = frameAt(clock, sharedNow());
+      r.resumeFps = clock.state === 'playing' ? clock.fps : null;   // what resume restores; held keeps the earlier value
+    }
+    hideWindow(r.outputId);
+    setClock(r, { state: 'paused', frame: r.pausedFrame });
+    r.state = 'waiting-display';
+    r.reconnected = false;
+    r.error = null;
+    syncBlocker();
+    push(r);
+  }
+
+  // Section 2, "Display back", owner decision D-2: restore only on a reliable match, paused, and wait for resume.
+  function tryReconnect(r, list) {
+    const match = reliableMatch(r.key, list);
+    const taken = match.display && [...records.values()].some(o => o !== r && o.state !== 'waiting-display' && o.display.electronId === match.display.electronId);
+    let error = null;
+    if (match.display && !taken && match.display.hostsControlWindow && !r.allowControlDisplay) {
+      error = { code: 'CONTROL_DISPLAY', message: `${match.display.label || 'The display'} is back but shows the Pixel Lab window` };
+    } else if (match.display && !taken) {
+      r.display = match.display;
+      r.key = match.display.key;
+      r.oneToOne = null;
+      r.oneToOneError = null;
+      if (r.gone) {   // the renderer died while the display was away: back on its display, black, as failed
+        r.state = 'failed';
+        r.failedFrom = 'live';
+        r.error = r.gone;
+        r.gone = null;
+        showWindow(r.outputId, r.display);
+      } else {
+        r.state = 'held';
+        r.reconnected = true;
+        r.error = null;
+        showWindow(r.outputId, r.display);
+        sendDisplay(r.outputId, r.display);
+      }
+      syncBlocker();
+      push(r);
+      return;
+    } else if (taken || match.reason === 'ambiguous' || list.some(d => d.label && d.label === r.key.label)) {
+      // Identical twins, a shared empty label, or the same name at another size: never guessed (D-2).
+      error = { code: 'DISPLAY_AMBIGUOUS', message: `A display like ${r.key.label || 'the output display'} is connected, but it can't be identified reliably; pick the display again or close the output` };
+    }
+    if (!sameError(error, r.error)) { r.error = error; push(r); }
+  }
+
+  // Section 2, "Metrics changed": re-place, tell the page, re-run the 1:1 check. Never rescale content.
+  function metricsChanged(r, current) {
+    r.display = current;
+    r.key = current.key;
+    r.oneToOne = null;
+    r.oneToOneError = null;
+    if (r.state === 'live' || r.state === 'held' || r.state === 'failed') showWindow(r.outputId, current);
+    if (r.sessionSent) sendDisplay(r.outputId, current);
+    push(r);
+  }
+
   return {
     /** output:open. Throws OutputIpcError with the section 3 code; returns the opening status. */
     open(payload) {
@@ -134,13 +220,15 @@ function createOutputController({
       const { level, candidates } = matchDisplay(request.display, listDisplays());
       if (level !== 1 || candidates.length !== 1) throw new OutputIpcError('DISPLAY_NOT_FOUND', 'That display is no longer connected');
       const display = candidates[0];
-      const busy = [...records.values()].find(r => r.display.electronId === display.electronId);
+      const busy = [...records.values()].find(r => r.state !== 'waiting-display' && r.display.electronId === display.electronId);
       if (busy) throw new OutputIpcError('DISPLAY_BUSY', `Output ${busy.outputId} is already on that display`);
       if (display.hostsControlWindow && request.allowControlDisplay !== true) throw new OutputIpcError('CONTROL_DISPLAY', 'That display shows the Pixel Lab window');
       const r = {
         outputId: id, state: 'opening', display, session: request.session, sessionSent: false,
         render: null, reportAt: -Infinity, error: null, renderError: null, oneToOne: null, oneToOneError: null, timer: null,
         aliveAt: now(), probing: false, watchdog: null, failedFrom: null,
+        key: display.key, allowControlDisplay: request.allowControlDisplay === true, reconnected: false,
+        pausedFrame: null, resumeFps: null, gone: null, closeError: null,
       };
       records.set(id, r);
       try { openWindow(id, display); } catch (error) { records.delete(id); throw error; }
@@ -167,6 +255,41 @@ function createOutputController({
       return statusOf(r);
     },
 
+    /**
+     * output:resume. Only from held (D-2): playback restarts from the paused frame with a new epoch, or stays paused
+     * if the output was paused when its display went away.
+     */
+    resume(target) {
+      const id = outputIdOrAll(target);
+      if (id === '*') throw new OutputIpcError('BAD_REQUEST', 'resume takes one output id');
+      const r = records.get(id);
+      if (!r || r.state !== 'held') throw new OutputIpcError('NOT_RESUMABLE', `Output ${id} is not waiting to resume`);
+      setClock(r, r.resumeFps
+        ? { state: 'playing', fps: r.resumeFps, startFrame: r.pausedFrame, epochMs: sharedNow() }
+        : { state: 'paused', frame: r.pausedFrame });
+      r.state = 'live';
+      r.reconnected = false;
+      r.aliveAt = now();
+      syncBlocker();
+      push(r);
+      return statusOf(r);
+    },
+
+    /**
+     * The connected displays changed (main calls this at once on display-removed, and debounced on every screen event).
+     * Idempotent: the same list twice changes nothing.
+     */
+    onDisplaysChanged(list) {
+      for (const r of [...records.values()]) {
+        if (records.get(r.outputId) !== r) continue;
+        if (r.state === 'waiting-display') { tryReconnect(r, list); continue; }
+        const current = list.find(d => d.electronId === r.display.electronId && d.label === r.display.label && d.internal === r.display.internal);
+        if (!current) displayRemoved(r);
+        else if (geometryChanged(r.display, current)) metricsChanged(r, current);
+        else r.display = current;   // primary or hostsControlWindow may change; nothing to tell the page
+      }
+    },
+
     /** output:close. '*' closes every output; an unknown id does nothing. */
     close(target) {
       const id = outputIdOrAll(target);
@@ -177,7 +300,7 @@ function createOutputController({
     status(outputId) { const r = records.get(outputId); return r ? statusOf(r) : closedStatus(outputId); },
 
     /** electronId → outputId, for DisplayInfo.hostsOutput. */
-    outputOnDisplay() { return new Map([...records.values()].map(r => [r.display.electronId, r.outputId])); },
+    outputOnDisplay() { return new Map([...records.values()].filter(r => r.state !== 'waiting-display').map(r => [r.display.electronId, r.outputId])); },
     sleepBlockerId() { return blockerId; },
 
     // ── Events from main ──────────────────────────────────────────────────────
@@ -222,7 +345,10 @@ function createOutputController({
     /** render-process-gone on the output window. The window stays, black (D-1); only retry or close leave failed. */
     onRendererGone(outputId, reason) {
       const r = records.get(outputId);
-      if (r) fail(r, 'RENDERER_GONE', `The output renderer stopped${reason ? ` (${reason})` : ''}`);
+      if (!r) return;
+      const error = { code: 'RENDERER_GONE', message: `The output renderer stopped${reason ? ` (${reason})` : ''}` };
+      if (r.state === 'waiting-display') { r.gone = error; r.error = error; push(r); return; }   // shown as failed when the display is back
+      fail(r, error.code, error.message);
     },
 
     /** The window is gone (Close, Esc, quit, or destroyed elsewhere). */
@@ -233,7 +359,7 @@ function createOutputController({
       if (r.watchdog !== null) { timers.clearTimeout(r.watchdog); r.watchdog = null; }
       records.delete(outputId);
       syncBlocker();
-      pushStatus(closedStatus(outputId));
+      pushStatus(closedStatus(outputId, r.closeError));
     },
   };
 }

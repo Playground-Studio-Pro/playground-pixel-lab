@@ -424,3 +424,63 @@ What the hidden run checked:
 | Unit tests | 58/58, with 1 more for the script and import path rules |
 
 Not run: **the visible run (`test:smoke:output`)**, by instruction; it needs the owner's permission. The 20 s dead-man switch is therefore unexercised.
+
+## D7. Disconnect and reconnect (2026-11-19)
+
+- **`output-controller.cjs`** gains the D7 transitions of section 2, with owner decision D-2:
+  - **Display removed** (`live` or `held`) → `waiting-display`.
+    - Main hides the window at once, leaving full screen first, and keeps the renderer.
+    - It pauses the clock at the frame on screen (`output:clock { state: 'paused', frame }`, computed from the session clock on the shared timeline) and releases the sleep blocker.
+    - The status has `display: null`.
+    - Main runs this immediately on `display-removed`, without waiting for the 250 ms debounce, and again after it. Running it twice is harmless.
+  - **Same display back** with a **reliable** match (`reliableMatch`, D2: one candidate at level 1 or 2 and no lookalike) → `held`.
+    - The window is re-placed, full screen again and shown inactive on the paused frame, and `output:display` is sent.
+    - `reconnected: true` is pushed. **Nothing plays until `output:resume`.**
+  - **Ambiguous or partial match** → stays in `waiting-display` with `DISPLAY_AMBIGUOUS`, and nothing is shown. That covers identical twins (even if one still has the old id), two displays sharing an empty label, and the same name at another size. A different monitor entirely leaves it waiting with no error.
+  - **Back on the control window's display** without the D-5 toggle given at open → stays waiting with `CONTROL_DISPLAY`.
+  - **`output:resume`** works only from `held`; otherwise `NOT_RESUMABLE`, and `'*'` → `BAD_REQUEST`. Playback restarts from the paused frame with a new epoch, or stays paused if the output was paused when its display went away. The output becomes `live` and takes the sleep blocker.
+  - **Metrics changed** on the display in use (bounds, scale, device px, rotation). Main re-places the window, sends `output:display`, re-runs the 1:1 check and updates the size match and the display key. A change of primary or control window alone tells the page nothing.
+  - **Renderer crash while waiting** → shown as `failed` (black) once the display is back, never `held`. A crash while `held` → `failed`.
+  - **Display removed while `opening` or `failed`** → the output closes, and the status carries `DISPLAY_NOT_FOUND`. *Not in the state table*: nothing is playing, so closing reveals nothing on a wall that's gone. See risks.
+- **`main.cjs`**:
+  - `hideWindow` leaves full screen, then hides.
+  - `showWindow` leaves full screen before moving to new bounds.
+  - `sendClock` and `sendDisplay` are wired, and `output:resume` is a control channel.
+  - Control preload and `api.d.ts`: `output.resume`.
+- **Stub page**: keeps the last clock and display it received in `data-` attributes, so the smoke test can read them.
+
+| Check | Result |
+| --- | --- |
+| `npm --prefix desktop test` | 78/78, with 12 new D7 tests (simulated displays) in `tests/output-controller.test.cjs` |
+| `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` | pass, 409/409, lint 0 problems |
+| `test:smoke` (hidden) with `--smoke-script=desktop/tests/smoke-scripts/import-and-open.cjs` | pass, **no window shown at any point**; D5, D8 and D7 steps all hidden on the virtual display; steps below |
+
+The 12 new unit tests cover:
+- removal while live;
+- a reliable reconnect, including a changed `Display.id`;
+- resume, an output that was paused, and a second removal while `held`;
+- twins, an empty shared label and the same name at another size;
+- the control display;
+- removal while opening or failed;
+- a crash while waiting and while held;
+- metrics changes;
+- `DISPLAY_BUSY` while waiting.
+
+What the hidden smoke test did for D7, using simulated display lists:
+1. **Removal.** Removing the display → `waiting-display` in 2 ms, window not visible, blocker released, `display: null`. The page received a paused clock at frame 34 (about 1 s at 30 fps).
+2. **Twins.** Two lookalike displays → `DISPLAY_AMBIGUOUS`, still waiting, nothing shown.
+3. **Reconnect.** The same display back → `held` in 2 ms, `reconnected: true`, `output:display` received by the page, not focused, no blocker.
+4. **D-2 check.** One second later the page's clock is still paused at the same frame, and the state is still `held`.
+5. **Resume.** `resume()` → `live`, clock `playing` at 30 fps from frame 34, blocker held. A second `resume()` → `NOT_RESUMABLE`.
+6. **Metrics change.** A simulated metrics change sends the new geometry and the output stays `live`.
+
+Not tested:
+- **A real unplug and replug on an external monitor** (the physical session, with the owner's permission):
+  - hiding within 500 ms with nothing appearing on the laptop;
+  - `held` on the same monitor within 2 s;
+  - a second identical monitor;
+  - a dock or adapter changing `Display.id`.
+- **The visible run** (`test:smoke:output`), not run by instruction. It's where window placement, full screen and bounds after a reconnect or a metrics change are checked; in the hidden run the window is never placed.
+- **Real `display-added` / `display-removed` / `display-metrics-changed` events.** The smoke test calls the same handler with simulated lists.
+- **Picking a different display for a waiting output.** There's no API for it; the operator closes and reopens.
+- **The output page** (O4) receiving `output:display` and the paused clock. Only the stub was used.

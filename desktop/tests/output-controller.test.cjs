@@ -42,6 +42,10 @@ function setup({ displays = [builtIn, external], maxOutputs, probe } = {}) {
     timers: { setTimeout: (fn, ms) => { const h = nextTimer++; timers.set(h, { fn, ms }); return h; }, clearTimeout: h => timers.delete(h) },
     now: () => clock,
     reloadWindow: id => log.push(['reload', id]),
+    hideWindow: id => log.push(['hide', id]),
+    sendClock: (id, c) => log.push(['clock', id, c]),
+    sendDisplay: (id, d) => log.push(['display', id, d.electronId, d.boundsDip.height]),
+    sharedNow: () => clock,
     ...(probe ? { probe } : {}),
     ...(maxOutputs ? { maxOutputs } : {}),
   });
@@ -401,4 +405,234 @@ test('the watchdog never fails an opening output (the open timeouts cover it)', 
   t.controller.open(request());
   for (let i = 0; i < 8; i += 1) { t.tick(PROBE_INTERVAL_MS); t.fireTimers(PROBE_INTERVAL_MS); await flush(); }
   assert.equal(t.controller.status('OUT1').state, 'opening');
+});
+
+// ── D7: disconnect and reconnect (simulated displays) ────────────────────────
+const playingRequest = (display = external, extra = {}) => {
+  const r = request('OUT1', display, extra);
+  return { ...r, session: { ...r.session, clock: { state: 'playing', fps: 30, startFrame: 100, epochMs: 1000 } } };
+};
+function liveOn(display = external, options = {}, extra = {}) {
+  const t = setup(options);
+  t.controller.open(playingRequest(display, extra));
+  t.controller.onReady('OUT1');
+  t.controller.onReport('OUT1', display === external ? report() : report({ devicePixelRatio: 2, viewportCss: { width: 1800, height: 1169 }, canvasPx: builtIn.devicePx, contentBoxDevicePx: builtIn.devicePx, outputPx: builtIn.devicePx }));
+  assert.equal(t.controller.status('OUT1').state, 'live');
+  return t;
+}
+const renumbered = (d, electronId) => ({ ...d, electronId, key: { ...d.key, electronId } });
+
+test('display removed while live → waiting-display: hidden at once, clock paused at the frame on screen, no blocker', () => {
+  const t = liveOn();
+  t.tick(2000);   // 2 s at 30 fps from startFrame 100, epoch 1000 → clock time 3000 → frame 160
+  t.controller.onDisplaysChanged([builtIn]);
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'waiting-display');
+  assert.equal(s.display, null);
+  assert.equal(s.reconnected, false);
+  assert.deepEqual(t.log.slice(-2), [['hide', 'OUT1'], ['clock', 'OUT1', { state: 'paused', frame: 160 }]]);
+  assert.equal(t.started.size, 0);
+  assert.ok(!t.log.some(l => l[0] === 'close'), 'the window and its renderer are kept');
+  assert.deepEqual(t.controller.outputOnDisplay(), new Map());
+  // The same list again changes nothing (main calls this immediately and again after the debounce).
+  const n = t.log.length;
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.equal(t.log.length, n);
+  // Nothing advances while the wall is dark: time passing doesn't change the paused frame.
+  t.tick(60000);
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.equal(t.controller.status('OUT1').state, 'waiting-display');
+});
+
+test('same display back (reliable match) → held on the paused frame, output:display sent, never playing by itself', () => {
+  const t = liveOn();
+  t.tick(2000);
+  t.controller.onDisplaysChanged([builtIn]);
+  t.tick(30000);
+  const back = renumbered(external, 7);   // a dock or adapter can change Display.id: level 2 still matches
+  t.controller.onDisplaysChanged([builtIn, back]);
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'held');
+  assert.equal(s.reconnected, true);
+  assert.equal(s.error, null);
+  assert.equal(s.display.electronId, 7);
+  assert.deepEqual(t.log.slice(-2), [['show', 'OUT1', 7], ['display', 'OUT1', 7, 1080]]);
+  assert.equal(t.log.filter(l => l[0] === 'clock').length, 1, 'no clock change: still paused');
+  assert.equal(t.started.size, 0, 'held is not live');
+  assert.deepEqual(t.controller.outputOnDisplay(), new Map([[7, 'OUT1']]));
+  // Time passes, displays settle: still held. Only resume plays.
+  t.tick(60000);
+  t.controller.onDisplaysChanged([builtIn, back]);
+  for (let i = 0; i < 10; i += 1) { t.tick(1000); t.fireTimers(PROBE_INTERVAL_MS); }
+  t.tick(1000);
+  t.controller.onReport('OUT1', report());
+  assert.equal(t.controller.status('OUT1').state, 'held');
+});
+
+test('resume: only from held; restarts from the paused frame with a new epoch and takes the blocker', () => {
+  const t = liveOn();
+  assert.equal(t.codeOf(() => t.controller.resume('OUT1')), 'NOT_RESUMABLE', 'live is not resumable');
+  assert.equal(t.codeOf(() => t.controller.resume('OUT9')), 'NOT_RESUMABLE');
+  assert.equal(t.codeOf(() => t.controller.resume('*')), 'BAD_REQUEST');
+  t.tick(2000);
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.equal(t.codeOf(() => t.controller.resume('OUT1')), 'NOT_RESUMABLE', 'waiting-display is not resumable');
+  t.controller.onDisplaysChanged([builtIn, external]);
+  t.tick(5000);
+  const s = t.controller.resume('OUT1');
+  assert.equal(s.state, 'live');
+  assert.equal(s.reconnected, false);
+  assert.deepEqual(t.log.at(-1), ['clock', 'OUT1', { state: 'playing', fps: 30, startFrame: 160, epochMs: 8000 }]);
+  assert.equal(t.started.size, 1);
+  // A second disconnect pauses at the new frame: 1 s after resume → 190.
+  t.tick(1000);
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.deepEqual(t.log.at(-1), ['clock', 'OUT1', { state: 'paused', frame: 190 }]);
+});
+
+test('an output paused when its display went away resumes paused', () => {
+  const t = setup();
+  t.controller.open(request());   // clock paused at frame 0
+  t.controller.onReady('OUT1');
+  t.controller.onReport('OUT1', report());
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  t.controller.resume('OUT1');
+  assert.deepEqual(t.log.at(-1), ['clock', 'OUT1', { state: 'paused', frame: 0 }]);
+});
+
+test('held, display removed again → waiting-display, keeps the paused frame and what resume restores', () => {
+  const t = liveOn();
+  t.tick(2000);
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  t.tick(9000);
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.equal(t.controller.status('OUT1').state, 'waiting-display');
+  assert.deepEqual(t.log.at(-1), ['clock', 'OUT1', { state: 'paused', frame: 160 }]);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  t.controller.resume('OUT1');
+  assert.equal(t.log.at(-1)[2].state, 'playing');
+  assert.equal(t.log.at(-1)[2].startFrame, 160);
+});
+
+test('identical twins, a shared empty label, or the same name at another size never take the output (DISPLAY_AMBIGUOUS)', () => {
+  const t = liveOn();
+  t.controller.onDisplaysChanged([builtIn]);
+  const shows = () => t.log.filter(l => l[0] === 'show').length;
+  const before = shows();
+  // Two identical monitors, even though one still has the old id.
+  t.controller.onDisplaysChanged([builtIn, external, renumbered(external, 8)]);
+  let s = t.controller.status('OUT1');
+  assert.equal(s.state, 'waiting-display');
+  assert.equal(s.error.code, 'DISPLAY_AMBIGUOUS');
+  assert.equal(shows(), before, 'nothing shown');
+  // Same name, other size (a partial match).
+  t.controller.onDisplaysChanged([builtIn, { ...external, devicePx: { width: 3840, height: 2160 }, key: { ...external.key, devicePx: { width: 3840, height: 2160 } } }]);
+  assert.equal(t.controller.status('OUT1').error.code, 'DISPLAY_AMBIGUOUS');
+  // A different monitor entirely: still waiting, no ambiguity to report.
+  t.controller.onDisplaysChanged([builtIn, { ...renumbered(external, 9), label: 'LG 27UK850', key: { ...external.key, electronId: 9, label: 'LG 27UK850' } }]);
+  s = t.controller.status('OUT1');
+  assert.equal(s.state, 'waiting-display');
+  assert.equal(s.error, null);
+  assert.equal(shows(), before);
+  // Twins with an empty label.
+  const unnamed = { ...external, label: '', key: { ...external.key, label: '' } };
+  const blank = setup({ displays: [builtIn, unnamed] });
+  blank.controller.open(playingRequest(unnamed));
+  blank.controller.onReady('OUT1');
+  blank.controller.onReport('OUT1', report());
+  assert.equal(blank.controller.status('OUT1').state, 'live');
+  blank.controller.onDisplaysChanged([builtIn]);
+  blank.controller.onDisplaysChanged([builtIn, renumbered(unnamed, 5), renumbered(unnamed, 6)]);
+  assert.equal(blank.controller.status('OUT1').error.code, 'DISPLAY_AMBIGUOUS');
+});
+
+test('reconnect onto the control window display without the toggle → stays waiting with CONTROL_DISPLAY', () => {
+  const t = liveOn();
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, { ...external, hostsControlWindow: true }]);
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'waiting-display');
+  assert.equal(s.error.code, 'CONTROL_DISPLAY');
+  const ok = liveOn(builtIn, {}, { allowControlDisplay: true });
+  ok.controller.onDisplaysChanged([external]);
+  ok.controller.onDisplaysChanged([builtIn, external]);
+  assert.equal(ok.controller.status('OUT1').state, 'held');
+});
+
+test('removed while opening or failed → closed with DISPLAY_NOT_FOUND', () => {
+  const opening = setup();
+  opening.controller.open(request());
+  opening.controller.onDisplaysChanged([builtIn]);
+  assert.equal(opening.controller.status('OUT1').state, 'closed');
+  assert.equal(opening.statuses.at(-1).error.code, 'DISPLAY_NOT_FOUND');
+  assert.deepEqual(opening.timers.size, 0);
+  const failed = liveOn();
+  failed.controller.onRendererGone('OUT1', 'crashed');
+  failed.controller.onDisplaysChanged([builtIn]);
+  assert.equal(failed.statuses.at(-1).state, 'closed');
+  assert.equal(failed.statuses.at(-1).error.code, 'DISPLAY_NOT_FOUND');
+});
+
+test('renderer gone while waiting-display → shown as failed when the display is back, not held', () => {
+  const t = liveOn();
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onRendererGone('OUT1', 'crashed');
+  assert.equal(t.controller.status('OUT1').state, 'waiting-display');
+  assert.equal(t.controller.status('OUT1').error.code, 'RENDERER_GONE');
+  t.controller.onDisplaysChanged([builtIn, external]);
+  const s = t.controller.status('OUT1');
+  assert.equal(s.state, 'failed');
+  assert.equal(s.error.code, 'RENDERER_GONE');
+  assert.deepEqual(t.log.at(-1), ['show', 'OUT1', 2], 'black on its display (D-1)');
+  assert.equal(t.codeOf(() => t.controller.resume('OUT1')), 'NOT_RESUMABLE');
+  assert.equal(t.controller.retry('OUT1').state, 'opening');
+});
+
+test('renderer gone while held → failed', () => {
+  const t = liveOn();
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  t.controller.onRendererGone('OUT1');
+  assert.equal(t.controller.status('OUT1').state, 'failed');
+  assert.equal(t.controller.status('OUT1').reconnected, false);
+});
+
+test('metrics changed on the display in use → re-placed, output:display sent, 1:1 re-checked; size match updated', () => {
+  const t = liveOn();
+  const scaled = { ...external, boundsDip: { ...external.boundsDip, width: 960, height: 540 }, scaleFactor: 2 };
+  t.controller.onDisplaysChanged([builtIn, scaled]);
+  let s = t.controller.status('OUT1');
+  assert.equal(s.state, 'live');
+  assert.deepEqual(t.log.slice(-2), [['show', 'OUT1', 2], ['display', 'OUT1', 2, 540]]);
+  t.tick(1000);
+  t.controller.onReport('OUT1', report());   // still dpr 1 and 1920 css: no longer 1:1 at scale 2
+  s = t.controller.status('OUT1');
+  assert.equal(s.error.code, 'NOT_ONE_TO_ONE');
+  // Resolution change: devicePx (and the key) follow, so a later disconnect matches the new size.
+  const bigger = { ...external, boundsDip: { ...external.boundsDip, width: 2560, height: 1440 }, devicePx: { width: 2560, height: 1440 }, key: { ...external.key, devicePx: { width: 2560, height: 1440 } } };
+  t.controller.onDisplaysChanged([builtIn, bigger]);
+  t.tick(1000);
+  t.controller.onReport('OUT1', report({ viewportCss: { width: 2560, height: 1440 }, canvasPx: bigger.devicePx, contentBoxDevicePx: bigger.devicePx }));
+  s = t.controller.status('OUT1');
+  assert.equal(s.error, null);
+  assert.equal(s.sizeMatch, 'smaller-than-display');
+  assert.deepEqual(s.blackPx, { right: 640, bottom: 360 });
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, bigger]);
+  assert.equal(t.controller.status('OUT1').state, 'held');
+  // A primary or control-window change alone tells the page nothing.
+  const n = t.log.length;
+  t.controller.onDisplaysChanged([{ ...builtIn, primary: false }, { ...bigger, primary: true }]);
+  assert.equal(t.log.length, n);
+});
+
+test('DISPLAY_BUSY ignores an output that is waiting for its display', () => {
+  const t = liveOn(external, { maxOutputs: 2 });
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, renumbered(external, 4)]);   // ← reconnects; then away again
+  t.controller.onDisplaysChanged([builtIn]);
+  // A new output may take a display that matches nothing busy.
+  assert.equal(t.controller.open(request('OUT2', builtIn, { allowControlDisplay: true })).state, 'opening');
 });
