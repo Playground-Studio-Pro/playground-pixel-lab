@@ -14,6 +14,7 @@ Read first:
 2. [CONTRACTS](../architecture/CONTRACTS.md): the module contract.
 3. [DATA_MODEL](../architecture/DATA_MODEL.md): cabinets and screens.
 4. [ROADMAP, Phases 1 and 4](../product/ROADMAP.md).
+5. [LED_HARDWARE_CATALOG](../engineering/LED_HARDWARE_CATALOG.md): researched cabinets, processors and the NovaStar setup, with sources. Nothing enters the app until it is checked against the PDF.
 
 ## What you build on today
 

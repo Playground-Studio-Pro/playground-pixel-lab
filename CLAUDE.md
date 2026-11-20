@@ -69,6 +69,7 @@ Each fact lives in one document; others link to it. Update docs in the same PR a
 | [CONTRACTS](docs/architecture/CONTRACTS.md) | The four studios, and the shared module, rendering and export contracts |
 | [OVERVIEW](docs/architecture/OVERVIEW.md) / [DATA_MODEL](docs/architecture/DATA_MODEL.md) / [DECISIONS](docs/architecture/DECISIONS.md) | Structure / stored data / why |
 | [RESOLUME](docs/integrations/RESOLUME.md) | Resolume compatibility |
+| [LED_HARDWARE_CATALOG](docs/engineering/LED_HARDWARE_CATALOG.md) | Researched cabinets and processors with sources, and how NovaStar is configured. Not in the app yet |
 | [TESTING](docs/development/TESTING.md) / [PERFORMANCE](docs/development/PERFORMANCE.md) | How we verify / budgets and baselines |
 
 Before clearing a long session, use `/handoff`.
