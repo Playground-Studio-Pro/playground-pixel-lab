@@ -15,6 +15,7 @@ import { useApp } from "@/state/store";
 import { useMotion } from "@/state/motion-store";
 import { CalibrationSourceControls } from "./calibration-controls";
 import { useCalibrationSource } from "./calibration-store";
+import { OutputControls } from "./output-controls";
 import { createOutputSource, frozenSettings } from "./output-sources";
 import { PIXEL_GRID_SOURCE_ID } from "./pixel-grid-source";
 import { targetSource } from "./target-source";
@@ -217,6 +218,7 @@ export default function OutputStudioPanel() {
             {status.kind === "error" && <p className="text-xs text-destructive" data-testid="export-error">{status.message}</p>}
           </Section>
         )}
+        <OutputControls sourceId={OUTPUT_SOURCE_IDS.find((id) => id === sourceId) ?? null} fps={fps} />
         {blocked.length > 0 && (
           <Section title="Not available as H.264">
             {blocked.map((t) => (
