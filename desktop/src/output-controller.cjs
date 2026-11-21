@@ -50,11 +50,14 @@ function createOutputController({
   const records = new Map();   // outputId → record
   let blockerId = null;
 
-  // One blocker for every output, held while at least one is live (section 2, "Sleep").
+  // One blocker for every output, held while at least one is live or held (section 2, "Sleep"). Held keeps it: the
+  // window is on the monitor showing the paused frame, and a sleeping display would black out the wall. Waiting-display
+  // releases it: there is no monitor to keep awake.
+  const keepsDisplayAwake = r => r.state === 'live' || r.state === 'held';
   function syncBlocker() {
-    const anyLive = [...records.values()].some(r => r.state === 'live');
-    if (anyLive && blockerId === null) blockerId = blocker.start(SLEEP_BLOCKER_TYPE);
-    else if (!anyLive && blockerId !== null) { blocker.stop(blockerId); blockerId = null; }
+    const awake = [...records.values()].some(keepsDisplayAwake);
+    if (awake && blockerId === null) blockerId = blocker.start(SLEEP_BLOCKER_TYPE);
+    else if (!awake && blockerId !== null) { blocker.stop(blockerId); blockerId = null; }
   }
 
   function statusOf(r) {

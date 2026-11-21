@@ -458,7 +458,7 @@ test('same display back (reliable match) → held on the paused frame, output:di
   assert.equal(s.display.electronId, 7);
   assert.deepEqual(t.log.slice(-2), [['show', 'OUT1', 7], ['display', 'OUT1', 7, 1080]]);
   assert.equal(t.log.filter(l => l[0] === 'clock').length, 1, 'no clock change: still paused');
-  assert.equal(t.started.size, 0, 'held is not live');
+  assert.equal(t.started.size, 1, 'held keeps the display awake: the paused frame is on the monitor');
   assert.deepEqual(t.controller.outputOnDisplay(), new Map([[7, 'OUT1']]));
   // Time passes, displays settle: still held. Only resume plays.
   t.tick(60000);
@@ -725,4 +725,39 @@ test('update refused while waiting for the display or held, so playback never re
   assert.ok(!t.log.some(l => l[0] === 'session' && l[2] === 4));
   t.controller.resume('OUT1');
   assert.equal(t.controller.update('OUT1', nextSession(4)).state, 'live');
+});
+
+// ── Sleep blocker in held (decided after the D7 review) ──────────────────────
+test('sleep blocker: live → waiting-display (released) → held (held again) → resume → live (kept), then released on close', () => {
+  const t = liveOn();
+  const held = () => t.controller.sleepBlockerId() !== null && t.started.has(t.controller.sleepBlockerId());
+  assert.equal(held(), true, 'live');
+  t.controller.onDisplaysChanged([builtIn]);
+  assert.equal(t.controller.status('OUT1').state, 'waiting-display');
+  assert.equal(t.started.size, 0, 'waiting-display: no monitor, released');
+  assert.equal(t.controller.sleepBlockerId(), null);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  assert.equal(t.controller.status('OUT1').state, 'held');
+  assert.equal(held(), true, 'held: taken again');
+  const id = t.controller.sleepBlockerId();
+  t.controller.resume('OUT1');
+  assert.equal(t.controller.status('OUT1').state, 'live');
+  assert.equal(t.controller.sleepBlockerId(), id, 'resume keeps the same blocker');
+  assert.equal(t.started.size, 1);
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  assert.equal(held(), true, 'held again after a second disconnect');
+  t.controller.close('OUT1');
+  assert.equal(t.started.size, 0, 'released on close from held');
+  assert.equal(t.controller.sleepBlockerId(), null);
+});
+
+test('sleep blocker: released when a held output fails', () => {
+  const t = liveOn();
+  t.controller.onDisplaysChanged([builtIn]);
+  t.controller.onDisplaysChanged([builtIn, external]);
+  assert.equal(t.started.size, 1);
+  t.controller.onRendererGone('OUT1', 'crashed');
+  assert.equal(t.controller.status('OUT1').state, 'failed');
+  assert.equal(t.started.size, 0, 'failed releases it');
 });
