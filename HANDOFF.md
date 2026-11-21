@@ -1,6 +1,6 @@
 # Handoff
 
-Playground Pixel Lab, 2026-11-18. Alpha 0.1 Phase C (physical output) is in progress. Current state is in [SESSION](SESSION.md).
+Playground Pixel Lab, 2026-11-20. Alpha 0.1 Phase C (physical output): automated work nearly done, physical monitor session next. Current state is in [SESSION](SESSION.md).
 
 ## What we're building now
 
@@ -11,7 +11,8 @@ Playground Pixel Lab, 2026-11-18. Alpha 0.1 Phase C (physical output) is in prog
 - **Mapping Studio:** screens, cabinets, canvases and outputs mapped pixel-exact. Pixel maps, manifest, report, Resolume preparation package. Undo and redo.
 - **Content Studio:** Depth Studio (WebGL2) and Aurora Gradient, deterministic by frame number.
 - **Output Studio:** calibration test card; MP4 export per master, output or screen, never scaled.
-- **Engineering Studio:** cabinet library; processors and power later.
+- **Send to a monitor (Output Studio):** opens the test card full screen on a chosen display through validated IPC; safety box for the operator's own screen; Esc closes. Tested hidden only, never on a real external monitor.
+- **Engineering Studio:** cabinet library, plus four researched cabinets in the dropdowns ([LED_HARDWARE_CATALOG](docs/engineering/LED_HARDWARE_CATALOG.md)); processors and power later.
 - **Desktop:** Electron on macOS, offline, sandboxed, persistence in the app's IndexedDB, unsigned `.app`, remote debugging refused when packaged.
 
 ## Important architecture decisions
@@ -20,6 +21,7 @@ Playground Pixel Lab, 2026-11-18. Alpha 0.1 Phase C (physical output) is in prog
 - **Pure core:** `domain` and `engines` have no React, DOM, clock or randomness.
 - **Determinism:** a frame is a function of the config and the frame number.
 - **Physical output:** independent Electron windows created only by the main process through validated IPC; native resolution, 1:1 device pixels; output and MP4 export draw through the same path. Designed for several monitors, one in Alpha. See [PHYSICAL_OUTPUT](docs/architecture/PHYSICAL_OUTPUT.md).
+- **Colour:** the output display's macOS profile must be sRGB IEC61966-2.1; the app can't force it in Electron 43.
 - **Git:** small PRs with evidence, reviewed by the Lead Architect, CI green. No rebase, no force push, no deleting branches or worktrees.
 
 ## Restart the application
