@@ -32,6 +32,8 @@ export interface OutputRuntimeEnv {
   watchDevicePixelRatio(callback: () => void): () => void;
   /** GPU and canvas limits, measured once. */
   limits(): NonNullable<OutputRenderReport["limits"]>;
+  /** Calls back with `true` when a GPU source's WebGL context is lost and `false` once it is back. Returns a disposer. */
+  watchGpu?(callback: (lost: boolean) => void): () => void;
   readonly prepare?: Partial<PrepareEnv>;
 }
 
@@ -82,6 +84,8 @@ export class OutputRuntime {
   private paintMs: number[] = [];
   private paintIntervals: number[] = [];
   private lastPaintAt: number | null = null;
+  /** A GPU source's WebGL context is lost: its last frame stays on screen and the report says GPU_UNAVAILABLE. */
+  private gpuLost = false;
 
   constructor(private readonly env: OutputRuntimeEnv) {}
 
@@ -90,6 +94,7 @@ export class OutputRuntime {
     this.canvas = canvas;
     this.disposers.push(this.env.observeContentBox(canvas, (size) => (this.contentBox = size)));
     this.disposers.push(this.env.watchDevicePixelRatio(() => (this.layoutDirty = true)));
+    if (this.env.watchGpu) this.disposers.push(this.env.watchGpu((lost) => this.setGpuLost(lost)));
     api.onSession((session) => void this.receive(session));
     api.onClock((clock) => this.setClock(clock));
     api.onDisplay((display) => this.setDisplay(display));
@@ -156,6 +161,20 @@ export class OutputRuntime {
     this.layoutDirty = true;
   }
 
+  private setGpuLost(lost: boolean): void {
+    this.gpuLost = lost;
+    if (lost) {
+      if (this.live?.prepared.usesGpu) this.fail("GPU_UNAVAILABLE", "The GPU took the WebGL context away. The last frame stays on screen until it comes back.");
+      return;
+    }
+    // Restored and the scene rebuilt: clear the error and draw the current frame again.
+    if (this.error?.code === "GPU_UNAVAILABLE") {
+      this.error = null;
+      this.lastReportAt = -Infinity;
+    }
+    this.drawn = null;
+  }
+
   private fail(code: OutputRenderErrorCode, message: string): void {
     this.error = { code, message: message.slice(0, MAX_ERROR) };
     this.lastReportAt = -Infinity;
@@ -213,7 +232,10 @@ export class OutputRuntime {
       if (this.layoutDirty) this.relayout(live);
       const frame = contentFrame(live.clock, t, this.grid);
       const last = this.drawn;
-      if (!last || last.revision !== live.prepared.revision || last.frame !== frame) {
+      if (live.prepared.usesGpu && this.gpuLost) {
+        // Nothing to draw with until the context is back; the last frame stays, and the report says why.
+        if (this.error?.code !== "GPU_UNAVAILABLE") this.fail("GPU_UNAVAILABLE", "The GPU took the WebGL context away. The last frame stays on screen until it comes back.");
+      } else if (!last || last.revision !== live.prepared.revision || last.frame !== frame) {
         this.countCadence(live.clock, frame);
         this.paint(live, frame);
       } else if (live.clock.state === "playing") {
@@ -330,8 +352,9 @@ export class OutputRuntime {
 }
 
 /** The real browser environment for the output page. */
-export function browserRuntimeEnv(depthMaxSize: () => number | null): OutputRuntimeEnv {
+export function browserRuntimeEnv(depthMaxSize: () => number | null, watchGpu?: (callback: (lost: boolean) => void) => () => void): OutputRuntimeEnv {
   return {
+    watchGpu,
     requestFrame: (cb) => void requestAnimationFrame(cb),
     timeOrigin: performance.timeOrigin,
     devicePixelRatio: () => window.devicePixelRatio,
@@ -387,14 +410,17 @@ export type OutputReferenceHook = (frame: number) => Promise<{ hash: string; wid
  * hidden smoke run (`pixelLabOutput.testMode === true`, set by Desktop's main, never in a packaged build). Without the
  * flag nothing is defined. Returns a function that removes it.
  */
-export function installOutputReference(target: object, api: object, runtime: Pick<OutputRuntime, "referenceFrame"> & Partial<Pick<OutputRuntime, "paintStats">>): () => void {
+export function installOutputReference(target: object, api: object, runtime: Pick<OutputRuntime, "referenceFrame"> & Partial<Pick<OutputRuntime, "paintStats">>, gpu?: (lose: boolean) => boolean): () => void {
   if ((api as { testMode?: unknown }).testMode !== true) return () => {};
   const hook: OutputReferenceHook = (frame) => runtime.referenceFrame(frame);
   Object.defineProperty(target, "__pixelLabOutputReference", { value: hook, configurable: true, enumerable: false, writable: false });
+  // O7: lose or restore a GPU source's WebGL context, as a GPU reset would. Same gate as the reference.
+  if (gpu) Object.defineProperty(target, "__pixelLabOutputGpu", { value: Object.freeze({ lose: () => gpu(true), restore: () => gpu(false) }), configurable: true, enumerable: false, writable: false });
   // O8: paint times since the last call. Same gate as the reference.
   if (runtime.paintStats) Object.defineProperty(target, "__pixelLabOutputStats", { value: () => runtime.paintStats!(), configurable: true, enumerable: false, writable: false });
   return () => {
     delete (target as Record<string, unknown>).__pixelLabOutputReference;
+    delete (target as Record<string, unknown>).__pixelLabOutputGpu;
     delete (target as Record<string, unknown>).__pixelLabOutputStats;
   };
 }

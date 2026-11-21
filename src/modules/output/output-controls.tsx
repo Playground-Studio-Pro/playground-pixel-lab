@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Section, SelectField } from "@/components/workspace/fields";
 import type { ContentFps } from "@/domain/motion";
-import type { DisplayInfo, OutputControlApi, OutputSourceId, OutputStatus } from "@/domain/physical-output";
+import type { DisplayInfo, OutputClock, OutputControlApi, OutputSourceId, OutputStatus } from "@/domain/physical-output";
 import { useApp } from "@/state/store";
-import { buildOutputSession, codeOfRejection, displayLabel, openBlocker, outputView, playingFromStart, type OutputView } from "./output-control";
+import { buildOutputSession, buildUpdateSession, codeOfRejection, colourWarning, displayLabel, openBlocker, outputView, playingFromStart, updateAvailability, updateClock, updateErrorText, type OutputView } from "./output-control";
 import { frozenSettings } from "./output-sources";
 
 /**
@@ -18,7 +18,7 @@ import { frozenSettings } from "./output-sources";
  * the section says so and nothing else happens.
  */
 
-type ControlApi = Pick<OutputControlApi, "listDisplays" | "onDisplays" | "open" | "close" | "status" | "onStatus" | "retry" | "resume">;
+type ControlApi = Pick<OutputControlApi, "listDisplays" | "onDisplays" | "open" | "close" | "status" | "onStatus" | "update" | "retry" | "resume">;
 
 const desktopOutput = (): ControlApi | null => (typeof window !== "undefined" && (window as { pixelLabDesktop?: { output?: ControlApi } }).pixelLabDesktop?.output) || null;
 
@@ -56,13 +56,21 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
   const [coverControl, setCoverControl] = useState(false);
   const [pending, setPending] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  // What this panel last sent per output: its clock and revision. `retimed` once main has paused and resumed it
+  // (disconnect → held → resume), since main then owns a new clock the panel can't see.
+  const sent = useRef(new Map<string, { clock: OutputClock; revision: number; retimed: boolean }>());
 
   useEffect(() => {
     let live = true;
     api.listDisplays().then((d) => live && setDisplays(d)).catch(() => undefined);
     api.status().then((list) => live && setStatuses(Object.fromEntries(list.map((s) => [s.outputId, s])))).catch(() => undefined);
     const offDisplays = api.onDisplays((d) => setDisplays(d));
-    const offStatus = api.onStatus((s) => setStatuses((prev) => ({ ...prev, [s.outputId]: s })));
+    const offStatus = api.onStatus((s) => {
+      const last = sent.current.get(s.outputId);
+      if (last && (s.state === "waiting-display" || s.state === "held")) last.retimed = true;
+      if (s.state === "closed") sent.current.delete(s.outputId);
+      setStatuses((prev) => ({ ...prev, [s.outputId]: s }));
+    });
     return () => {
       live = false;
       offDisplays();
@@ -85,13 +93,13 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
   const blocker = openBlocker(display, { coverControlDisplay: coverControl, mappingErrors, outputExists: !!output, busyElsewhere: otherOpen });
   const displayItems = useMemo(() => displays.map((d) => ({ value: keyOf(d), label: displayLabel(d) })), [displays]);
 
-  async function run(action: () => Promise<unknown>) {
+  async function run(action: () => Promise<unknown>, describe: (error: unknown) => string = (e) => codeOfRejection(e).text) {
     setPending(true);
     setRequestError(null);
     try {
       await action();
     } catch (error) {
-      setRequestError(codeOfRejection(error).text);
+      setRequestError(describe(error));
     } finally {
       setPending(false);
     }
@@ -110,9 +118,28 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
         clock: playingFromStart(fps, performance.timeOrigin + performance.now()),
       });
       const next = await api.open({ outputId: output.outputId, display: display.key, ...(allowControlDisplay ? { allowControlDisplay: true } : {}), session });
+      sent.current.set(output.outputId, { clock: session.clock, revision: session.revision, retimed: false });
       setStatuses((prev) => ({ ...prev, [next.outputId]: next }));
     });
   }
+
+  /** Sends the current project and content to the open output, keeping its frame and play state. */
+  function update() {
+    if (!project || !mapping || !output || !sourceId) return;
+    const last = sent.current.get(output.outputId);
+    const previousRevision = Math.max(last?.revision ?? 0, status?.sessionRevision ?? 0);
+    const clock = last
+      ? updateClock(last.clock, { retimed: last.retimed, reportedFrame: status?.render?.frame ?? null, nowMs: performance.timeOrigin + performance.now() })
+      : playingFromStart(fps, performance.timeOrigin + performance.now());
+    void run(async () => {
+      const session = buildUpdateSession({ project, mapping, outputId: output.outputId, source: { id: sourceId, settings: frozenSettings(sourceId) }, clock, previousRevision });
+      const next = await api.update(output.outputId, session);
+      sent.current.set(output.outputId, { clock: session.clock, revision: session.revision, retimed: false });
+      setStatuses((prev) => ({ ...prev, [next.outputId]: next }));
+    }, updateErrorText);
+  }
+  const updatable = updateAvailability(view.state);
+  const colour = colourWarning(shown);
 
   return (
     <Section title="Send to a monitor">
@@ -131,6 +158,11 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
           }}
           disabled={view.state !== "closed" || displays.length === 0}
         />
+        {colour && (
+          <p className="text-xs text-amber-400" data-testid="output-colour-warning">
+            {colour}
+          </p>
+        )}
         {view.state === "closed" && display?.hostsControlWindow && (
           <Label className="flex items-start gap-2 text-xs font-normal leading-snug" data-testid="cover-control-display">
             <Checkbox checked={coverControl} onCheckedChange={(v) => setCoverControl(v === true)} className="mt-0.5" />
@@ -164,13 +196,19 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
               Retry
             </Button>
           )}
+          {updatable && output && (
+            <Button size="sm" variant="secondary" className="flex-1 rounded" disabled={pending || !updatable.enabled || !sourceId} onClick={update} title={updatable.reason ?? undefined} data-testid="output-update">
+              Update output
+            </Button>
+          )}
           {view.actions.includes("close") && output && (
             <Button size="sm" variant="outline" className="flex-1 rounded" disabled={pending} onClick={() => void run(() => api.close(output.outputId))} data-testid="output-close">
               Close
             </Button>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">Plays the content above from frame 0 at {fps} fps. Edits reach the monitor when you close and open it again.</p>
+        {updatable && !updatable.enabled && <p className="text-xs text-muted-foreground" data-testid="output-update-reason">Update output: {updatable.reason}</p>}
+        <p className="text-[11px] text-muted-foreground">Plays the content above from frame 0 at {fps} fps. Update output sends your latest edits and keeps the frame playing.</p>
       </div>
     </Section>
   );

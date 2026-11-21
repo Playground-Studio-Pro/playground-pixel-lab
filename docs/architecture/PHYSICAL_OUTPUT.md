@@ -92,10 +92,10 @@ new BrowserWindow({
 - **Zoom locked:** `setVisualZoomLevelLimits(1, 1)`, and main swallows ⌘ +/−/0 and Ctrl +/−/0 in `before-input-event`.
 - **Esc closes, in main:** `webContents.on('before-input-event')` on the output window: Esc `keyDown` → close this output. It runs in the main process, so it works even when the output renderer is hung. A global shortcut is **not** registered (it would steal Esc from other apps); Esc works when the output window has focus, and the control window always has a Close button and `output:close`.
 - **Independent close:** closing an output window changes nothing in the control window except its status. Quitting the app closes every output window. Closing the control window while outputs run is an owner decision (D-3).
-- **Sleep:** while at least one output is `live`, main holds one `powerSaveBlocker.start('prevent-display-sleep')`; it stops when the last output leaves `live`. One blocker for all outputs, reference-counted.
+- **Sleep:** while at least one output is `live` or `held`, main holds one `powerSaveBlocker.start('prevent-display-sleep')`; it stops when the last output leaves those states. One blocker for all outputs. `held` keeps it because the window is on the monitor showing the paused frame while the operator decides to Resume, and a sleeping display would black out the LED wall. `waiting-display` releases it: there's no monitor to keep awake. Decided after the D7 review.
 - **Content protection is off.** `setContentProtection` would black the window out in screen recordings and some capture setups.
 - **Colour: the output display's macOS profile must be sRGB IEC61966-2.1.** Output sends the same RGB values as the MP4 only on a display using that profile.
-  - **Why the app doesn't force it:** by default Chromium colour-manages each frame to the display's profile. On the dev Mac's XDR display, pure green (0,255,0) reads back as (1,255,0) at 1× and 2× (O5). With `--force-color-profile=srgb`, Chromium tags frames as sRGB instead, but macOS WindowServer still converts them to the display's ColorSync profile. Either way, the values on the cable are unchanged only when that profile is sRGB, which makes both paths an identity transform. So the app never sets the switch.
+  - **Why the app doesn't force it:** by default Chromium colour-manages each frame to the display's profile. On the dev Mac's XDR display, pure green (0,255,0) reads back as (1,255,0) at 1× and 2× (O5). With `--force-color-profile=srgb`, Chromium tags frames as sRGB instead, and macOS WindowServer is expected to convert them to the display's ColorSync profile. That is the Lead Architect's reading, **not measured yet**: the physical session's sRGB check confirms or corrects it. Either way, the values on the cable should be unchanged only when that profile is sRGB, which makes both paths an identity transform. So the app never sets the switch (and in Electron 43 it can't: see Measured, below).
   - **Test harness only:** `capturePage` reads Chromium's buffer, not the cable. `test:smoke` passes `--force-color-profile=srgb` so pixel probes are deterministic on any Mac. A passing O5 therefore proves what Chromium draws, not what reaches the LED processor.
   - **Measured (Electron 43):** `app.commandLine.appendSwitch('force-color-profile', 'srgb')` has no effect, even on the first line of `main.cjs`: `getSwitchValue` reads `srgb`, but green still reads back as (1,255,0). Chromium reads the switch before `main.cjs` runs, so only the command line works. A value given there also wins over `appendSwitch`.
   - **Reported to the page:** each `DisplayInfo` may carry `colorSpace` (Electron `Display.colorSpace`) and `colorDepth`. sRGB reads as `{primaries:BT709, transfer:SRGB, …}`; the XDR display's own profile reads as `primaries:P3`. Under the test-harness switch it always reads sRGB. The page's warning when a display isn't sRGB is Output's (later PR).
@@ -109,14 +109,15 @@ new BrowserWindow({
 | opening | `output:ready`, session sent, report with `firstFrameDrawn: true` | live | Window shown inactive, full screen; sleep blocker held |
 | opening | Load failure, no `output:ready` within 10 s, or a report with `errorCode` and `firstFrameDrawn: false` | failed | `LOAD_FAILED` / `OPEN_TIMEOUT`; window black |
 | live | Report with `errorCode` after an `output:update` | live | Previous session keeps playing; `error` set |
-| live, held | Display removed | waiting-display | Window hidden at once, renderer kept; the output's clock is paused at the current frame |
-| waiting-display | Same display back, **reliable** key match (one candidate, see below) | held | Re-placed, full screen again, shown inactive on the paused frame, `output:display` sent; operator notified (D-2) |
+| live, held | Display removed | waiting-display | Window hidden at once, renderer kept; the output's clock is paused at the current frame; sleep blocker released |
+| waiting-display | Same display back, **reliable** key match (one candidate, see below) | held | Re-placed, full screen again, shown inactive on the paused frame, `output:display` sent; sleep blocker held again; operator notified (D-2) |
 | waiting-display | A display back with an ambiguous or partial match | waiting-display | Nothing shown; operator notified with `DISPLAY_AMBIGUOUS` and must pick the display again |
 | held | `output:resume` from the control window | live | Clock restarts from the paused frame with a new epoch. **Never automatic** (D-2) |
-| live | `render-process-gone`, or `unresponsive` for 5 s | failed | Window kept black and on its display; control window told |
+| opening, failed | Display removed | closed | Window closed, `DISPLAY_NOT_FOUND`. Nothing was playing, so there is nothing to hold |
+| live | `render-process-gone`, or no answer to main's liveness probe for 5 s | failed | Window kept black and on its display; control window told |
 | failed | `responsive` (after a hang) | live | |
 | failed | `output:retry` | opening | One reload of the fixed URL, latest session re-sent |
-| any | `output:close`, Esc in the output window, app quit | closed | Window destroyed; sleep blocker released with the last live output |
+| any | `output:close`, Esc in the output window, app quit | closed | Window destroyed; sleep blocker released with the last live or held output |
 
 ```ts
 type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'held' | 'failed';
@@ -135,12 +136,14 @@ type OutputState = 'closed' | 'opening' | 'live' | 'waiting-display' | 'held' | 
 | Event | Main does | Screen shows | Control window gets |
 | --- | --- | --- | --- |
 | `render-process-gone` | State `failed`. Window kept, not hidden | Black (`backgroundColor`) | `output:status` with `error: RENDERER_GONE` and the reason |
-| `unresponsive` for 5 s | State `failed`; Esc and Close still work (main-side) | Last frame, frozen | `RENDERER_UNRESPONSIVE` |
-| `responsive` after that | Back to `live` | Animation resumes | Cleared |
+| No answer to main's liveness probe for 5 s | State `failed`; Esc and Close still work (main-side) | Last frame, frozen | `RENDERER_UNRESPONSIVE` |
+| Probe answered again | Back to `live` | Animation resumes | Cleared |
 | Page fails to load or never reports ready within 10 s | `failed` | Black | `LOAD_FAILED` / `OPEN_TIMEOUT` |
 | During `opening`, a report with `errorCode` and `firstFrameDrawn: false` (the first session couldn't be prepared) | `failed` | Black | `LOAD_FAILED`, with the page's code (`SOURCE_SETTINGS_INVALID`, `MASTER_TOO_LARGE`, …) in `render.errorCode` |
 | During `live`, a report with `errorCode` (an `output:update` couldn't be prepared) | Stays `live`: the previous session keeps playing | Previous session | `error` set from the report; cleared by the next good report |
 | `output:retry` | One reload of the fixed URL, session re-sent | Black, then content | `opening`, then `live` |
+
+**Hang detection (D8, measured).** Main runs its own liveness probe: a trivial script the output renderer must run on its main thread, abandoned after 2 s unanswered; the 5 s rule counts from the last answer. Nothing is exposed to the page. Electron's `unresponsive` event isn't used: on Electron 43 a page hung for 25 s never raised it, with or without synthetic input, and an output window gets no real input.
 
 A failed output stays as a black full-screen window instead of closing, because closing would reveal the desktop on the LED wall. Owner decision D-1.
 
@@ -344,7 +347,7 @@ Small, in order. Each one ends with `npm --prefix desktop test`, `npm run typech
 | D8 | **Failure handling** | Killing the output renderer (`process.crash()` in a dev-only hook) → `failed`, black window, status pushed within 1 s; a hung page → `RENDERER_UNRESPONSIVE` after 5 s; `output:retry` returns to `live` |
 | D9 | **Clock relay — backlog, not an Alpha 0.1 criterion** (owner decision). The shared clock stays in the architecture; Alpha runs one output. When taken up: | Two output windows (`MAX_OUTPUTS` raised in a test build, on two displays, one of them can be the control display with `allowControlDisplay`) [monitor físico] report the same frame number at the same timestamp within 1 frame at 30 fps over 10 minutes; pause and seek reach both within 100 ms |
 | D10 | **1:1 check** [monitor físico], after O2, run together with O10 in the same monitor session | `NOT_ONE_TO_ONE` raised when a stub reports a wrong ratio; on the real external display at scale 1 and at scale 2, the report's `canvasPx` and `contentBoxDevicePx` match `devicePx`, and O10's pixel-grid photos pass |
-| D11 | **Field rehearsal** [monitor físico] | Laptop + external monitor or processor input: open, run 30 minutes with no display sleep, Esc, reopen, unplug and replug. Results with photos in TEST-RESULTS |
+| D11 | **Field rehearsal** [monitor físico] | Laptop + external monitor or processor input: open, run 30 minutes with no display sleep, Esc, reopen, unplug and replug, then leave the output `held` for at least 5 minutes before Resume with no display sleep. Results with photos in TEST-RESULTS |
 
 **Risks.**
 
@@ -852,6 +855,7 @@ One order for both lanes. Steps on the same line can run in parallel. The owner 
 | 7 | O6 Output = MP4 | Output | O5 | Dev Mac |
 | 7 | O7 Depth Studio on the output | Output | O4 | Dev Mac |
 | 8 | O8 Measured limits | Output | O4, O7 | Dev Mac |
+| — | O12 Operator controls: "Send to a monitor" in the Output studio (added 2026-11-20, #42), then the Update button and the sRGB warning | Output | D5, D7 | Dev Mac |
 | 9 | **One session with the external monitor**, in this order: D6 full screen (decides native vs simple full screen) → sRGB colour check (section 2, Colour) → D7 disconnect / reconnect → D10 + O10 1:1 photos at scale 1, scale 2 and one scaled mode → O9 cadence (240 fps video) → O11 Resolume Arena procedure → D11 30-minute field rehearsal | Both | Steps 1–8; D6 first, since every later check needs the window in place | [monitor físico] |
 
 D9 (clock across two displays) is in the backlog by owner decision; it isn't part of this session. If the monitor session finds a problem in D6, D7 or D10, the fix goes back to the dev Mac and the session repeats from D6.

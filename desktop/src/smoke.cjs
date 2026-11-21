@@ -289,7 +289,7 @@ async function smokeOutput(window, hooks, displays) {
   assert.equal(held.status.reconnected, true);
   assert.equal(held.status.error, null);
   assert.equal(held.visible, visible, visible ? 'shown again on its display' : 'hidden run: still not shown');
-  assert.equal(held.focused, false); assert.equal(held.blocking, false);
+  assert.equal(held.focused, false); assert.equal(held.blocking, true, 'held keeps the display awake');
   assert.deepEqual(held.bounds, display.boundsDip);
   if (process.platform === 'darwin') assert.equal(held.simpleFullScreen, visible);
   neverShown();

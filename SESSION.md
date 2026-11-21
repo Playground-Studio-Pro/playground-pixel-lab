@@ -1,6 +1,6 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alpha 0.1 Phase C, steps 1–3 merged.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-20, Alpha 0.1 Phase C. Automated work is nearly done; the physical monitor session comes next.
 
 ## Objective
 
@@ -9,8 +9,8 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-18, Alp
 | Phase | Owner | Status |
 | --- | --- | --- |
 | **A.** Protection and integration | Lead Architect | Done |
-| **B.** Electron on macOS | Desktop Engineering | Done: #19. Launches, offline, persistence, MP4, unsigned `.app`, remote debugging refused when packaged |
-| **C.** Physical output | Desktop + Output Engineering | **In progress.** Contract (#20) and shared types (#21) merged. Done: D1 (#24), D2 (#25), D3 (#27), O1 (#23), O2 (#26). Next: D4 and O3, then O4 and D5 (section 9). Automated tests first, then one session with a real external monitor |
+| **B.** Electron on macOS | Desktop Engineering | Done (#19) |
+| **C.** Physical output | Desktop + Output Engineering | **In progress.** D1–D5, D7, D8 and O1–O6 merged, plus O12 operator controls (#42), Update output (#50) and the sRGB requirement (#48). Left to automate: O7, O8, the Update button and sRGB warning, the sleep blocker in `held`. D6, D10, D11 and O9–O11 need the external monitor |
 
 Product Design, Content Engineering and LED Engineering stay stopped.
 
@@ -20,51 +20,50 @@ Product Design, Content Engineering and LED Engineering stay stopped.
 
 | # | Requirement | Status |
 | --- | --- | --- |
-| 1 | Desktop app | ✅ macOS (Electron, #19). Windows not claimed until tested on a real Windows 11 machine |
+| 1 | Desktop app | ✅ macOS. Windows not claimed until tested on a real Windows 11 machine |
 | 2 | Offline | ✅ simulated (DNS blocked). One run with Wi-Fi physically off still to do |
 | 3 | Mapping | ✅ in Electron |
 | 4 | Test card | ✅ in Electron |
-| 5 | Full screen on an external monitor | ❌ Phase C |
-| 6 | MP4 export | ✅ in Electron (OpenH264 software encoder; speed on long or 4K animated exports unmeasured) |
-| 7 | Project persistence | ✅ in Electron (relaunch, export and import) |
+| 5 | Full screen on an external monitor | 🟡 built and tested hidden on a virtual display (open, close, failures, unplug and replug, pixel = MP4 at 1× and 2×). Never shown on a real monitor |
+| 6 | MP4 export | ✅ in Electron |
+| 7 | Project persistence | ✅ in Electron |
 | 8 | Resolume Arena import and playback | ❌ procedure written ([PHYSICAL_OUTPUT](docs/architecture/PHYSICAL_OUTPUT.md) 8.11), never run |
 
 ## Phase C
 
-Design, decisions and acceptance criteria: [PHYSICAL_OUTPUT](docs/architecture/PHYSICAL_OUTPUT.md). Shared types: `src/domain/physical-output.ts`. Implementation order: its section 9.
+Design, decisions and acceptance criteria: [PHYSICAL_OUTPUT](docs/architecture/PHYSICAL_OUTPUT.md). Shared types: `src/domain/physical-output.ts`. Order: its section 9.
 
-Owner decisions, 2026-11-18: the 14 draft positions are approved, except:
-- **D-2:** a reconnected monitor is detected automatically and the window comes back only on a reliable match, **paused** (`held`), with the operator notified; playback resumes only on explicit confirmation.
-- **O-1:** whole master then cut for Alpha, measured on Festival Main Stage (5120 px); source, composer and presenter stay decoupled; region rendering documented, not built.
-- **D9:** multi-monitor clock sync is backlog, not an Alpha criterion. One active output.
+Decisions made since 2026-11-18:
+- **Colour (#48):** the output display's macOS profile must be sRGB IEC61966-2.1. The app can't force Chromium's colour profile in Electron 43; only the test harness (`test:smoke`) passes `--force-color-profile=srgb`. Displays report `colorSpace` and `colorDepth`.
+- **O6 reference (#46, #47):** in unpackaged `--smoke-test` runs only, `pixelLabOutput.testMode` lets the output page draw the exporter's frame N for comparison. Off in packaged builds and normal runs.
+- **Update output (#50):** accepted in opening, live and failed; refused in waiting-display and held (D-2). UNKNOWN_OUTPUT for an output that isn't open.
+- **Sleep blocker:** to be held in `held` as well as live (Desktop, in progress).
+- **Test safety:** no visible output window without the owner's explicit permission and an Esc / Close recovery. Smoke runs stay hidden; `allowControlDisplay` is never set silently. No `electron` invocation outside hidden `--smoke-test`.
 
-| Lane | Worktree | Branch for Phase C | Owns |
-| --- | --- | --- | --- |
-| Desktop | `agents/desktop-engineering` | `feature/desktop-engineering`, a short branch per PR | D1–D8, D10, D11: window registry, displays, IPC validation, output preload, open and close, failures, reconnect |
-| Output | `agents/output-engineering` | `feature/output-physical` (new, from `main`). `feature/output-engineering` holds ProRes and stays out of Alpha | O1–O11: output layout and cadence, pixel grid, frozen sources, output page, pixel tests, output = MP4, limits |
-| Lead | `agents/lead-architect` | short `docs/` and contract branches | Contracts, dependencies, PR review, main stability, SESSION and HANDOFF. No new features |
+**Physical test session** (owner organises it, after the automated work): D6 full screen → sRGB colour check → D7 disconnect / reconnect → D10 + O10 1:1 photos → O9 cadence → O11 Resolume Arena → D11 30-minute rehearsal. Then one run with Wi-Fi physically off.
 
-**Rules.** Each PR is small and states what it implements, tests passed, what wasn't tested, what needs external hardware and remaining risks. No merge to `main` without the Lead Architect's review and CI. No force push, no rebase, no deleting branches or worktrees. Out of scope: ProRes, several simultaneous outputs, Engineering Studio, new Content Studio features, export changes beyond keeping MP4 and output consistent. A change to `src/domain/physical-output.ts` or another shared contract stops and goes through the Lead Architect first.
+## Beyond Alpha 0.1 (owner requests, 2026-11-20)
 
-**Physical test session** (after the automated tests pass, owner organises it): full screen, physical resolution, Retina scaling, pixel correspondence, reconnect, 30-minute stability, Resolume Arena export and playback.
+- **Cabinets and processors:** researched in [LED_HARDWARE_CATALOG](docs/engineering/LED_HARDWARE_CATALOG.md) (#43). Four cabinets are in the dropdowns (#44), marked as not checked against the PDFs. Processors, load, power and weight calculations, and a Nova setup sheet are the Engineering work (E2–E4), after Alpha 0.1.
+- **Test cards:** diagonal motion and a nicer-looking card ("Test card v2"), after Alpha 0.1, with pixel tests per pattern.
 
 ## Where it stands
 
-- **`main`** at `bcf93bd`, the merge of #27 (D3), CI green. CI now runs the desktop unit tests too (Linux runner).
-- **O2 MP4 criterion** restated by the owner: at least 99.9 % of probes within ±8 luma, every outlier exact in the source canvas.
-- **Branches kept:** `feature/desktop-engineering`, `feature/output-engineering` (ProRes, not merged, out of Alpha), `docs/phase-c-output-contract`, and every merged branch.
-- **Local backups, keep until Alpha 0.1 passes:** `~/Play.Code/playground.pixel/_backups/` (Depth Studio pack copies) and the original `~/Play.Code/playground.pixel/desktop/` folder.
+- **`main`** at `8d8bd52`, the merge of #50. CI green.
+- **Open work:** Output, the Update button and sRGB warning, then O7 and O8. Desktop, the sleep blocker in `held`, then it waits for the physical session.
+- **Branches kept:** every merged branch, `feature/desktop-engineering`, `feature/output-physical`, `feature/output-engineering` (ProRes, out of Alpha) and `docs/phase-c-progress`.
+- **Local backups, keep until Alpha 0.1 passes:** `~/Play.Code/playground.pixel/_backups/` and the original `~/Play.Code/playground.pixel/desktop/` folder.
 
 ## Known issues
 
 - **MP4:** H.264 over 4096 px a side isn't exported whole; per-output files instead. Software encoder in Electron.
-- **Packaged app:** unsigned, default icon, 301 MB; Gatekeeper blocks it on another Mac until signed. `desktop/tests/font-response.cjs` is an unused leftover.
+- **Packaged app:** unsigned, default icon, about 301 MB; Gatekeeper blocks it on another Mac until signed.
 - **Resolume:** never tested in Arena.
+- **Colour on the cable:** not measured. capturePage proves what Chromium draws, not what reaches the LED processor.
 - **Engineering Studio:** placeholder; stays so in Alpha.
-- **Settings:** Depth Studio and Aurora settings aren't saved in the project.
 - **Dead code:** `useApp.library`, `saveToLibrary`, `IndexedDbCabinetLibrary`. Cleanup after Alpha.
 
 ## Resume
 
 1. `cd ~/Play.Code/playground.pixel/app && git fetch && git status && git log --oneline -1`.
-2. Check open PRs from `feature/desktop-engineering` and `feature/output-physical`; review in section 9 order.
+2. Check open PRs from Desktop and Output; review in section 9 order. Every merge needs the owner's explicit approval.

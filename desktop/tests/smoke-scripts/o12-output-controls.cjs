@@ -6,7 +6,8 @@
 // 2. The monitor list shows every display; the default is never the one showing Pixel Lab. Choosing that one shows
 //    the "Cover this screen" box and keeps Open disabled until it's ticked. This script never ticks it.
 // 3. Chooses the run's virtual display (checked by label before Open), presses Open, sees Live with the Esc hint
-//    and the fit line, checks the session main received, then presses Close and sees Closed.
+//    and the fit line, checks the session main received, presses Update output (revision 2 drawn, still live, the
+//    frame carrying on from where it was, no colour warning since test:smoke reports sRGB), then presses Close.
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -85,9 +86,19 @@ module.exports = async function o12OutputControls(api) {
   assert.equal(live.esc, 'Esc closes the output.');
   assert.ok(live.fit, 'fit line shown');
 
+  // Update while live: the panel sends the next revision, keeping the clock; main forwards it and the page draws it.
+  const before = api.outputs.status(outputId);
+  assert.equal(await disabled('output-update'), false, 'Update output enabled while live');
+  assert.equal(await exists('output-colour-warning'), false, 'no colour warning: test:smoke reports an sRGB profile');
+  assert.ok(await press('output-update'));
+  const updated = await until(() => { const s = api.outputs.status(outputId); return s.sessionRevision === 2 && s.render && s.render.sessionRevision === 2 && s.render.firstFrameDrawn ? s : null; }, 5000, 'revision 2 drawn');
+  assert.equal(updated.state, 'live', 'still live after the update');
+  const updateResult = { revisionBefore: before.sessionRevision, revisionAfter: updated.sessionRevision, frameBefore: before.render.frame, frameAfter: updated.render.frame, error: await text('output-request-error') };
+  assert.ok(updateResult.frameAfter >= updateResult.frameBefore, 'the update kept playing on, not from frame 0');
+
   // Close from the panel.
   assert.ok(await press('output-close'));
   await until(async () => (await text('output-state')) === 'Closed', 3000, 'Closed in the panel');
   await until(() => api.outputs.status(outputId).state === 'closed' && api.windows.outputIds().length === 0, 3000, 'window closed');
-  return { monitorOptions, defaultMonitor, ownMonitor: ownChecks, chosen, liveMs, live, afterClose: { badge: await text('output-state'), esc: await exists('output-esc-hint') } };
+  return { monitorOptions, defaultMonitor, ownMonitor: ownChecks, chosen, liveMs, live, update: updateResult, afterClose: { badge: await text('output-state'), esc: await exists('output-esc-hint') } };
 };

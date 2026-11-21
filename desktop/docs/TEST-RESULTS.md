@@ -565,3 +565,16 @@ Not verified here: what reaches the cable, and how `colorSpace` reads with the d
 | `npm --prefix desktop test` | 87/87 |
 
 Not tested: the update step with the stub page (the real page is what ships), and in a visible window.
+
+## Sleep blocker held in held (2026-11-20)
+
+Decided after the D7 review: the display sleep blocker is held in `held` as well as `live`. The paused frame is on the monitor while the operator decides to Resume. `waiting-display` still releases it.
+
+| Check | Result |
+| --- | --- |
+| Unit: live (held) → waiting-display (released) → held (taken again) → resume → live (same blocker) → second disconnect, held again → close (released) | pass |
+| Unit: a held output that fails releases it | pass |
+| Hidden `test:smoke`, D7 steps on the virtual display: released in waiting-display, `isStarted` true in held, true after resume | pass, no window shown |
+| `npm --prefix desktop test` | 89/89 |
+
+Not verified: an actual display staying awake while held on a real monitor. That belongs to D11 in the physical session.

@@ -240,6 +240,8 @@ export interface OutputWindowApi {
   ready(): void;
   /** At most 2 per second. */
   report(report: OutputRenderReport): void;
+  /** True only in an unpackaged --smoke-test run, set by main (O6 hidden-test helpers). Optional for test fakes. */
+  readonly testMode?: boolean;
 }
 
 /** IPC channel names, fixed strings. */

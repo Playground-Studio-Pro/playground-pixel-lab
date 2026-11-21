@@ -3,7 +3,7 @@ import type { DisplayInfo, OutputStatus } from "@/domain/physical-output";
 import { OUTPUT_ERROR_CODES, OUTPUT_RENDER_ERROR_CODES } from "@/domain/physical-output";
 import { resolveMapping } from "@/engines/mapping";
 import { buildExample } from "@/examples";
-import { buildOutputSession, codeOfRejection, displayLabel, errorText, openBlocker, OutputRequestError, outputView, playingFromStart } from "@/modules/output/output-control";
+import { buildOutputSession, buildUpdateSession, codeOfRejection, colourWarning, displayLabel, errorText, openBlocker, OutputRequestError, outputView, playingFromStart, SRGB_WARNING, updateAvailability, updateClock, updateErrorText } from "@/modules/output/output-control";
 import { frozenSettings, OutputSourceError } from "@/modules/output/output-sources";
 import { parseProjectFile, serializeProject } from "@/persistence/schema";
 
@@ -160,5 +160,58 @@ describe("Open on a monitor", () => {
     expect(openBlocker(null, ok)).toMatch(/monitor/);
     expect(openBlocker(display({ hostsOutput: "out-2" }), ok)).toMatch(/already/);
     expect(openBlocker(display(), { ...ok, busyElsewhere: true })).toMatch(/one output at a time/);
+  });
+});
+
+describe("Update output", () => {
+  it("is offered while opening, live or failed; disabled with a reason while waiting or held; hidden when closed", () => {
+    for (const state of ["opening", "live", "failed"] as const) expect(updateAvailability(state), state).toEqual({ enabled: true, reason: null });
+    for (const state of ["waiting-display", "held"] as const) expect(updateAvailability(state), state).toEqual({ enabled: false, reason: "Resume first." });
+    expect(updateAvailability("closed")).toBeNull();
+  });
+
+  it("keeps the live output's clock: the same clock when main hasn't re-timed it, never frame 0", () => {
+    const sent = playingFromStart(30, 1_000_000);
+    expect(updateClock(sent, { retimed: false, reportedFrame: 412, nowMs: 2_000_000 })).toBe(sent);
+    expect(updateClock({ state: "paused", frame: 77 }, { retimed: false, reportedFrame: 80, nowMs: 2_000_000 })).toEqual({ state: "paused", frame: 77 });
+  });
+
+  it("after a disconnect and Resume, re-anchors at the last reported frame, keeping play or pause", () => {
+    expect(updateClock(playingFromStart(25, 1_000), { retimed: true, reportedFrame: 412, nowMs: 9_000 })).toEqual({ state: "playing", fps: 25, startFrame: 412, epochMs: 9_000 });
+    expect(updateClock({ state: "paused", frame: 3 }, { retimed: true, reportedFrame: 300, nowMs: 9_000 })).toEqual({ state: "paused", frame: 300 });
+    // Without a reported frame there's nothing better than what was sent.
+    const sent = playingFromStart(30, 1);
+    expect(updateClock(sent, { retimed: true, reportedFrame: null, nowMs: 9 })).toBe(sent);
+  });
+
+  it("the update session carries the current project, the next revision, the source and the kept clock", () => {
+    const clock = playingFromStart(30, 123.5);
+    const edited = { ...project, meta: { ...project.meta, name: "Edited" } };
+    const session = buildUpdateSession({ project: edited, mapping, outputId, source: { id: "pixel-grid", settings: { space: "master", motion: true } }, clock, previousRevision: 4 });
+    expect(session.revision).toBe(5);
+    expect(parseProjectFile(session.projectText).meta.name).toBe("Edited");
+    expect(session.clock).toBe(clock);
+    expect(session.source).toEqual({ id: "pixel-grid", settings: { space: "master", motion: true } });
+  });
+
+  it("errors in plain language; an output main doesn't have open is 'This output isn't open.'", () => {
+    expect(updateErrorText(new Error("Error invoking remote method 'output:update': Error: UNKNOWN_OUTPUT: Output x is not open"))).toBe("This output isn't open.");
+    expect(updateErrorText(new Error("BAD_REQUEST: session.revision must be greater than 3"))).toBe(errorText("BAD_REQUEST"));
+  });
+});
+
+describe("colour profile warning", () => {
+  it("none for sRGB, none when Electron doesn't say", () => {
+    expect(colourWarning(display({ colorSpace: "{primaries:BT709, transfer:SRGB, matrix:RGB, range:FULL}" }))).toBeNull();
+    expect(colourWarning(display())).toBeNull();
+    expect(colourWarning(null)).toBeNull();
+  });
+  it("warns for any other profile: Display P3, a gamma 2.2 transfer, BT2020", () => {
+    for (const cs of ["{primaries:P3, transfer:SRGB, matrix:RGB, range:FULL}", "{primaries:BT709, transfer:GAMMA22, matrix:RGB, range:FULL}", "{primaries:BT2020, transfer:PQ, matrix:RGB, range:FULL}"]) {
+      expect(colourWarning(display({ colorSpace: cs })), cs).toBe(SRGB_WARNING);
+    }
+  });
+  it("is a warning only: Open isn't blocked by the colour profile", () => {
+    expect(openBlocker(display({ colorSpace: "{primaries:P3, transfer:SRGB}" }), { coverControlDisplay: false, mappingErrors: 0, outputExists: true, busyElsewhere: false })).toBeNull();
   });
 });
