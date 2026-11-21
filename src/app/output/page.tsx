@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { OutputWindowApi } from "@/domain/physical-output";
-import { depthMaxSize } from "@/modules/depth-studio/source";
+import { depthMaxSize, onDepthContextChange, simulateDepthContextLoss } from "@/modules/depth-studio/source";
 import { browserRuntimeEnv, installOutputReference, OutputRuntime } from "@/modules/output/output-runtime";
 
 /**
@@ -35,10 +35,10 @@ export default function OutputPage() {
       warned = true;
       return;
     }
-    const runtime = new OutputRuntime(browserRuntimeEnv(depthMaxSize));
+    const runtime = new OutputRuntime(browserRuntimeEnv(depthMaxSize, onDepthContextChange));
     runtime.start(api, canvas.current!);
     // Hidden smoke runs only: a read-only reference of the MP4 exporter's frame N (O6). Absent without the flag.
-    const removeReference = installOutputReference(window, api, runtime);
+    const removeReference = installOutputReference(window, api, runtime, simulateDepthContextLoss);
     return () => {
       removeReference();
       runtime.stop();

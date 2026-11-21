@@ -50,6 +50,8 @@ export interface PreparedSession {
   readonly sourceId: string;
   /** The session's frozen source settings, as sent. */
   readonly sourceSettings: OutputWindowSession["source"]["settings"];
+  /** The source draws with WebGL (Depth Studio): a lost GPU context stops it until the context is back. */
+  readonly usesGpu: boolean;
   readonly draw: OutputDraw;
 }
 
@@ -115,12 +117,12 @@ export async function prepareSession(session: OutputWindowSession, overrides: Pa
         if (ops?.key !== key) ops = { key, value: pixelGridOps(size, label, { motionFrame: null }) };
         drawPixelGridRect(ctx, 0, 0, size, label, motion ? frame : null, 1, ops.value);
       };
-      return { revision: session.revision, project, mapping, target, master, sourceId: id, sourceSettings: settings, draw };
+      return { revision: session.revision, project, mapping, target, master, sourceId: id, sourceSettings: settings, usesGpu: id === "depth-scene", draw };
     }
     const source = await env.createSource(id, settings, { width: master.width, height: master.height });
     const composed = targetSource(source, target, master);
     const draw: OutputDraw = (ctx, frame, fps) => composed.draw(ctx, { ...master, width: target.width, height: target.height, frame, fps }, { scale: 1, fontFamily: "sans-serif" });
-    return { revision: session.revision, project, mapping, target, master, sourceId: id, sourceSettings: settings, draw };
+    return { revision: session.revision, project, mapping, target, master, sourceId: id, sourceSettings: settings, usesGpu: id === "depth-scene", draw };
   } catch (error) {
     if (error instanceof OutputSourceError) throw new OutputSessionError(error.code, error.message);
     throw new OutputSessionError("DRAW_FAILED", error instanceof Error ? error.message : String(error));
