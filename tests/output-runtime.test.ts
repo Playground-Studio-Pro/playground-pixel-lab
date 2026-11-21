@@ -134,7 +134,7 @@ describe("prepareSession: one mapping path (PHYSICAL_OUTPUT 8.1)", () => {
 
 // ── OutputRuntime ─────────────────────────────────────────────────────────────
 
-function harness(opts: { dpr?: number } = {}) {
+function harness(opts: { dpr?: number; limit?: number } = {}) {
   const callbacks: { session?: (s: OutputWindowSession) => void; clock?: (c: OutputClock) => void; display?: (d: DisplayInfo) => void } = {};
   const reports: OutputRenderReport[] = [];
   let ready = 0;
@@ -154,6 +154,7 @@ function harness(opts: { dpr?: number } = {}) {
   let contexts = 0;
   const canvas = { width: 1, height: 1, style: {} as Record<string, string>, getContext: () => (contexts++, ctx) } as unknown as HTMLCanvasElement;
   let contentBox: ((s: Size) => void) | null = null;
+  let gpu: ((lost: boolean) => void) | null = null;
   const env: OutputRuntimeEnv = {
     requestFrame: (cb) => void queue.push(cb),
     timeOrigin: 0,
@@ -162,6 +163,7 @@ function harness(opts: { dpr?: number } = {}) {
     observeContentBox: (_c, cb) => ((contentBox = cb), () => {}),
     watchDevicePixelRatio: () => () => {},
     limits: () => ({ maxCanvasSide: 32767, maxCanvasArea: 268435456, maxTextureSize: 16384, depthMaxSize: null }),
+    watchGpu: (cb) => ((gpu = cb), () => {}),
   };
   const frames: number[] = [];
   const runtime = new OutputRuntime({ ...env, prepare: { createSource: async () => fakeSource(frames) } });
@@ -175,7 +177,7 @@ function harness(opts: { dpr?: number } = {}) {
     }
   };
   const settle = () => new Promise((r) => setTimeout(r, 0));
-  return { api, callbacks, reports, canvas, frames, fills, run, settle, runtime, ready: () => ready, contexts: () => contexts, contentBox: (s: Size) => contentBox!(s), now: () => now };
+  return { api, callbacks, reports, canvas, frames, fills, run, settle, runtime, ready: () => ready, contexts: () => contexts, contentBox: (s: Size) => contentBox!(s), now: () => now, gpu: (lost: boolean) => gpu!(lost) };
 }
 
 describe("OutputRuntime (PHYSICAL_OUTPUT 8.1, 8.3, 8.4)", () => {
@@ -345,6 +347,74 @@ describe("output reference hook (O6)", () => {
     expect(h.reports.at(-1)).toMatchObject({ sessionRevision: 7, frame: 0 });
     expect(h.reports.length).toBeGreaterThan(reportsBefore);
     expect(await (h as unknown as { runtime: OutputRuntime }).runtime.referenceFrame(-1)).toBeNull();
+  });
+});
+
+// ── Depth Studio on the output (O7) ──────────────────────────────────────────
+
+describe("Depth Studio on the output (O7)", () => {
+  const festivalText = serializeProject(buildExample("festival"));
+  const festivalOut = resolveMapping(buildExample("festival")).outputs[0].outputId;
+  const depth = () => session({ projectText: festivalText, outputId: festivalOut, source: { id: "depth-scene", settings: depthJson() }, display: display({ width: 3072, height: 1920 }) });
+
+  it("Festival (5120 × 1664) over a fake 4096 px GPU limit: MASTER_TOO_LARGE, never scaled, the window stays black", async () => {
+    const fakeLimit = { createSource: (id: string, settings: JsonValue, master: Size) => createOutputSource(id, settings, master, { prepareCalibration: async () => ({ logo: true, font: true }), depthMaxSize: () => 4096 }) };
+    expect(await code(prepareSession(depth(), fakeLimit))).toBe("MASTER_TOO_LARGE");
+    // At 5120 or more it is allowed (the dev Mac reports 16384).
+    expect(await code(prepareSession(depth(), { createSource: (id: string, settings: JsonValue, master: Size) => createOutputSource(id, settings, master, { prepareCalibration: async () => ({ logo: true, font: true }), depthMaxSize: () => 5120 }) }))).not.toBe("MASTER_TOO_LARGE");
+  });
+
+  it("a lost WebGL context reports GPU_UNAVAILABLE and keeps the last frame; on restore it draws again and clears the error", async () => {
+    const h = harness();
+    h.callbacks.session!(depth());
+    await h.settle();
+    h.callbacks.clock!({ state: "playing", fps: 30, startFrame: 0, epochMs: h.now() });
+    h.run(31);
+    const drawnBeforeLoss = h.frames.length;
+    expect(drawnBeforeLoss).toBeGreaterThan(5);
+    h.gpu(true);
+    h.run(61);
+    expect(h.frames.length).toBe(drawnBeforeLoss);
+    expect(h.reports.at(-1)).toMatchObject({ errorCode: "GPU_UNAVAILABLE", firstFrameDrawn: true });
+    h.gpu(false);
+    h.run(31);
+    expect(h.frames.length).toBeGreaterThan(drawnBeforeLoss);
+    expect(h.reports.at(-1)!.errorCode).toBeUndefined();
+  });
+
+  it("a lost context doesn't touch a source without WebGL (test card, pixel grid)", async () => {
+    const h = harness();
+    h.callbacks.session!(session({ clock: { state: "playing", fps: 30, startFrame: 0, epochMs: 0 } }));
+    await h.settle();
+    h.run(10);
+    const n = h.frames.length;
+    h.gpu(true);
+    h.run(31);
+    expect(h.frames.length).toBeGreaterThan(n);
+    expect(h.reports.at(-1)!.errorCode).toBeUndefined();
+  });
+
+  it("the GPU test hook is gated like the reference: only with testMode", () => {
+    const runtime = { referenceFrame: async () => null };
+    const off: Record<string, unknown> = {};
+    installOutputReference(off, {}, runtime, () => true);
+    expect("__pixelLabOutputGpu" in off).toBe(false);
+    const on: Record<string, unknown> = {};
+    const calls: boolean[] = [];
+    const remove = installOutputReference(on, { testMode: true }, runtime, (lose) => (calls.push(lose), true));
+    const hook = on.__pixelLabOutputGpu as { lose(): boolean; restore(): boolean };
+    expect(hook.lose()).toBe(true);
+    expect(hook.restore()).toBe(true);
+    expect(calls).toEqual([true, false]);
+    remove();
+    expect("__pixelLabOutputGpu" in on).toBe(false);
+  });
+
+  it("tests/fixtures/depth-emerald-chamber.json is the normalized default scene (regenerate with UPDATE_FIXTURES=1)", () => {
+    const file = "tests/fixtures/depth-emerald-chamber.json";
+    const text = JSON.stringify(normalizeDepthConfig(EMERALD_CHAMBER), null, 2) + "\n";
+    if (process.env.UPDATE_FIXTURES || !existsSync(file)) writeFileSync(file, text);
+    expect(readFileSync(file, "utf8")).toBe(text);
   });
 });
 

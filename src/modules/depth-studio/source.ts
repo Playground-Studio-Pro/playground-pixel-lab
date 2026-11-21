@@ -18,13 +18,20 @@ import { DepthRenderer } from "./renderer";
 
 let shared: { canvas: HTMLCanvasElement; renderer: DepthRenderer } | null = null;
 let unavailable = false;
+let contextLost = false;
+const contextListeners = new Set<(lost: boolean) => void>();
+
+function onContextChange(lost: boolean) {
+  contextLost = lost;
+  for (const listener of contextListeners) listener(lost);
+}
 
 function renderer(): DepthRenderer | null {
   if (shared) return shared.renderer;
   if (unavailable || typeof document === "undefined") return null;
   try {
     const canvas = document.createElement("canvas");
-    shared = { canvas, renderer: new DepthRenderer(canvas) };
+    shared = { canvas, renderer: new DepthRenderer(canvas, onContextChange) };
     return shared.renderer;
   } catch {
     unavailable = true;
@@ -75,4 +82,31 @@ export function createDepthSource(config: DepthSceneConfig): FrameSource {
 /** Largest master side the scene renders at without scaling, on this GPU. Null without WebGL 2. */
 export function depthMaxSize(): number | null {
   return renderer()?.maxSize ?? null;
+}
+
+/** True while the GPU has taken the scene's WebGL context away (the renderer asks for it back). */
+export function depthContextLost(): boolean {
+  return contextLost;
+}
+
+/** Calls back with `true` when the context is lost and `false` once it is restored and the scene rebuilt. */
+export function onDepthContextChange(listener: (lost: boolean) => void): () => void {
+  contextListeners.add(listener);
+  return () => void contextListeners.delete(listener);
+}
+
+/**
+ * Test only (hidden smoke runs, through the output page's testMode hooks): loses or restores the scene's WebGL
+ * context with WEBGL_lose_context, as a GPU reset would. Returns false when there's no context or extension.
+ */
+let loseExtension: WEBGL_lose_context | null = null;
+
+export function simulateDepthContextLoss(lose: boolean): boolean {
+  if (!shared) return false;
+  // Kept from the first call: on a lost context getExtension returns null, so restore needs the same object.
+  if (!loseExtension) loseExtension = shared.canvas.getContext("webgl2")?.getExtension("WEBGL_lose_context") ?? null;
+  if (!loseExtension) return false;
+  if (lose) loseExtension.loseContext();
+  else loseExtension.restoreContext();
+  return true;
 }
