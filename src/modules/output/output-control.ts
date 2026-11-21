@@ -190,3 +190,52 @@ export function openBlocker(display: DisplayInfo | null, args: { coverControlDis
   if (display.hostsControlWindow && !args.coverControlDisplay) return "This monitor shows Pixel Lab. Tick the box to cover it.";
   return null;
 }
+
+// ── Update output (output:update) ────────────────────────────────────────────────────────────────────────────────
+
+/** Whether "Update output" may be pressed, and why not. Hidden (`null`) when there's no open output. */
+export function updateAvailability(state: OutputStatus["state"] | "closed"): { enabled: boolean; reason: string | null } | null {
+  switch (state) {
+    case "opening":
+    case "live":
+    case "failed":
+      return { enabled: true, reason: null };
+    case "waiting-display":
+    case "held":
+      return { enabled: false, reason: "Resume first." };
+    default:
+      return null;
+  }
+}
+
+/**
+ * The clock an update carries: the live output keeps its frame and play state, never restarting from 0.
+ * - Not re-timed since it was sent: the same clock, so playback continues without a jump.
+ * - Re-timed by main since (a disconnect, then Resume): re-anchored at the last frame the page reported, now.
+ */
+export function updateClock(sent: OutputClock, args: { retimed: boolean; reportedFrame: number | null; nowMs: number }): OutputClock {
+  if (!args.retimed || args.reportedFrame === null) return sent;
+  return sent.state === "playing" ? { state: "playing", fps: sent.fps, startFrame: args.reportedFrame, epochMs: args.nowMs } : { state: "paused", frame: args.reportedFrame };
+}
+
+/** An update's session: the current project and source, the next revision, and the kept clock. */
+export function buildUpdateSession(args: { project: Project; mapping: ResolvedMapping; outputId: OutputId; source: { id: string; settings: JsonValue }; clock: OutputClock; previousRevision: number }): OutputSession {
+  return buildOutputSession({ ...args, revision: args.previousRevision + 1 });
+}
+
+/** A rejected update in plain language. An output main doesn't have open is "This output isn't open." */
+export function updateErrorText(error: unknown): string {
+  const { code, text } = codeOfRejection(error);
+  return code === "UNKNOWN_OUTPUT" ? "This output isn't open." : text;
+}
+
+// ── Colour profile warning (DisplayInfo.colorSpace, #48) ─────────────────────────────────────────────────────────
+
+export const SRGB_WARNING = "This monitor isn't using the sRGB colour profile. Colours sent to the LED processor may be altered. Set it to sRGB IEC61966-2.1 in System Settings → Displays.";
+
+/** The warning for a monitor whose colour profile isn't sRGB; `null` when it is, or when Electron doesn't say. */
+export function colourWarning(display: DisplayInfo | null): string | null {
+  const cs = display?.colorSpace;
+  if (!cs) return null;
+  return cs.includes("primaries:BT709") && cs.includes("transfer:SRGB") ? null : SRGB_WARNING;
+}
