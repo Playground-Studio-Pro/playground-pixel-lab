@@ -347,7 +347,7 @@ Small, in order. Each one ends with `npm --prefix desktop test`, `npm run typech
 | D8 | **Failure handling** | Killing the output renderer (`process.crash()` in a dev-only hook) → `failed`, black window, status pushed within 1 s; a hung page → `RENDERER_UNRESPONSIVE` after 5 s; `output:retry` returns to `live` |
 | D9 | **Clock relay — backlog, not an Alpha 0.1 criterion** (owner decision). The shared clock stays in the architecture; Alpha runs one output. When taken up: | Two output windows (`MAX_OUTPUTS` raised in a test build, on two displays, one of them can be the control display with `allowControlDisplay`) [monitor físico] report the same frame number at the same timestamp within 1 frame at 30 fps over 10 minutes; pause and seek reach both within 100 ms |
 | D10 | **1:1 check** [monitor físico], after O2, run together with O10 in the same monitor session | `NOT_ONE_TO_ONE` raised when a stub reports a wrong ratio; on the real external display at scale 1 and at scale 2, the report's `canvasPx` and `contentBoxDevicePx` match `devicePx`, and O10's pixel-grid photos pass |
-| D11 | **Field rehearsal** [monitor físico] | Laptop + external monitor or processor input: open, run 30 minutes with no display sleep, Esc, reopen, unplug and replug. Results with photos in TEST-RESULTS |
+| D11 | **Field rehearsal** [monitor físico] | Laptop + external monitor or processor input: open, run 30 minutes with no display sleep, Esc, reopen, unplug and replug, then leave the output `held` for at least 5 minutes before Resume with no display sleep. Results with photos in TEST-RESULTS |
 
 **Risks.**
 
