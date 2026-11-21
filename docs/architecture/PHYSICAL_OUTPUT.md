@@ -671,19 +671,49 @@ export function expectedGridPixel(rect: { w: number; h: number }, x: number, y: 
 
 **Physical** [monitor físico]: the pixel grid in `display` space and then `master` space on an external monitor, photographed from 10–20 cm with a phone, at the monitor's native mode with scale 1, at a HiDPI mode with scale 2, and at one macOS *scaled* mode (expected to fail visibly: gray checker patches; the photo documents what the operator should look for). Pass = all four edge lines, both inner lines and all corner markers complete, and the 1 × 1 checker crisp. Photos go into `desktop/docs/TEST-RESULTS.md`.
 
-### 8.9 Measured limits (to be filled by O8)
+### 8.9 Measured limits (O8)
 
-Known numbers, from Chromium's and the GPU's own limits; everything else is measured on the dev Mac and written here, not guessed.
+Measured 2026-11-20 by `desktop/tests/smoke-scripts/o8-limits.cjs`, hidden smoke run (`npm --prefix desktop run test:smoke -- --smoke-script=…`), on the dev Mac:
+- **Machine:** MacBook Pro MacBookPro18,4, Apple M1 Max, 32 GB, macOS 26.2.
+- **Software:** Electron 43.8.10, Chromium 150.0.7871.250.
+- **Display:** the hidden run's virtual display, 3600 × 2338 device px at scale 2, 120 Hz.
+- **Workload:** Festival Main Stage OUT 1 (Processor A, 3072 × 1920). Every frame draws the whole 5120 × 1664 master, then cuts (O-1). 30 s per measurement after a 2 s warm-up.
 
-| Limit | Value | Source |
+| Limit | Value | How it was measured |
 | --- | --- | --- |
-| 2D canvas side | 32,767 px (Chromium) | Chromium limit, to confirm in Electron by creating canvases of growing size and checking `getContext` and one pixel round-trip |
-| 2D canvas area | 268,435,456 px (Chromium) | Same |
-| GPU texture side (`MAX_TEXTURE_SIZE`) | To measure | A 2D canvas larger than this may fall back to software and drop the frame rate; record where |
-| Depth Studio (`depthMaxSize()`) | To measure | `min(MAX_RENDERBUFFER_SIZE, MAX_VIEWPORT_DIMS)` |
-| Memory per output window, Festival, test card | To measure | `app.getAppMetrics()` / `process.getProcessMemoryInfo()` and Activity Monitor's GPU memory, before and after `live` |
-| Same, Depth Studio | To measure | Note: `DepthRenderer` uses `antialias: true`, so an MSAA buffer the master's size; at 5120 × 1664 that can reach hundreds of MB |
-| Frame time, Festival, test card / Depth Studio at 60 fps | To measure | rAF timestamps over 60 s; report `browserFps`, `lateFrames`, `skippedFrames` |
+| 2D canvas side | **65,535 px** works; 65,536 fails | Canvas `w × 1`, fill the far pixel, read it back. Over the limit Chromium gives **no error: the canvas stays blank** (reads 0, 0, 0). The runtime still refuses above 32,767 (`CHROMIUM_CANVAS_LIMITS`), unchanged; see O8's PR |
+| 2D canvas area | **268,435,456 px** (16384 × 16384 and 32767 × 8192 work; 16385 × 16384 and 32767 × 8193 fail, silently) | Same round-trip |
+| GPU texture side (`MAX_TEXTURE_SIZE`) | **16,384 px** | WebGL 2 in the output window (the report's `limits`). Festival's master (5120) is well under it. Canvases between 16,385 and 65,535 px a side are allowed by Chromium but may fall back to software; not measured |
+| Depth Studio (`depthMaxSize()`) | **16,384 px** | `min(MAX_RENDERBUFFER_SIZE, MAX_VIEWPORT_DIMS)`, from the report. Festival (5120) plays at 1:1 (O7) |
+| Memory per output window, Festival, test card | **Renderer 179–182 MiB** working set (peak 238); GPU process 106–108 MiB, against 99–103 MiB before opening | `app.getAppMetrics()`: the output window's renderer pid and the GPU process, while live. Apple Silicon shares memory between CPU and GPU, and IOSurface allocations may not all show in the GPU process |
+| Same, pixel grid | Renderer 155–156 MiB; GPU process 105–106 MiB | Same |
+| Same, Depth Studio | **Renderer 122–127 MiB**; GPU process 106–107 MiB | Same. The MSAA buffer at the master's size isn't visible as a jump in the GPU process's working set on this machine |
+| First frame (open → live) | **660–697 ms** (one Depth Studio run 217 ms) | Control-window IPC to the controller's `live` state, per source and frame rate. That covers creating the window, loading the page, the session, preparing the source and drawing |
+| Frame time and content rate | See the table below | The page's own paint record (testMode only), the reports' `browserFps`, `lateFrames`, `skippedFrames` and `cadence.measuredHz` |
+
+| Source | Content fps | Content frames drawn / due | Paint ms (median / p99 / max) | Interval ms (median / p99) | Late / skipped |
+| --- | --- | --- | --- | --- | --- |
+| Calibration test card | 30 | 907 / 907 (100 %) | 4.5 / 4.8 / 5.3 | 33.3 / 42.1 | 0 / 0 |
+| Calibration test card | 60 | 1814 / 1814 (100 %) | 4.1 / 4.3 / 4.6 | 16.7 / 25.1 | 0 / 0 |
+| Pixel grid (motion) | 30 | 908 / 907 (100 %) | 4.6 / 6.0 / 8.9 | 33.4 / 36.0 | 3 / 0 |
+| Pixel grid (motion) | 60 | 1813 / 1813 (100 %) | 2.8 / 3.4 / 3.7 | 16.7 / 18.8 | 0 / 0 |
+| Depth Studio | 30 | 901 / 900 (100 %) | 0.8 / 1.3 / 1.8 | 33.3 / 42.3 | 0 / 0 |
+| Depth Studio | 60 | 1801 / 1801 (100 %) | 0.8 / 1.2 / 2.8 | 16.7 / 19.5 | 2 / 0 |
+
+`browserFps` was 120 and `measuredHz` 120.5 in every run.
+
+- **What "paint" covers:** the CPU time of one paint: black fill, the source drawing the whole master, the slice copies. For Depth Studio that's the WebGL submission and the copy, not the GPU's own render time, which a hidden window can't time.
+- **What "late" means:** a rAF interval longer than 1.5 refresh periods.
+
+**Against the trigger for region rendering (8.2):** "O8 shows Festival can't hold the content rate, or `MAX_OUTPUTS` goes above 1."
+- **Content rate:** Festival held both 30 and 60 fps with every source, with 0 skipped frames.
+- **Headroom:** the slowest paint (pixel grid at 30 fps, max 8.9 ms) is about half a 60 fps frame (16.7 ms).
+- **`MAX_OUTPUTS`:** still 1.
+- **Verdict: the trigger isn't met; region rendering stays documented, not built.**
+
+**What these numbers don't cover:**
+- **A real display.** The hidden window's frames aren't a panel's vsync, so a frame rate held here doesn't prove the wall holds it. O9's cadence video is that check.
+- **Other machines.** A venue laptop or an integrated GPU will be slower. Re-run the script there before a show.
 
 ### 8.10 Output tasks for Phase C
 

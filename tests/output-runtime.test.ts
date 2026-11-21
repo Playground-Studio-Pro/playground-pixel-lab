@@ -348,6 +348,34 @@ describe("output reference hook (O6)", () => {
   });
 });
 
+// ── Paint record for O8 (read through testMode only) ─────────────────────────
+
+describe("paint record (O8)", () => {
+  it("records each paint's duration and interval, and clears them when read", async () => {
+    const h = harness();
+    h.callbacks.session!(session({ clock: { state: "playing", fps: 30, startFrame: 0, epochMs: 0 } }));
+    await h.settle();
+    h.run(61);
+    const first = h.runtime.paintStats();
+    expect(first.paintMs.length).toBe(h.frames.length);
+    expect(first.intervalsMs.length).toBe(first.paintMs.length - 1);
+    for (const ms of first.paintMs) expect(ms).toBeGreaterThanOrEqual(0);
+    expect(h.runtime.paintStats()).toEqual({ paintMs: [], intervalsMs: [] });
+  });
+
+  it("the stats hook is installed only with testMode, next to the reference", () => {
+    const runtime = { referenceFrame: async () => null, paintStats: () => ({ paintMs: [1], intervalsMs: [] }) };
+    const off: Record<string, unknown> = {};
+    installOutputReference(off, {}, runtime);
+    expect("__pixelLabOutputStats" in off).toBe(false);
+    const on: Record<string, unknown> = {};
+    const remove = installOutputReference(on, { testMode: true }, runtime);
+    expect((on.__pixelLabOutputStats as () => unknown)()).toEqual({ paintMs: [1], intervalsMs: [] });
+    remove();
+    expect("__pixelLabOutputStats" in on).toBe(false);
+  });
+});
+
 // ── The output page loads nothing from the editor (8.1) ──────────────────────
 
 describe("output page imports", () => {

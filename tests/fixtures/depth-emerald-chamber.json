@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "sceneId": "infinite-particle-room",
+  "seed": 1977,
+  "durationSeconds": 15,
+  "fps": 30,
+  "room": {
+    "depthM": 12,
+    "showGrid": true,
+    "gridOpacity": 0.35
+  },
+  "viewer": {
+    "distanceM": 8,
+    "offsetXM": 0,
+    "offsetYM": 0
+  },
+  "particles": {
+    "enabled": true,
+    "count": 1500,
+    "speed": 1,
+    "size": 1,
+    "opacity": 0.8
+  },
+  "lighting": {
+    "intensity": 1,
+    "directionDeg": 0,
+    "sweepWidth": 0.18
+  },
+  "atmosphere": {
+    "fogDensity": 0.045
+  },
+  "palette": {
+    "background": "#04140E",
+    "particle": "#5FD08C",
+    "accent": "#DDF3E8"
+  }
+}

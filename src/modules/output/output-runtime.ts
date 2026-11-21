@@ -39,6 +39,7 @@ const REPORT_EVERY_MS = 500;
 const FPS_WINDOW_MS = 2000;
 const GRID_SAMPLES = 60;
 const MAX_ERROR = 500;
+const PAINT_SAMPLES = 4000;
 
 interface Live {
   readonly prepared: PreparedSession;
@@ -77,6 +78,10 @@ export class OutputRuntime {
   private lastReportAt = -Infinity;
   private limitsCache: NonNullable<OutputRenderReport["limits"]> | null = null;
   private disposers: (() => void)[] = [];
+  /** How long each paint took, in ms, the last PAINT_SAMPLES of them (O8 measurements; read through testMode only). */
+  private paintMs: number[] = [];
+  private paintIntervals: number[] = [];
+  private lastPaintAt: number | null = null;
 
   constructor(private readonly env: OutputRuntimeEnv) {}
 
@@ -237,6 +242,7 @@ export class OutputRuntime {
     const ctx = this.ctx;
     const layout = this.layout;
     if (!ctx || !layout) return;
+    const started = performance.now();
     try {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -246,6 +252,7 @@ export class OutputRuntime {
       ctx.restore();
       live.prepared.draw(ctx, frame, live.fps, layout.canvasPx);
       this.drawn = { revision: live.prepared.revision, frame };
+      this.recordPaint(started);
       if (!this.firstFrameDrawn) {
         this.firstFrameDrawn = true;
         this.lastReportAt = -Infinity;
@@ -254,6 +261,27 @@ export class OutputRuntime {
       this.fail("DRAW_FAILED", error instanceof Error ? error.message : String(error));
       this.drawn = { revision: live.prepared.revision, frame };
     }
+  }
+
+  private recordPaint(started: number): void {
+    const end = performance.now();
+    this.paintMs.push(end - started);
+    if (this.lastPaintAt !== null) this.paintIntervals.push(end - this.lastPaintAt);
+    this.lastPaintAt = end;
+    if (this.paintMs.length > PAINT_SAMPLES) this.paintMs.shift();
+    if (this.paintIntervals.length > PAINT_SAMPLES) this.paintIntervals.shift();
+  }
+
+  /**
+   * Paint measurements since the last call (O8, hidden smoke runs through testMode): how long each paint took
+   * and the time between paints, in ms. Read-only apart from clearing the samples it returns.
+   */
+  paintStats(): { paintMs: number[]; intervalsMs: number[] } {
+    const out = { paintMs: this.paintMs, intervalsMs: this.paintIntervals };
+    this.paintMs = [];
+    this.paintIntervals = [];
+    this.lastPaintAt = null;
+    return out;
   }
 
   private browserFps(t: number): number {
@@ -359,9 +387,14 @@ export type OutputReferenceHook = (frame: number) => Promise<{ hash: string; wid
  * hidden smoke run (`pixelLabOutput.testMode === true`, set by Desktop's main, never in a packaged build). Without the
  * flag nothing is defined. Returns a function that removes it.
  */
-export function installOutputReference(target: object, api: object, runtime: Pick<OutputRuntime, "referenceFrame">): () => void {
+export function installOutputReference(target: object, api: object, runtime: Pick<OutputRuntime, "referenceFrame"> & Partial<Pick<OutputRuntime, "paintStats">>): () => void {
   if ((api as { testMode?: unknown }).testMode !== true) return () => {};
   const hook: OutputReferenceHook = (frame) => runtime.referenceFrame(frame);
   Object.defineProperty(target, "__pixelLabOutputReference", { value: hook, configurable: true, enumerable: false, writable: false });
-  return () => void delete (target as Record<string, unknown>).__pixelLabOutputReference;
+  // O8: paint times since the last call. Same gate as the reference.
+  if (runtime.paintStats) Object.defineProperty(target, "__pixelLabOutputStats", { value: () => runtime.paintStats!(), configurable: true, enumerable: false, writable: false });
+  return () => {
+    delete (target as Record<string, unknown>).__pixelLabOutputReference;
+    delete (target as Record<string, unknown>).__pixelLabOutputStats;
+  };
 }
