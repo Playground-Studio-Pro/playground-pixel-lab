@@ -37,6 +37,7 @@ Read first:
 | C3 | Saved content layouts | ⏸ | L2, C2 |
 | C4 | Stage mockup still, in the Physical view | ⏸ | C2 |
 | C5 | Video generation adapter, as a design note | ⏸ | User decision on keys versus a backend |
+| C6 | [Wall Build](../product/MODULES.md#wall-build) V1 | ✅ Character still first, then the rest. Merges after Alpha 0.1 | Owner approval of the still |
 
 ### C1 Content templates
 
