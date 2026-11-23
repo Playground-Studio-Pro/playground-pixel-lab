@@ -11,6 +11,9 @@
  */
 
 import { isHexColor, outlineFor } from "./contrast";
+import { DEFAULT_WORKER_COLORS, type WorkerColors } from "./settings";
+
+export type { WorkerColors };
 
 export type Point = readonly [x: number, y: number];
 
@@ -22,15 +25,6 @@ export type WorkerShape =
   | { readonly kind: "line"; readonly points: readonly Point[]; readonly width: number; readonly fill: string }
   /** Starts at `from`; each curve is quadratic: control point, then end point. Closed. */
   | { readonly kind: "curve"; readonly from: Point; readonly curves: readonly (readonly [Point, Point])[]; readonly fill: string };
-
-export interface WorkerColors {
-  /** `#RRGGBB` */
-  readonly helmet: string;
-  /** `#RRGGBB` */
-  readonly vest: string;
-}
-
-export const DEFAULT_WORKER_COLORS: WorkerColors = { helmet: "#FFC53D", vest: "#FF6A1A" };
 
 /** Height of the art grid, in units: ground to the top of the helmet. */
 export const WORKER_UNITS = 256;
@@ -91,6 +85,15 @@ export const WORKER_POSES: Readonly<Record<WorkerPoseId, WorkerPose>> = {
   },
 };
 
+/**
+ * Ankle positions through one walking cycle, facing right. The far leg is half a cycle behind.
+ * On the ground a foot moves back about `WALK_STEP_UNITS` per step, so the feet don't slide.
+ */
+export const WALK_CYCLE: readonly Point[] = [
+  [32, -12], [16, -12], [0, -12], [-18, -12], [-34, -14], [-18, -26], [4, -30], [24, -20],
+];
+export const WALK_STEP_UNITS = 17;
+
 /** Fixed colours. Limbs are light, so they read on dark walls. The outline covers every other background. */
 const INK = "#070A16";
 const SHIRT = "#A9BAF5";
@@ -133,6 +136,11 @@ export interface WorkerInput {
   readonly cabinet?: { readonly width: number; readonly height: number };
   /** `#RRGGBB` behind the worker. Chooses the outline that stands out from it. */
   readonly background?: string;
+  /** Step of the walking cycle. Absent: the pose's own legs. */
+  readonly step?: number;
+  readonly blink?: boolean;
+  /** How far above the feet a placed cabinet's bottom edge is, in pixels. */
+  readonly lift?: number;
 }
 
 export interface WorkerDrawing {
@@ -212,7 +220,7 @@ const ARM_HALF = 50;
 const SIDE_EDGE = 86;
 
 /** The held cabinet, in pixels, and the hand positions in units. */
-function grip(pose: WorkerPose, height: number, cabinet: { width: number; height: number }) {
+function grip(pose: WorkerPose, height: number, cabinet: { width: number; height: number }, lift: number) {
   const toPx = (u: number) => Math.round((u * height) / WORKER_UNITS);
   const toUnits = (v: number) => Math.round((v * WORKER_UNITS) / height);
   const { width, height: h } = cabinet;
@@ -233,14 +241,27 @@ function grip(pose: WorkerPose, height: number, cabinet: { width: number; height
   // Pushed into place from its side, standing on the same level as its bottom edge.
   const x = toPx(SIDE_EDGE);
   const tall = Math.min(160, toUnits(h));
-  const hand = (percent: number): Point => [SIDE_EDGE - 10, -Math.round((tall * percent) / 100)];
-  return { rect: { x, y: -h, width, height: h }, far: hand(80), near: hand(45) };
+  const hand = (percent: number): Point => [SIDE_EDGE - 10, -toUnits(lift) - Math.round((tall * percent) / 100)];
+  return { rect: { x, y: -h - lift, width, height: h }, far: hand(80), near: hand(45) };
 }
 
 /** The poses that suit a cabinet: a tall one goes on the helmet, a short one is carried at the waist. */
 export function cabinetPoses(height: number, cabinetHeight: number): { readonly carry: WorkerPoseId; readonly place: WorkerPoseId } {
   const units = (cabinetHeight * WORKER_UNITS) / height;
   return { carry: units < 96 ? "carry-front" : "carry-head", place: units < 104 ? "place-low" : "place" };
+}
+
+/** Where the held cabinet is, relative to the feet, in pixels. Null when the pose holds nothing. */
+export function heldRect(input: Pick<WorkerInput, "pose" | "height" | "facing" | "cabinet" | "lift">): WorkerDrawing["cabinet"] {
+  const pose = WORKER_POSES[input.pose];
+  if (!pose.hold || !input.cabinet) return null;
+  const { rect: held } = grip(pose, input.height, input.cabinet, input.lift ?? 0);
+  return input.facing === -1 ? { ...held, x: -held.x - held.width } : held;
+}
+
+/** How far in front of the feet a placed cabinet's near edge is, in pixels. */
+export function placeReach(height: number): number {
+  return Math.round((SIDE_EDGE * height) / WORKER_UNITS);
 }
 
 function bootShapes(ankle: Point, near: boolean): WorkerShape[] {
@@ -294,7 +315,7 @@ function torsoShapes(pose: WorkerPose, vest: string): WorkerShape[] {
 }
 
 /** Head, intercom headset and helmet. The face is a small LED panel with two lit pixels for eyes. */
-function headShapes(pose: WorkerPose, helmet: string): WorkerShape[] {
+function headShapes(pose: WorkerPose, helmet: string, blink: boolean): WorkerShape[] {
   const dx = pose.lean;
   const dy = pose.drop;
   const p = (x: number, y: number): Point => [x + dx, y + dy];
@@ -306,8 +327,8 @@ function headShapes(pose: WorkerPose, helmet: string): WorkerShape[] {
     r(-36, -176, 76, 20, 14, SHELL_SHADE),
     r(-36, -190, 76, 20, 0, SHELL),
     r(-16, -210, 50, 48, 10, FACE),
-    r(0, -200, 8, 16, 0, PIXEL),
-    r(20, -200, 8, 16, 0, PIXEL),
+    blink ? r(0, -190, 8, 4, 0, PIXEL) : r(0, -200, 8, 16, 0, PIXEL),
+    blink ? r(20, -190, 8, 4, 0, PIXEL) : r(20, -200, 8, 16, 0, PIXEL),
     r(8, -172, 12, 4, 0, PIXEL),
     r(4, -176, 4, 4, 0, PIXEL),
     r(20, -176, 4, 4, 0, PIXEL),
@@ -360,7 +381,7 @@ export function workerShapes(input: WorkerInput): WorkerDrawing {
   const helmet = isHexColor(input.colors?.helmet) ? input.colors.helmet : DEFAULT_WORKER_COLORS.helmet;
   const vest = isHexColor(input.colors?.vest) ? input.colors.vest : DEFAULT_WORKER_COLORS.vest;
   const pose = WORKER_POSES[input.pose];
-  const held = pose.hold && input.cabinet ? grip(pose, height, input.cabinet) : null;
+  const held = pose.hold && input.cabinet ? grip(pose, height, input.cabinet, input.lift ?? 0) : null;
 
   const shoulderY = SHOULDER_Y + pose.drop;
   const farShoulder: Point = [pose.shoulders - 2 + pose.lean, shoulderY];
@@ -369,16 +390,18 @@ export function workerShapes(input: WorkerInput): WorkerDrawing {
   const far = armShapes(farShoulder, held?.far ?? pose.farHand, up || pose.hold === "front" ? 1 : -1, false);
   const near = armShapes(nearShoulder, held?.near ?? pose.nearHand, -1, true);
 
+  const cycle = WALK_CYCLE.length;
+  const walk = (leg: WorkerPose["nearLeg"], offset: number) => (input.step === undefined ? leg : { ...leg, ankle: WALK_CYCLE[(((input.step + offset) % cycle) + cycle) % cycle] });
   const body = [
-    ...legShapes(pose.farLeg, pose.drop, false),
+    ...legShapes(walk(pose.farLeg, cycle / 2), pose.drop, false),
     ...far.arm,
-    ...legShapes(pose.nearLeg, pose.drop, true),
+    ...legShapes(walk(pose.nearLeg, 0), pose.drop, true),
     ...torsoShapes(pose, vest),
-    ...headShapes(pose, helmet),
+    ...headShapes(pose, helmet, input.blink ?? false),
   ];
   const hands = [...far.glove, ...near.arm, ...near.glove];
   const rim = expanded([...body, ...hands], RIM, outlineFor(input.background));
   const toPx = (shapes: readonly WorkerShape[]) => shapes.map((shape) => place(shape, height, facing));
-  const cabinet = held ? { ...held.rect, x: facing === 1 ? held.rect.x : -held.rect.x - held.rect.width } : null;
+  const cabinet = heldRect(input);
   return { behind: toPx([...rim, ...body]), cabinet, front: toPx(hands) };
 }
