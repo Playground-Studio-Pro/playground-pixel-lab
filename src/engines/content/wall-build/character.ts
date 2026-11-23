@@ -400,7 +400,8 @@ export function workerShapes(input: WorkerInput): WorkerDrawing {
     ...headShapes(pose, helmet, input.blink ?? false),
   ];
   const hands = [...far.glove, ...near.arm, ...near.glove];
-  const rim = expanded([...body, ...hands], RIM, outlineFor(input.background));
+  // Every edge of the worker has ink, so growing the ink alone gives the whole rim.
+  const rim = expanded([...body, ...hands].filter((s) => s.fill === INK), RIM, outlineFor(input.background));
   const toPx = (shapes: readonly WorkerShape[]) => shapes.map((shape) => place(shape, height, facing));
   const cabinet = heldRect(input);
   return { behind: toPx([...rim, ...body]), cabinet, front: toPx(hands) };
