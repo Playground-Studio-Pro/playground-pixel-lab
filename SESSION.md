@@ -1,6 +1,6 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-20, Alpha 0.1 Phase C. Automated work is nearly done; the physical monitor session comes next.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-23, Alpha 0.1 Phase C. Automated work is done; the physical monitor session is paused until the owner has an HDMI cable.
 
 ## Objective
 
@@ -10,9 +10,9 @@ Current state only. Replace it, don't accumulate. Latest update: 2026-11-20, Alp
 | --- | --- | --- |
 | **A.** Protection and integration | Lead Architect | Done |
 | **B.** Electron on macOS | Desktop Engineering | Done (#19) |
-| **C.** Physical output | Desktop + Output Engineering | **In progress.** D1–D5, D7, D8 and O1–O6 merged, plus O12 operator controls (#42), Update output (#50) and the sRGB requirement (#48). Left to automate: O7, O8, the Update button and sRGB warning, the sleep blocker in `held`. D6, D10, D11 and O9–O11 need the external monitor |
+| **C.** Physical output | Desktop + Output Engineering | **In progress.** All automated work merged (#19–#55): D1–D5, D7, D8, O1–O8, O12, Update output, the sRGB report and warning. D6, D10, D11 and O9–O11 need the external monitor |
 
-Product Design, Content Engineering and LED Engineering stay stopped.
+Product Design and LED Engineering stay stopped. Content Engineering works only on Wall Build V1, on its branch, unmerged until Alpha 0.1 passes (owner, 2026-11-23).
 
 ## Alpha 0.1 requirements
 
@@ -37,20 +37,22 @@ Decisions made since 2026-11-18:
 - **Colour (#48):** the output display's macOS profile must be sRGB IEC61966-2.1. The app can't force Chromium's colour profile in Electron 43; only the test harness (`test:smoke`) passes `--force-color-profile=srgb`. Displays report `colorSpace` and `colorDepth`.
 - **O6 reference (#46, #47):** in unpackaged `--smoke-test` runs only, `pixelLabOutput.testMode` lets the output page draw the exporter's frame N for comparison. Off in packaged builds and normal runs.
 - **Update output (#50):** accepted in opening, live and failed; refused in waiting-display and held (D-2). UNKNOWN_OUTPUT for an output that isn't open.
-- **Sleep blocker:** to be held in `held` as well as live (Desktop, in progress).
+- **Sleep blocker (#52):** held in live and held, released in waiting-display.
 - **Test safety:** no visible output window without the owner's explicit permission and an Esc / Close recovery. Smoke runs stay hidden; `allowControlDisplay` is never set silently. No `electron` invocation outside hidden `--smoke-test`.
 
 **Physical test session** (owner organises it, after the automated work): D6 full screen → sRGB colour check → D7 disconnect / reconnect → D10 + O10 1:1 photos → O9 cadence → O11 Resolume Arena → D11 30-minute rehearsal. Then one run with Wi-Fi physically off.
 
-## Beyond Alpha 0.1 (owner requests, 2026-11-20)
+## Beyond Alpha 0.1 (owner requests)
 
+- **[Wall Build](docs/product/MODULES.md#wall-build):** V1 approved 2026-11-23, ahead of the items below.
 - **Cabinets and processors:** researched in [LED_HARDWARE_CATALOG](docs/engineering/LED_HARDWARE_CATALOG.md) (#43). Four cabinets are in the dropdowns (#44), marked as not checked against the PDFs. Processors, load, power and weight calculations, and a Nova setup sheet are the Engineering work (E2–E4), after Alpha 0.1.
 - **Test cards:** diagonal motion and a nicer-looking card ("Test card v2"), after Alpha 0.1, with pixel tests per pattern.
 
 ## Where it stands
 
-- **`main`** at `8d8bd52`, the merge of #50. CI green.
-- **Open work:** Output, the Update button and sRGB warning, then O7 and O8. Desktop, the sleep blocker in `held`, then it waits for the physical session.
+- **`main`** at `652fd8f`, the merge of #55. CI green.
+- **Open work:** the physical session, paused; the owner confirms again before any visible window. Wall Build V1 (Content Engineering).
+- **Local only:** `test/d6-harness` (933cc4b), Desktop's D6 harness for the physical session.
 - **Branches kept:** every merged branch, `feature/desktop-engineering`, `feature/output-physical`, `feature/output-engineering` (ProRes, out of Alpha) and `docs/phase-c-progress`.
 - **Local backups, keep until Alpha 0.1 passes:** `~/Play.Code/playground.pixel/_backups/` and the original `~/Play.Code/playground.pixel/desktop/` folder.
 

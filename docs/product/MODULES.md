@@ -1,6 +1,6 @@
 # Customization and Modules
 
-**Status: proposal, not approved.** The module contract in section 3 is now defined, as types only, in [CONTRACTS](../architecture/CONTRACTS.md), and each candidate module has an owning agent in [docs/agents](../agents/README.md). Written 2026-11-07 for the design and product reviews. Nothing here is in the [ROADMAP](ROADMAP.md) yet. Each item needs approval before work starts, and some change scope that the roadmap currently excludes; those are marked.
+**Status: proposal, not approved.** The module contract in section 3 is now defined, as types only, in [CONTRACTS](../architecture/CONTRACTS.md), and each candidate module has an owning agent in [docs/agents](../agents/README.md). Written 2026-11-07 for the design and product reviews. Except for Wall Build, nothing here is in the [ROADMAP](ROADMAP.md) yet. Each item needs approval before work starts, and only Wall Build V1 has it (section 4). Some change scope that the roadmap currently excludes; those are marked.
 
 It covers four topics:
 1. Demo projects.
@@ -94,11 +94,38 @@ interface PixelLabModule {
 
 | Module | Value | Feasibility | Scope | Size |
 | --- | --- | --- | --- | --- |
+| Wall Build | An animated crew builds each mapped LED wall, for show intros and a mapping check | High. Reads `resolveMapping`, one new `FrameSource` | **V1 approved 2026-11-23**, merges after Alpha 0.1 | Medium |
 | Content templates | Designers get exact-size files per screen, canvas or output | High. Reuses `exports/scene.ts` | In Phase 1 | Small |
 | Full-screen output | Plays the preview on a real wall through the processor | High | Next Motion Lab step, recommended in [SESSION](../../SESSION.md) | Small |
 | Stage mockups and quick video | Pitch ideas as a rendered stage or a video per screen | Medium | Video encoding is excluded from Phase 2; needs approval | Medium |
 | NDI output | Sends the preview to Resolume, vMix or OBS with no cables | Low in the browser alone | Needs a native part; Phase 3 or later | Large |
 | Video generation API | AI content at each screen's exact size | Medium technically, but needs a backend or user keys | Conflicts with no-backend until Phase 5 | Large |
+
+### Wall Build
+
+**Status: V1 approved by the owner on 2026-11-23**, ahead of processors and Test card v2. Content Engineering builds it as task C6 on its own branch. Nothing of it merges until Alpha 0.1 passes its physical tests. "Wall Build" is a working name.
+
+Idea: original animated workers carry each LED cabinet to its place until the wall is complete. The name, characters and art are our own. The owner's reference, a third-party Resolume plugin, is only the general idea: its art, name and interface aren't copied.
+
+| Part | V1 |
+| --- | --- |
+| Positions | Each cabinet's exact rectangle on the master canvas, from `resolveMapping`: the screen's `masterRect`, `columns`, `rows` and cabinet pixels |
+| Character | One original character. The owner approves a still image before it's animated |
+| Build order | Bottom up, from the centre, or random with a fixed seed |
+| Speed | A total build time. Large walls place cabinets in groups |
+| Look | Helmet, vest and background colours; grid on or off; countdown on or off |
+| Ending | The finished wall holds, and pixel tests check its cabinet edges against the mapping |
+| Output | Live preview, then MP4 export. In Resolume the MP4 is imported as a clip |
+
+Rules:
+- **Deterministic:** every frame is calculated from its number alone, with no clock or unseeded randomness.
+- **No saved data in V1:** settings live in the module's own store, so the project schema doesn't change.
+- **No new dependencies.**
+- **Export comes second:** MP4 export and the output window share one source list (`OUTPUT_SOURCE_IDS`, `output-sources.ts`), so Wall Build can't be exported until it's added there. That's a separate change by the Lead Architect and Output Engineering, after Alpha 0.1 passes. The same change must keep Wall Build out of the output window until that has been tested.
+
+Not in V1: more characters, text or logos on clothing, welding, scaffolds, fixed BPM, and the full-screen output window.
+
+Not possible as a module: live control or live BPM in Resolume, and reading Resolume slices. A change means exporting again.
 
 ### Content templates
 
