@@ -231,6 +231,45 @@ Measured 2026-11-08: production build, Apple M1 Max, 32 GB, Chrome, Node 26, `np
 
 **Preview, Festival Main Stage** (5120 × 1664 master, 6 screens, 13% zoom, a single run per setting, not the full harness): the browser preview read 59.9 to 60.0 fps with 0 late and 0 skipped frames at flow speeds 1× and 4×. Each frame draws one linear gradient and up to 16 additive radial glows on the off-screen master. This is browser preview FPS only; it says nothing about LED refresh. Venue laptops are unmeasured.
 
+### Wall Build (Live preview source, C6)
+
+Measured 2026-11-23: production build, Apple M1 Max, Node 26, gzip sizes from `npm run perf:bundle`. Before is `a6c5098`, with the module written but not registered; after adds the four registration edits.
+
+| | Before | After |
+| --- | --- | --- |
+| Initial JS | 172.8 KB | 172.8 KB. One 1.8 KB initial chunk has a new hash and the same size |
+| All lazy chunks together | 434.1 KB | 444.2 KB (+10.1) |
+| Engine and painting, its own chunk, loaded when the source is first selected | n/a | 6.8 KB |
+| Controls, their own chunk, loaded when the source is first selected | n/a | 2.2 KB |
+| New dependencies | n/a | none |
+
+The remaining 1.1 KB is the catalog line, the source, its store and settings, and the bundler splitting chunks differently.
+
+**Preview frame intervals.** Headless Chrome 158, `next start -p 3102`, 1600 × 900 at 2× pixel ratio, fitted to view, 30 fps content. Three runs of 180 frames for each build order, with Content Flow as reference in the same session:
+
+| Project | Content Flow p95 | Wall Build p95, three orders | Over 20 ms | Late, skipped |
+| --- | --- | --- | --- | --- |
+| Festival Main Stage, 6 screens | 16.7 to 16.8 ms | 16.7 to 16.8 ms | 0 | 0, 0 |
+| Stress test, 500 screens | 16.7 to 16.8 ms | 16.7 to 16.8 ms | 0 | 0, 0 |
+
+Headless frame intervals show that the main thread kept up. They don't prove that a visible display did.
+
+**Draw time per frame.** In-app Chromium 156, development transform, a plain canvas, 90 frames across the build, each followed by a one-pixel readback to force the drawing to finish. The readback makes these upper bounds:
+
+| Project, canvas | Operations, median | Draw, median / p95 |
+| --- | --- | --- |
+| Festival Main Stage, 5120 × 1664 (scale 1) | 0.6 ms | 13.9 / 15.7 ms |
+| Festival Main Stage, 2048 × 666 | 0.5 ms | 8.2 / 8.7 ms |
+| Corporate Keynote, 4224 × 1536 (scale 1) | 0.2 ms | 7.7 / 8.9 ms |
+| 500 screens, 4096 × 3277 | 4.1 ms | 39.3 / 55.2 ms |
+| 500 screens, 2048 × 1639 | 4.2 ms | 24.9 / 37.7 ms |
+
+Planning a whole project took 0.1 to 3.6 ms, once per mapping or schedule change. Drawing the workers' rim from their ink outline alone took Festival Main Stage at scale 1 from 17.7 to 13.9 ms median, same method, same session.
+
+**Determinism.** On one canvas backend, the same frame gave the same pixels, whatever was drawn before. Chromium moves a canvas from GPU to CPU drawing after repeated readbacks, and the two smooth the workers' curved edges differently. Cabinet fills and edges are whole-pixel rectangles: the finished wall matched the mapping in all 21,348 samples, read from a real canvas at scale 1 (Center Wall and Header, which share pixels, are covered by unit tests instead).
+
+**Not measured:** a visible display, venue laptops or integrated GPUs, and drawing inside an MP4 export or output window, which Wall Build isn't part of.
+
 ## Depth Studio
 
 ### Emerald Chamber (first milestone)
