@@ -3,8 +3,9 @@ import type { drawWallBuild as Draw } from "./wall-build-draw";
 import { useWallBuild } from "./wall-build-store";
 
 /**
- * Wall Build as a `FrameSource`. The engine and the painting load on first use, so this stays small where
- * the registry is imported. Until they load, a frame is the plain background; `subscribe` then redraws it.
+ * Wall Build as a `FrameSource`. The engine and the painting load when something subscribes, so this
+ * stays small where the registry is imported. `draw` never loads anything: until they load, a frame is the
+ * plain background, and `subscribe` then redraws it. A load that fails is tried again by the next subscriber.
  * Anything that exports frames must wait for `prepareWallBuildSource` first.
  */
 
@@ -37,7 +38,6 @@ export const wallBuildSource: FrameSource = {
       draw(ctx, input, scale, settings);
       return;
     }
-    void prepareWallBuildSource().catch(() => undefined);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = settings.background;
     ctx.fillRect(0, 0, Math.ceil(input.width * scale), Math.ceil(input.height * scale));
@@ -45,6 +45,7 @@ export const wallBuildSource: FrameSource = {
   subscribe(onChange) {
     waiting.add(onChange);
     const stop = useWallBuild.subscribe(onChange);
+    void prepareWallBuildSource().catch(() => undefined);
     return () => {
       waiting.delete(onChange);
       stop();

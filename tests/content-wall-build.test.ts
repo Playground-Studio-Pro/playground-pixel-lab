@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTENT_FPS } from "@/domain/motion";
+import { OUTPUT_SOURCE_IDS } from "@/domain/physical-output";
 import { countdownText, placedColor, placedEdge, wallBuildOps, type Box, type WallBuildOp } from "@/engines/content/wall-build/frame";
 import { frameTick, MAX_WORKERS, planWallBuild, secondsLeft, TICKS_PER_SECOND, type WallBuildPlan } from "@/engines/content/wall-build/plan";
 import { applyWallBuild, BUILD_ORDERS, DEFAULT_WALL_BUILD, MAX_BUILD_SECONDS, MIN_BUILD_SECONDS } from "@/engines/content/wall-build/settings";
@@ -7,8 +8,11 @@ import { resolveMapping, type ResolvedMapping } from "@/engines/mapping";
 import * as ops from "@/engines/project-ops";
 import { corporateKeynote } from "@/examples/keynote";
 import { stress500 } from "@/examples/stress";
+import { MODULE_SOURCES } from "@/modules/catalog";
 import { prepareWallBuildSource, wallBuildSource } from "@/modules/content/wall-build-source";
 import { useWallBuild } from "@/modules/content/wall-build-store";
+import { findSource } from "@/modules/registry";
+import { OutputSourceError, parseOutputSettings } from "@/modules/output/output-sources";
 import { CAB, festivalMainStage, testContext, threeScreenProject } from "./helpers";
 
 const look = DEFAULT_WALL_BUILD;
@@ -324,5 +328,66 @@ describe("Wall Build source", () => {
     stop();
     useWallBuild.getState().update({ grid: true });
     expect(calls).toBe(2);
+  });
+
+  it("draw never loads the engine, and a failed load is tried again only by the next subscriber", async () => {
+    vi.resetModules();
+    let loads = 0;
+    let fail = true;
+    vi.doMock("@/modules/content/wall-build-draw", () => {
+      loads++;
+      if (fail) throw new Error("offline");
+      return { drawWallBuild: () => undefined };
+    });
+    try {
+      const { wallBuildSource: source } = await import("@/modules/content/wall-build-source");
+      const ctx = { setTransform: () => undefined, fillRect: () => undefined, fillStyle: "" } as unknown as CanvasRenderingContext2D;
+      const draw = () => source.draw(ctx, { frame: 0, fps: 30, width: 10, height: 10, screens: [] }, { scale: 1, fontFamily: "x" });
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+      draw();
+      await settle();
+      expect(loads).toBe(0);
+
+      let calls = 0;
+      source.subscribe!(() => calls++)();
+      await settle();
+      expect(loads).toBe(1);
+      for (let i = 0; i < 10; i++) draw();
+      await settle();
+      expect([loads, calls]).toEqual([1, 0]);
+
+      fail = false;
+      const stop = source.subscribe!(() => calls++);
+      await settle();
+      expect([loads, calls]).toEqual([2, 1]);
+      stop();
+      source.subscribe!(() => calls++)();
+      await settle();
+      expect(loads).toBe(2);
+    } finally {
+      vi.doUnmock("@/modules/content/wall-build-draw");
+      vi.resetModules();
+    }
+  });
+});
+
+describe("Wall Build stays in the Live preview", () => {
+  it("is listed and plays there", () => {
+    expect(MODULE_SOURCES.find((s) => s.id === "wall-build")?.moduleId).toBe("content");
+    expect(findSource("wall-build")).toBe(wallBuildSource);
+  });
+
+  it("can't be exported or sent to the output window", () => {
+    expect(OUTPUT_SOURCE_IDS as readonly string[]).not.toContain("wall-build");
+    const refusal = (() => {
+      try {
+        parseOutputSettings("wall-build", {});
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(refusal).toBeInstanceOf(OutputSourceError);
+    expect((refusal as OutputSourceError).code).toBe("SOURCE_UNKNOWN");
   });
 });

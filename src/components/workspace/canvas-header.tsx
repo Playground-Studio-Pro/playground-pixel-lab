@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Layers, Pause, Play, RotateCcw, SquareDashed } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,8 @@ import { MODULE_SOURCES } from "@/modules/catalog";
 import { CalibrationSourceControls } from "@/modules/output/calibration-controls";
 import { SelectField } from "./fields";
 import { IconButton } from "./top-bar";
+
+const WallBuildControls = dynamic(() => import("@/modules/content/wall-build-controls").then((m) => m.WallBuildControls), { ssr: false });
 
 // Motion Lab patterns first, then sources from modules. Module source values carry a prefix so the two can't collide.
 const SOURCE_PREFIX = "source:";
@@ -81,6 +84,7 @@ export function CanvasHeader() {
           />
           {!sourceId && pattern === "aurora" && <AuroraControls />}
           {sourceId === "calibration-test-card" && <CalibrationSourceControls />}
+          {sourceId === "wall-build" && <WallBuildControls />}
           <SelectField ariaLabel="Target content rate" className="w-[5.5rem]" value={String(fps)} items={fpsItems} onChange={(v) => motion.setFps(Number(v) as ContentFps)} />
           <SelectField ariaLabel="Playback speed" className="w-[4.5rem]" value={String(speed)} items={speedItems} onChange={(v) => motion.setSpeed(Number(v) as PlaybackSpeed)} />
           <Divider />

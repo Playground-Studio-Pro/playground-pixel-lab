@@ -23,7 +23,8 @@ import { exportMp4 } from "./video-export";
 
 const CALIBRATION = "calibration-test-card";
 const DEPTH = "depth-scene";
-const sourceItems = MODULE_SOURCES.map((s) => ({ value: s.id, label: s.name }));
+const outputSources = MODULE_SOURCES.filter((s) => (OUTPUT_SOURCE_IDS as readonly string[]).includes(s.id));
+const sourceItems = outputSources.map((s) => ({ value: s.id, label: s.name }));
 const fpsItems = CONTENT_FPS.map((f) => ({ value: String(f), label: `${f} fps` }));
 const SECONDS = [5, 10, 15, 20, 30, 60] as const;
 const secondItems = SECONDS.map((s) => ({ value: String(s), label: `${s} s` }));
@@ -66,7 +67,7 @@ export default function OutputStudioPanel() {
   const targets = useMemo(() => (mapping ? videoTargets(mapping) : []), [mapping]);
   const exportable = targets.filter((t) => !t.problem);
   const blocked = targets.filter((t) => t.problem);
-  const [sourceId, setSourceId] = useState(liveSource && MODULE_SOURCES.some((s) => s.id === liveSource) ? liveSource : CALIBRATION);
+  const [sourceId, setSourceId] = useState(liveSource && outputSources.some((s) => s.id === liveSource) ? liveSource : CALIBRATION);
   const [targetId, setTargetId] = useState<string | null>(null);
   const target: VideoTarget | undefined = exportable.find((t) => t.id === targetId) ?? exportable[0];
   const [fps, setFps] = useState<ContentFps>(liveFps);

@@ -1,5 +1,6 @@
 import type { ExportEntry } from "@/exports/contract";
 import type { FrameSource } from "@/preview/contract";
+import { contentModule } from "./content/module";
 import type { PixelLabModule, StudioId } from "./contract";
 import { depthStudioModule } from "./depth-studio/module";
 import { engineeringModule } from "./engineering/module";
@@ -12,7 +13,7 @@ import { outputModule } from "./output/module";
  * change when a module grows. Import this file only from code that loads on first use: the shell reads
  * `catalog.ts` instead, so modules never land in the initial bundle.
  */
-export const MODULES: readonly PixelLabModule[] = [depthStudioModule, engineeringModule, outputModule];
+export const MODULES: readonly PixelLabModule[] = [depthStudioModule, contentModule, engineeringModule, outputModule];
 
 export function modulesFor(studio: StudioId): readonly PixelLabModule[] {
   return MODULES.filter((m) => m.studio === studio);
