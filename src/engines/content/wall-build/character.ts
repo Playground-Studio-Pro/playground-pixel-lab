@@ -10,6 +10,8 @@
  * their size always comes from the mapping, and the hands adapt to it.
  */
 
+import { isHexColor, outlineFor } from "./contrast";
+
 export type Point = readonly [x: number, y: number];
 
 export type WorkerShape =
@@ -64,10 +66,10 @@ export const WORKER_POSES: Readonly<Record<WorkerPoseId, WorkerPose>> = {
     farHand: [54, -70], nearHand: [-58, -70],
   },
   "carry-head": {
-    hold: "head", lean: 0, drop: 4, shoulders: 36,
+    hold: "head", lean: 0, drop: 4, shoulders: 42,
     farLeg: { hip: 10, ankle: [32, -12], bend: 1 },
     nearLeg: { hip: -10, ankle: [-34, -12], bend: 1 },
-    farHand: [50, -250], nearHand: [-50, -250],
+    farHand: [68, -242], nearHand: [-68, -242],
   },
   "carry-front": {
     hold: "front", lean: -4, drop: 6, shoulders: 34,
@@ -89,26 +91,27 @@ export const WORKER_POSES: Readonly<Record<WorkerPoseId, WorkerPose>> = {
   },
 };
 
-/** Fixed colours. Trousers and shirt stay lighter than black, so the worker reads on a dark wall. */
+/** Fixed colours. Limbs are light, so they read on dark walls. The outline covers every other background. */
 const INK = "#070A16";
-const SHIRT = "#46558A";
-const SHIRT_FAR = "#35416C";
-const TROUSERS = "#38456F";
-const TROUSERS_FAR = "#2A3556";
-const BOOT = "#8A6446";
-const BOOT_FAR = "#6C4E37";
+const SHIRT = "#A9BAF5";
+const SHIRT_FAR = "#8496DA";
+const TROUSERS = "#AEB7CC";
+const TROUSERS_FAR = "#8E98B2";
+const BOOT = "#D09A6B";
+const BOOT_FAR = "#B07D52";
+/** The arm, leg and boot colours, for the contrast check. */
+export const LIMB_COLORS = [SHIRT, SHIRT_FAR, TROUSERS, TROUSERS_FAR, BOOT, BOOT_FAR] as const;
 const SOLE = "#E6EBF7";
 const GLOVE = "#E6EBF7";
 const GLOVE_FAR = "#BAC4DC";
 const SHELL = "#DCE3F3";
 const SHELL_SHADE = "#AEB9D4";
-const FACE = "#0B1024";
+/** The screen face. Used by nothing else, so a test can find it. */
+export const FACE = "#0B1024";
 const PIXEL = "#5BE7FF";
 const REFLECT = "#F4F8FF";
 const BELT = "#1B2240";
 const POUCH = "#A67B55";
-
-const HEX = /^#[0-9a-fA-F]{6}$/;
 
 /** `color` moved toward black (negative) or white (positive) by `percent`. Integer channels. */
 export function shade(color: string, percent: number): string {
@@ -128,6 +131,8 @@ export interface WorkerInput {
   readonly facing?: 1 | -1;
   /** The held cabinet's size in pixels, from the mapping. Ignored by poses that hold nothing. */
   readonly cabinet?: { readonly width: number; readonly height: number };
+  /** `#RRGGBB` behind the worker. Chooses the outline that stands out from it. */
+  readonly background?: string;
 }
 
 export interface WorkerDrawing {
@@ -165,16 +170,23 @@ const poly = (points: readonly Point[], fill: string): WorkerShape => ({ kind: "
 /** Ink around a group, in units. Drawn under the whole group, so shapes inside it share one outline. */
 const OUTLINE = 4;
 
+/** Light or dark rim around the whole worker, in units beyond the ink. */
+const RIM = 4;
+
 function outlined(shapes: readonly WorkerShape[]): WorkerShape[] {
-  const ink = shapes.flatMap((s): WorkerShape[] => {
-    if (s.kind === "rect") return [{ ...s, x: s.x - OUTLINE, y: s.y - OUTLINE, w: s.w + 2 * OUTLINE, h: s.h + 2 * OUTLINE, r: s.r + OUTLINE, fill: INK }];
-    if (s.kind === "disc") return [{ ...s, r: s.r + OUTLINE, fill: INK }];
-    if (s.kind === "line") return [{ ...s, width: s.width + 2 * OUTLINE, fill: INK }];
-    // Closed shapes: their edge as a thick ink line around them.
-    if (s.kind === "poly") return [{ kind: "line", points: [...s.points, s.points[0]], width: 2 * OUTLINE, fill: INK }];
-    return [{ kind: "line", points: flatten(s), width: 2 * OUTLINE, fill: INK }];
+  return [...expanded(shapes, OUTLINE, INK), ...shapes];
+}
+
+/** Every shape grown by `by` units, in one colour. */
+function expanded(shapes: readonly WorkerShape[], by: number, fill: string): WorkerShape[] {
+  return shapes.map((s): WorkerShape => {
+    if (s.kind === "rect") return { ...s, x: s.x - by, y: s.y - by, w: s.w + 2 * by, h: s.h + 2 * by, r: s.r + by, fill };
+    if (s.kind === "disc") return { ...s, r: s.r + by, fill };
+    if (s.kind === "line") return { ...s, width: s.width + 2 * by, fill };
+    // Closed shapes: their edge as a thick line around them. The shape itself covers the middle.
+    if (s.kind === "poly") return { kind: "line", points: [...s.points, s.points[0]], width: 2 * by, fill };
+    return { kind: "line", points: flatten(s), width: 2 * by, fill };
   });
-  return [...ink, ...shapes];
 }
 
 /** A curve's edge as points, for its outline. */
@@ -207,8 +219,9 @@ function grip(pose: WorkerPose, height: number, cabinet: { width: number; height
   const halfW = toUnits(width / 2);
   if (pose.hold === "head") {
     const top = toPx(-252 + pose.drop);
-    const reach = Math.min(54, halfW);
-    const handY = -250 + pose.drop;
+    // Hands stay wide of the head, even under a narrow cabinet, so the arms never cross the face.
+    const reach = Math.min(68, Math.max(58, halfW));
+    const handY = -242 + pose.drop;
     return { rect: { x: -Math.floor(width / 2), y: top - h, width, height: h }, far: [reach, handY] as Point, near: [-reach, handY] as Point };
   }
   if (pose.hold === "front") {
@@ -344,8 +357,8 @@ function place(shape: WorkerShape, height: number, facing: 1 | -1): WorkerShape 
 export function workerShapes(input: WorkerInput): WorkerDrawing {
   const { height, facing = 1 } = input;
   if (!Number.isInteger(height) || height < 1) throw new Error("Worker height must be a whole number of pixels");
-  const helmet = HEX.test(input.colors?.helmet ?? "") ? input.colors!.helmet : DEFAULT_WORKER_COLORS.helmet;
-  const vest = HEX.test(input.colors?.vest ?? "") ? input.colors!.vest : DEFAULT_WORKER_COLORS.vest;
+  const helmet = isHexColor(input.colors?.helmet) ? input.colors.helmet : DEFAULT_WORKER_COLORS.helmet;
+  const vest = isHexColor(input.colors?.vest) ? input.colors.vest : DEFAULT_WORKER_COLORS.vest;
   const pose = WORKER_POSES[input.pose];
   const held = pose.hold && input.cabinet ? grip(pose, height, input.cabinet) : null;
 
@@ -364,7 +377,8 @@ export function workerShapes(input: WorkerInput): WorkerDrawing {
     ...headShapes(pose, helmet),
   ];
   const hands = [...far.glove, ...near.arm, ...near.glove];
+  const rim = expanded([...body, ...hands], RIM, outlineFor(input.background));
   const toPx = (shapes: readonly WorkerShape[]) => shapes.map((shape) => place(shape, height, facing));
   const cabinet = held ? { ...held.rect, x: facing === 1 ? held.rect.x : -held.rect.x - held.rect.width } : null;
-  return { behind: toPx(body), cabinet, front: toPx(hands) };
+  return { behind: toPx([...rim, ...body]), cabinet, front: toPx(hands) };
 }
