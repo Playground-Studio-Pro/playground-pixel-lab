@@ -70,6 +70,10 @@ export function paintWallBuild(ctx: CanvasRenderingContext2D, ops: readonly Wall
       ctx.beginPath();
       ctx.rect(op.clip.x * scale, op.clip.y * scale, op.clip.w * scale, op.clip.h * scale);
       ctx.clip();
+      for (const b of op.under ?? []) {
+        ctx.fillStyle = b.color;
+        fill(ctx, b, scale);
+      }
       const worker = new DOMMatrix([scale, 0, 0, scale, op.x * scale, op.y * scale]);
       ctx.setTransform(worker);
       for (const s of op.behind) shape(ctx, s);

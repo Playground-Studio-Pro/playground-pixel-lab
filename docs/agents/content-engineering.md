@@ -84,8 +84,9 @@ No network code until the user decides.
 - **Engine:** `src/engines/content/wall-build/`. `plan.ts` schedules every cabinet from `ResolvedMapping`; `frame.ts` turns a tick into flat operations; time is whole ticks (600 a second), so every content FPS gives the same moment.
 - **Module:** `src/modules/content/` has the source, store, controls and painting. The engine and controls load on first use. Settings aren't saved.
 - **Registration:** four small edits outside this lane, reviewed by the Lead Architect: `modules/registry.ts`, `modules/catalog.ts`, `components/workspace/canvas-header.tsx`, and `modules/output/studio-panel.tsx` (Output Engineering), which now lists only sources it can export.
+- **Low walls** (one or two rows, fixed after the owner's demo): the worker is the largest that stays whole inside the wall in every pose it uses there, measured from its own shapes (`fit.ts`). Festival Main Stage: Ribbon 120 px, DJ Booth 192 px. Where there's no room beside the cabinet, it comes down from above and the worker guides it in. Below 8 px a wall builds without workers. Other walls draw exactly as before.
 - **Not exportable:** a test keeps `wall-build` out of `OUTPUT_SOURCE_IDS`.
-- **Tests:** `tests/content-wall-build.test.ts` and `tests/content-wall-build-character.test.ts`, 83 tests. Measurements are in [PERFORMANCE](../development/PERFORMANCE.md#wall-build-live-preview-source-c6).
+- **Tests:** `tests/content-wall-build.test.ts` and `tests/content-wall-build-character.test.ts`, 102 tests. Measurements are in [PERFORMANCE](../development/PERFORMANCE.md#wall-build-live-preview-source-c6).
 - **Found, not fixed:** the Aurora settings panel is cut off by the Live preview header, which scrolls sideways (`overflow-x-auto`). Wall Build's panel is fixed to the window, so it isn't affected.
 
 **2026-11-08, Sprint 1: Aurora Gradient, merged in PR #9** (approved by the user in this session; not one of C1–C5).

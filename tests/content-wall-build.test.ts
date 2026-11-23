@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CONTENT_FPS } from "@/domain/motion";
 import { OUTPUT_SOURCE_IDS } from "@/domain/physical-output";
 import { countdownText, placedColor, placedEdge, wallBuildOps, type Box, type WallBuildOp } from "@/engines/content/wall-build/frame";
+import { fitWorker, shapesBounds } from "@/engines/content/wall-build/fit";
 import { frameTick, MAX_WORKERS, planWallBuild, secondsLeft, TICKS_PER_SECOND, type WallBuildPlan } from "@/engines/content/wall-build/plan";
 import { applyWallBuild, BUILD_ORDERS, DEFAULT_WALL_BUILD, MAX_BUILD_SECONDS, MIN_BUILD_SECONDS } from "@/engines/content/wall-build/settings";
 import { resolveMapping, type ResolvedMapping } from "@/engines/mapping";
@@ -16,6 +17,7 @@ import { OutputSourceError, parseOutputSettings } from "@/modules/output/output-
 import { CAB, festivalMainStage, testContext, threeScreenProject } from "./helpers";
 
 const look = DEFAULT_WALL_BUILD;
+const CABINET = { width: 128, height: 128 };
 const oneCabinet = () => {
   const ctx = testContext();
   return ops.addScreen(ops.addCabinet(ops.createProject({ name: "One" }, ctx), CAB), { name: "Single", cabinetId: CAB.id, columns: 1, rows: 1 }, ctx);
@@ -194,7 +196,7 @@ describe("Wall Build frames", () => {
           }
           expect([o.x, o.y].every(Number.isInteger)).toBe(true);
           expect(p.screens.some((s) => s.x === o.clip.x && s.y === o.clip.y && s.width === o.clip.w && s.height === o.clip.h)).toBe(true);
-          for (const b of o.boxes) expect([b.x, b.y, b.w, b.h].every(Number.isInteger)).toBe(true);
+          for (const b of [...(o.under ?? []), ...o.boxes]) expect([b.x, b.y, b.w, b.h].every(Number.isInteger)).toBe(true);
           const whole = o.boxes[0];
           if (whole && o.boxes.length > 2) expect(sizes.has(`${whole.w}x${whole.h}`)).toBe(true);
         }
@@ -209,7 +211,7 @@ describe("Wall Build frames", () => {
         for (const s of p.screens.slice(0, name === "500 screens" ? 3 : undefined)) {
           for (const t of s.workers.flat()) {
             const slot = s.cabinets[t.lead];
-            const boxes = workers(wallBuildOps(p, t.end - 1, look)).flatMap((o) => (o.kind === "worker" ? o.boxes : []));
+            const boxes = workers(wallBuildOps(p, t.end - 1, look)).flatMap((o) => (o.kind === "worker" ? [...(o.under ?? []), ...o.boxes] : []));
             expect(boxes.some((b) => b.w === s.cabinetWidth && b.h === s.cabinetHeight && Math.abs(b.x - slot.x) <= 1 && Math.abs(b.y - slot.y) <= 1), `${name} ${order} ${s.screenId}`).toBe(true);
           }
         }
@@ -226,6 +228,97 @@ describe("Wall Build frames", () => {
       expect(filled(c.placedAt - 1)).toBe(false);
       expect(filled(c.placedAt)).toBe(true);
     }
+  });
+});
+
+/** One wall of each given shape, side by side. */
+const walls = (...shapes: readonly (readonly [columns: number, rows: number, pixelsX: number, pixelsY: number])[]) => {
+  const ctx = testContext();
+  let p = ops.createProject({ name: "Low walls" }, ctx);
+  shapes.forEach(([columns, rows, pixelsX, pixelsY], i) => {
+    const cabinet = { ...CAB, id: `c${i}`, name: `C${i}`, pixelsX: pixelsX as typeof CAB.pixelsX, pixelsY: pixelsY as typeof CAB.pixelsY };
+    p = ops.addScreen(ops.addCabinet(p, cabinet), { name: `${columns}x${rows} of ${pixelsX}x${pixelsY}`, cabinetId: cabinet.id, columns, rows }, ctx);
+  });
+  return resolveMapping(p);
+};
+
+describe("Wall Build low walls", () => {
+  const LOW: [string, ResolvedMapping][] = [
+    ["Festival Main Stage: Ribbon, DJ Booth and Header", festival],
+    ["one cabinet", FIXTURES[3][1]],
+    ["one row", walls([2, 1, 128, 128], [3, 1, 192, 192], [12, 1, 256, 64], [7, 1, 64, 256], [1, 1, 64, 256], [1, 1, 400, 32])],
+    ["two rows", walls([1, 2, 128, 128], [2, 2, 192, 192], [5, 2, 256, 128], [6, 2, 64, 128], [1, 2, 48, 96])],
+    ["500 screens", FIXTURES[5][1]],
+  ];
+
+  for (const [name, mapping] of LOW) {
+    for (const order of BUILD_ORDERS) {
+      it(`${name}, ${order}: every worker stays whole inside its wall on every frame`, () => {
+        const p = plan(mapping, { order });
+        const low = p.screens.filter((s) => s.low);
+        expect(low.length).toBeGreaterThan(0);
+        const byClip = new Map(low.map((s) => [`${s.x},${s.y},${s.width},${s.height}`, s]));
+        const seen = new Set<string>();
+        // Every frame at 30 fps, and every 30th for 500 screens.
+        for (let t = 0; t <= p.settledTick; t += name === "500 screens" ? 600 : 20) {
+          for (const o of wallBuildOps(p, t, { ...look, grid: false })) {
+            if (o.kind !== "worker") continue;
+            const s = byClip.get(`${o.clip.x},${o.clip.y},${o.clip.w},${o.clip.h}`);
+            if (!s) continue;
+            seen.add(s.screenId);
+            const b = shapesBounds([...o.behind, ...o.front]);
+            const inside = o.x + b.left >= s.x && o.x + b.right <= s.x + s.width && o.y + b.top >= s.y && o.y + b.bottom <= s.y + s.height;
+            if (!inside) throw new Error(`${s.screenId} at tick ${t}: ${JSON.stringify(b)} at ${o.x},${o.y} leaves ${s.x},${s.y} ${s.width}x${s.height}`);
+            // The cabinet is never scaled.
+            const whole = (o.under ?? o.boxes)[0];
+            if (whole && (o.under ?? o.boxes).length > 2) expect([whole.w, whole.h]).toEqual([s.cabinetWidth, s.cabinetHeight]);
+          }
+        }
+        if (name !== "500 screens") expect([...seen].sort()).toEqual(low.map((s) => s.screenId).sort());
+      });
+    }
+  }
+
+  it("only walls with no room overhead are low; the rest keep the normal size", () => {
+    for (const [, mapping] of FIXTURES) {
+      for (const s of plan(mapping).screens) {
+        expect(s.low !== null).toBe(s.rows <= 2);
+        if (!s.low) expect(s.workerHeight).toBe(Math.round((s.cabinetHeight * 3) / 2));
+        if (!s.low) expect(s.workers.flat().every((t) => !t.guided)).toBe(true);
+      }
+    }
+  });
+
+  it("low walls keep their schedule, and their finished wall is the mapping's", () => {
+    for (const [, mapping] of LOW) {
+      const p = plan(mapping);
+      const list = wallBuildOps(p, p.settledTick, look);
+      expect(workers(list)).toHaveLength(0);
+      for (const s of p.screens.filter((q) => q.low).slice(0, 8)) {
+        expect(Math.max(...s.cabinets.map((c) => c.placedAt))).toBe(s.end);
+        const at = mapping.screens.find((m) => m.screenId === s.screenId)!.masterRect;
+        for (const c of s.cabinets) {
+          expect([c.x, c.y]).toEqual([at.x + c.column * s.cabinetWidth, at.y + c.row * s.cabinetHeight]);
+          for (const [px, py] of [[c.x, c.y], [c.x + s.cabinetWidth - 1, c.y + s.cabinetHeight - 1], [c.x + 1, c.y + 1]]) expect(pixel(list, px, py)).toBe(expectedPixel(mapping, px, py, true));
+        }
+      }
+    }
+  });
+
+  it("the Ribbon's worker is as large as the wall allows, and its face is still whole pixels", () => {
+    const ribbon = plan(festival).screens[4];
+    expect([ribbon.width, ribbon.height, ribbon.rows]).toEqual([4608, 128, 1]);
+    const fit = ribbon.low!;
+    expect(fit.above + fit.below).toBeLessThanOrEqual(128);
+    expect(fitWorker({ width: 4608, height: 128, rows: 1, cabinet: CABINET }, fit.height + 1)?.height).toBe(fit.height);
+    expect(ribbon.workerHeight).toBeGreaterThanOrEqual(112);
+  });
+
+  it("a wall too small for any worker still builds", () => {
+    const p = plan(walls([2, 1, 4, 4]));
+    expect(p.screens[0].workerHeight).toBe(0);
+    for (const t of [0, 3000, p.settledTick]) expect(workers(wallBuildOps(p, t, look))).toHaveLength(0);
+    expect(p.screens[0].cabinets.every((c) => c.placedAt > 0)).toBe(true);
   });
 });
 

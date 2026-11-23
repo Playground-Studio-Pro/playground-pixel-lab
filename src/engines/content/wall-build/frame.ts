@@ -1,6 +1,7 @@
 import { carriedCabinet } from "./cabinet";
 import { heldRect, shade, WALK_STEP_UNITS, WORKER_UNITS, workerShapes, type WorkerInput, type WorkerShape } from "./character";
 import { contrastRatio, DEFAULT_BACKGROUND, isHexColor, OUTLINE_DARK, OUTLINE_LIGHT, outlineFor } from "./contrast";
+import type { WorkerFit } from "./fit";
 import { ACTIVE_TRIP, EXIT_TICKS, secondsLeft, type PlanScreen, type PlanTrip, type WallBuildPlan } from "./plan";
 import type { WallBuildLook } from "./settings";
 
@@ -20,8 +21,8 @@ export type WallBuildOp =
   | ({ readonly kind: "fill"; readonly color: string } & Box)
   /** A 1 px line just inside the box. */
   | ({ readonly kind: "edge"; readonly color: string } & Box)
-  /** A worker: shapes offset by `x`, `y`, cut to `clip`. `boxes` and `front` come after `behind`. */
-  | { readonly kind: "worker"; readonly x: number; readonly y: number; readonly clip: Box; readonly behind: readonly WorkerShape[]; readonly boxes: readonly ({ readonly color: string } & Box)[]; readonly front: readonly WorkerShape[] };
+  /** A worker: shapes offset by `x`, `y`, cut to `clip`. Painted in this order: `under`, `behind`, `boxes`, `front`. */
+  | { readonly kind: "worker"; readonly x: number; readonly y: number; readonly clip: Box; readonly under?: readonly ({ readonly color: string } & Box)[]; readonly behind: readonly WorkerShape[]; readonly boxes: readonly ({ readonly color: string } & Box)[]; readonly front: readonly WorkerShape[] };
 
 /** A cabinet is brighter for this long after it's placed. */
 const FLASH_TICKS = 180;
@@ -61,6 +62,8 @@ interface WorkerState {
   readonly cable: Box | null;
   /** False while it hops between levels. */
   readonly grounded: boolean;
+  /** The cabinet is behind the worker. */
+  readonly guided?: boolean;
 }
 
 /** The last tick a worker can be seen at on this wall. */
@@ -137,9 +140,60 @@ function workerAt(screen: PlanScreen, trips: readonly PlanTrip[], tick: number, 
   return { x, y, input, cabinet: { x: x + place.x, y: y + place.y - Math.max(0, drop), w, h }, cable: null, grounded };
 }
 
+/**
+ * A worker on a wall too low for the normal size. It appears and leaves by growing and shrinking where it
+ * stands, and never hops past the top, so it's whole inside the wall on every frame. The timing is the same
+ * as everywhere else.
+ */
+function lowWorkerAt(screen: PlanScreen, low: WorkerFit, trips: readonly PlanTrip[], tick: number, look: WallBuildLook, seat: number): WorkerState | null {
+  const first = trips[0];
+  if (tick < Math.max(first.start, first.end - ACTIVE_TRIP) || tick >= leaves(screen)) return null;
+  const { cabinetWidth: w, cabinetHeight: h } = screen;
+  const height = low.height;
+  const size = { width: w, height: h };
+  const base = { height, colors: look, background: look.background, blink: (tick + seat * 251) % 1500 < 70 } as const;
+  const stand = (at: { readonly x: number; readonly y: number; readonly facing: 1 | -1 }, share = 1): WorkerState => ({
+    x: at.x, y: at.y, input: { ...base, height: Math.max(1, Math.round(height * share)), pose: "stand", facing: at.facing }, cabinet: null, cable: null, grounded: true,
+  });
+
+  const index = trips.findIndex((t) => tick < t.end);
+  if (index < 0) return stand(trips[trips.length - 1], 1 - clamp01((tick - screen.end) / EXIT_TICKS));
+  const trip = trips[index];
+  const previous = index > 0 ? trips[index - 1] : null;
+  const active = Math.min(ACTIVE_TRIP, trip.end - trip.start);
+  const p = ((tick - (trip.end - active)) * 100) / active;
+  const near = Math.min(screen.x + screen.width - low.side, Math.max(screen.x + low.side, trip.x - trip.facing * 3 * w));
+  const from = previous ?? { x: near, y: trip.y, facing: trip.facing };
+  if (p < 0) return stand(from);
+
+  const pickup = clamp01(p / PICKUP_END);
+  const walking = ease(clamp01((p - PICKUP_END) / (WALK_END - PICKUP_END)));
+  const placing = ease(clamp01((p - WALK_END) / (100 - WALK_END)));
+  const moving = walking > 0 && walking < 1;
+  const x = lerp(from.x, trip.x, walking);
+  const arc = from.y === trip.y ? 0 : Math.round(height * 2 * walking * (1 - walking));
+  const y = Math.max(screen.y + low.above, lerp(from.y, trip.y, walking) - arc);
+  const step = moving ? Math.floor((Math.abs(x - from.x) * WORKER_UNITS) / (WALK_STEP_UNITS * height)) : undefined;
+  const grounded = from.y === trip.y || !moving;
+  const slot = screen.cabinets[trip.lead];
+
+  if (trip.guided) {
+    if (!previous && pickup < 1) return stand(from, ease(pickup));
+    const travel: 1 | -1 = trip.x === from.x ? trip.facing : trip.x > from.x ? 1 : -1;
+    if (p < WALK_END) return { x, y, input: { ...base, pose: "stand", facing: travel, step }, cabinet: null, cable: null, grounded };
+    return { x, y, input: { ...base, pose: "carry-head", facing: travel }, cabinet: { x: slot.x, y: lerp(screen.y - h, slot.y, placing), w, h }, cable: null, grounded, guided: true };
+  }
+  const place = heldRect({ pose: "place", height, facing: trip.facing, cabinet: size, lift: trip.lift })!;
+  const drop = Math.round((y + place.y + h - screen.y) * (1 - pickup) * (1 - pickup));
+  const cabinet = { x: x + place.x, y: y + place.y - Math.max(0, drop), w, h };
+  // The first cabinet comes down while the worker is still appearing.
+  if (!previous && pickup < 1) return { ...stand(from, ease(pickup)), cabinet };
+  return { x, y, input: { ...base, pose: "place", facing: trip.facing, cabinet: size, lift: trip.lift, step }, cabinet, cable: null, grounded };
+}
+
 /** A narrow step under a worker's feet, where nothing is built below them yet. */
 function ledgeUnder(screen: PlanScreen, state: WorkerState, tick: number): Box | null {
-  if (!state.grounded || state.y >= screen.y + screen.height) return null;
+  if (!state.grounded || state.y >= screen.y + screen.height - (screen.low?.below ?? 0)) return null;
   const column = Math.min(screen.columns - 1, Math.max(0, Math.floor((state.x - screen.x) / screen.cabinetWidth)));
   const row = Math.floor((state.y - screen.y) / screen.cabinetHeight);
   if (row < 0 || row >= screen.rows || tick >= screen.cabinets[row * screen.columns + column].placedAt) return null;
@@ -205,14 +259,17 @@ export function wallBuildOps(plan: WallBuildPlan, tick: number, look: WallBuildL
     if (tick < screen.start || tick >= leaves(screen)) continue;
     const clip = { x: screen.x, y: screen.y, w: screen.width, h: screen.height };
     screen.workers.forEach((trips, seat) => {
-      const state = workerAt(screen, trips, tick, { ...look, background }, seat);
+      const seen = { ...look, background };
+      if (screen.workerHeight === 0) return;
+      const state = screen.low ? lowWorkerAt(screen, screen.low, trips, tick, seen, seat) : workerAt(screen, trips, tick, seen, seat);
       if (!state) return;
       const drawing = workerShapes(state.input);
-      const boxes = state.cabinet ? carriedCabinet({ width: state.cabinet.w, height: state.cabinet.h }, background).map((q) => ({ x: state.cabinet!.x + q.x, y: state.cabinet!.y + q.y, w: q.w, h: q.h, color: q.fill })) : [];
+      const cabinet = state.cabinet ? carriedCabinet({ width: state.cabinet.w, height: state.cabinet.h }, background).map((q) => ({ x: state.cabinet!.x + q.x, y: state.cabinet!.y + q.y, w: q.w, h: q.h, color: q.fill })) : [];
+      const boxes = state.guided ? [] : cabinet;
       if (state.cable) boxes.push({ ...state.cable, color: rim });
       const ledge = ledgeUnder(screen, state, tick);
       if (ledge) boxes.push({ ...ledge, color: rim });
-      front.push({ kind: "worker", x: state.x, y: state.y, clip, behind: drawing.behind, boxes, front: drawing.front });
+      front.push({ kind: "worker", x: state.x, y: state.y, clip, ...(state.guided ? { under: cabinet } : {}), behind: drawing.behind, boxes, front: drawing.front });
     });
   }
   // The countdown stays readable over the workers. Walls that share pixels show it once.

@@ -1,6 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { ResolvedMapping } from "@/engines/mapping";
 import { placeReach } from "./character";
+import { fitWorker, lowFeet, type WorkerFit } from "./fit";
 import { clampBuildSeconds, type BuildOrder, type PlanOptions } from "./settings";
 
 /**
@@ -48,6 +49,8 @@ export interface PlanTrip {
   readonly lift: number;
   /** Carried overhead when the wall has room for it, pushed along otherwise. */
   readonly overhead: boolean;
+  /** On a wall with no room beside the cabinet: it comes down from above, and the worker guides it in. */
+  readonly guided: boolean;
 }
 
 export interface PlanScreen {
@@ -65,7 +68,10 @@ export interface PlanScreen {
   readonly cabinets: readonly PlanCabinet[];
   /** Indices into `cabinets`, in build order. */
   readonly sequence: readonly number[];
+  /** 0 when the wall is too small for any worker. */
   readonly workerHeight: number;
+  /** On a wall too low for the normal size: how far its smaller worker reaches. Null elsewhere. */
+  readonly low: WorkerFit | null;
   /** Each worker's trips, in time order. */
   readonly workers: readonly (readonly PlanTrip[])[];
   readonly start: number;
@@ -183,6 +189,7 @@ export function planWallBuild(mapping: ResolvedMapping, options: PlanOptions): W
   const buildTicks = clampBuildSeconds(options.buildSeconds) * TICKS_PER_SECOND;
   const seed = Math.trunc(options.seed) >>> 0;
   const spans = windows(mapping, { ...options, seed }, buildTicks);
+  const fits = new Map<string, WorkerFit | null>();
   const total = mapping.screens.reduce((sum, s) => sum + s.columns * s.rows, 0);
 
   const screens = mapping.screens.map((screen, index): PlanScreen => {
@@ -208,7 +215,13 @@ export function planWallBuild(mapping: ResolvedMapping, options: PlanOptions): W
     const tick = (step: number) => start + Math.floor((span * step) / steps);
 
     const placedAt = new Array<number>(count).fill(end);
-    const workerHeight = Math.max(1, Math.min(Math.round((cabinetHeight * 3) / 2), height));
+    // With no room for a worker and a cabinet over its head, the worker must fit the wall whole.
+    const normal = Math.max(1, Math.round((cabinetHeight * 3) / 2));
+    const isLow = height < normal + cabinetHeight;
+    const key = `${width}/${height}/${rows}/${cabinetWidth}`;
+    if (isLow && !fits.has(key)) fits.set(key, fitWorker({ width, height, rows, cabinet: { width: cabinetWidth, height: cabinetHeight } }, normal));
+    const low = isLow ? fits.get(key)! : null;
+    const workerHeight = isLow ? (low?.height ?? 0) : normal;
     const reach = placeReach(workerHeight);
     const workers: PlanTrip[][] = Array.from({ length: crew }, () => []);
 
@@ -222,23 +235,27 @@ export function planWallBuild(mapping: ResolvedMapping, options: PlanOptions): W
       const slotX = x + (lead % columns) * cabinetWidth;
       const slotY = y + Math.floor(lead / columns) * cabinetHeight;
       const bottom = slotY + cabinetHeight;
-      const lift = Math.max(0, workerHeight - (bottom - y));
+      const lift = low ? y + lowFeet({ height }, bottom - y, low) - bottom : Math.max(0, workerHeight - (bottom - y));
       const trips = workers[g % crew];
       const last = trips[trips.length - 1];
       // Comes from the side it's already on, unless it would stand outside the wall.
       let facing: 1 | -1 = last ? (last.x <= slotX + Math.floor(cabinetWidth / 2) ? 1 : -1) : 2 * (lead % columns) + 1 >= columns ? 1 : -1;
       const standing = (f: 1 | -1) => (f === 1 ? slotX - reach : slotX + cabinetWidth + reach);
-      const inside = (f: 1 | -1) => standing(f) >= x && standing(f) <= x + width;
+      const margin = low?.side ?? 0;
+      const inside = (f: 1 | -1) => standing(f) >= x + margin && standing(f) <= x + width - margin;
       if (!inside(facing) && inside(facing === 1 ? -1 : 1)) facing = facing === 1 ? -1 : 1;
+      const guided = low !== null && !inside(facing);
+      const under = Math.min(x + width - margin, Math.max(x + margin, slotX + Math.floor(cabinetWidth / 2)));
       trips.push({
         start: tick(g),
         end: landed,
         lead,
-        x: standing(facing),
+        x: guided ? under : standing(facing),
         y: bottom + lift,
         facing,
         lift,
-        overhead: bottom + lift - workerHeight - cabinetHeight >= y,
+        overhead: !isLow && bottom + lift - workerHeight - cabinetHeight >= y,
+        guided,
       });
     }
 
@@ -247,7 +264,7 @@ export function planWallBuild(mapping: ResolvedMapping, options: PlanOptions): W
       const row = Math.floor(i / columns);
       return { column, row, x: x + column * cabinetWidth, y: y + row * cabinetHeight, placedAt: placed };
     });
-    return { screenId: screen.screenId, color: screen.color, x, y, width, height, columns, rows, cabinetWidth, cabinetHeight, cabinets, sequence, workerHeight, workers, start, end };
+    return { screenId: screen.screenId, color: screen.color, x, y, width, height, columns, rows, cabinetWidth, cabinetHeight, cabinets, sequence, workerHeight, low, workers, start, end };
   });
 
   return { width: mapping.master.width, height: mapping.master.height, screens, buildTicks, settledTick: buildTicks + EXIT_TICKS };
