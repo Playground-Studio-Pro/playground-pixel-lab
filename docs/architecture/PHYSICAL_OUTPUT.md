@@ -58,7 +58,7 @@ interface Size { width: number; height: number }
 - The display hosting the control window can be chosen only with an explicit `allowControlDisplay: true`, for rehearsal on a single laptop. Default refuses (`CONTROL_DISPLAY`).
 - When the output's size isn't the display's `devicePx`, `output:open` still works, but the result carries a `sizeMatch` warning (section 4). Nothing is ever scaled to fit.
 
-**Events.** Main listens to `screen` `display-added`, `display-removed` and `display-metrics-changed` (with `changedMetrics`: `bounds`, `workArea`, `scaleFactor`, `rotation`). On each event it rebuilds the list, pushes `output:displays-changed` to the control window and applies section 2's disconnect rules to any affected output window. Metric events arrive in bursts while macOS rearranges displays, so main debounces them by 250 ms before acting.
+**Events.** Main listens to `screen` `display-added`, `display-removed` and `display-metrics-changed` (with `changedMetrics`: `bounds`, `workArea`, `scaleFactor`, `rotation`). On each event it rebuilds the list, pushes `output:displays-changed` to the control window and applies section 2's disconnect rules to any affected output window. Metric events arrive in bursts while macOS rearranges displays, so main debounces them by 250 ms before acting. Main also pushes the list when an output starts or stops occupying a display.
 
 ## 2. Output windows
 

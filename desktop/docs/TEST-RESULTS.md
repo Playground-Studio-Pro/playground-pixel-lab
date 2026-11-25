@@ -595,3 +595,18 @@ Not verified: an actual display staying awake while held on a real monitor. That
 | `npm --prefix desktop test` | 98/98 |
 
 **Not tested:** anything in Electron (the owner was using Pixel Lab and Arena). Presentation options can't be checked in a hidden run: a hidden run never enters full screen, and the options apply to the app in front. It needs one visible run on an external display, with the owner's permission: options back to 0 after Close and after Esc with the editor in front.
+
+## Reopening on the same monitor (2026-11-25)
+
+**Bug:** on the owner's Mac (app from 8ba1e7d), after an output closed, Open was refused with "Another output is already on that monitor" with no output window open. Cause: `displays-changed` was sent only on screen events. Entering full screen sends one while the output is open, and nothing sent a new list when it closed.
+
+**Fix:** `output-push.cjs`. After each status, main sends the list if who occupies which display changed since the last list sent.
+
+| Check | Result |
+| --- | --- |
+| Hidden regression `reopen-display-list.cjs`, through the panel: a screen event while open, close with Close and with Esc, no screen event after; the monitor is free, Open is enabled, it reopens to live; reports alone send no list | pass; **fails with 004faef's `main.cjs`** ("the monitor is free in the last list") |
+| Unit: opened, closed, moved, waiting-display, held, reports, status before list, the screen push records, quit, crash and hang then close, display lost while opening and while failed, no control window, no call back into the controller | pass |
+| Plain hidden `test:smoke`; `o12-output-controls.cjs` | pass, no window shown |
+| `npm --prefix desktop test` | 108/108 |
+
+Not tested: a visible window. ⌘W and quit are unit tests only.
