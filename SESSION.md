@@ -1,6 +1,6 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-23, Alpha 0.1 Phase C. Automated work is done; the physical monitor session is paused until the owner has an HDMI cable.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-24, Alpha 0.1 Phase C. Automated work is done; the physical session is under way.
 
 ## Objective
 
@@ -42,6 +42,21 @@ Decisions made since 2026-11-18:
 
 **Physical test session** (owner organises it, after the automated work): D6 full screen → sRGB colour check → D7 disconnect / reconnect → D10 + O10 1:1 photos → O9 cadence → O11 Resolume Arena → D11 30-minute rehearsal. Then one run with Wi-Fi physically off.
 
+## Physical session: pending
+
+State on 2026-11-24, SAMSUNG TV (2×) and HP 27er (1×). Results: `desktop/docs/TEST-RESULTS.md` on the local branch `test/d6-harness`. Alpha 0.1 isn't done until these are run, or the owner accepts each as a known limit.
+
+| Test | Pending |
+| --- | --- |
+| D6 | Spaces off (needs a log out), then the final simple or native choice; the Close button in the interface (in D11) |
+| D7 | Passed except a 75 ms strip on the laptop, accepted by the owner. A different or second identical monitor not tried; operator notice with the editor visible |
+| Colour | Exact values at a processor or capture card |
+| O10 | 1×: sharper top-left photo, touching seam, macOS scaled mode. 2× on the Samsung: all of it |
+| O9 | **10 minutes at 30 fps: skipped by the owner for now** ("saltala... dejala pendiente"). 240 fps video: no phone available yet. Re-read the cadence report after the fractional Hz fix |
+| O11 | Resolume Arena, with a build from main |
+| D11 | 30-minute rehearsal in the real app |
+| Offline | One run with Wi-Fi physically off |
+
 ## Beyond Alpha 0.1 (owner requests)
 
 - **[Workflow sprint](docs/product/WORKFLOW.md):** planned 2026-11-24 at the owner's request, not approved to build.
@@ -51,8 +66,9 @@ Decisions made since 2026-11-18:
 
 ## Where it stands
 
-- **`main`** at `652fd8f`, the merge of #55. CI green.
-- **Open work:** the physical session, paused; the owner confirms again before any visible window. Wall Build V1 (Content Engineering).
+- **`main`** at `7813fc9`, the merge of #56. CI green.
+- **Open work:** the physical session; the owner confirms before any visible window. A fix for the fractional refresh rate (Output Engineering). Wall Build V1 (PR 57, draft).
+- **Repository:** public, the owner's choice for now (2026-11-23).
 - **Local only:** `test/d6-harness` (933cc4b), Desktop's D6 harness for the physical session.
 - **Branches kept:** every merged branch, `feature/desktop-engineering`, `feature/output-physical`, `feature/output-engineering` (ProRes, out of Alpha) and `docs/phase-c-progress`.
 - **Local backups, keep until Alpha 0.1 passes:** `~/Play.Code/playground.pixel/_backups/` and the original `~/Play.Code/playground.pixel/desktop/` folder.

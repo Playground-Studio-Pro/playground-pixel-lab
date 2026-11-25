@@ -76,5 +76,6 @@ Processors, load, power and weight; the Nova setup sheet; Test card v2 with diag
 
 ## Dependencies
 
+- **Pending physical tests**, including the skipped 10-minute run: [SESSION](../../SESSION.md#physical-session-pending). They stay open while this sprint is planned.
 - Alpha 0.1's physical tests. If Resolume (O11) fails, its fix comes before W6.
 - Wall Build (PR 57): engine review, then merge after Alpha 0.1 with the owner's approval. W7 needs it.
