@@ -471,7 +471,7 @@ describe("Wall Build stays in the Live preview", () => {
     expect(findSource("wall-build")).toBe(wallBuildSource);
   });
 
-  it("can't be exported or sent to the output window", () => {
+  it("can't be sent to the output window", () => {
     expect(OUTPUT_SOURCE_IDS as readonly string[]).not.toContain("wall-build");
     const refusal = (() => {
       try {
