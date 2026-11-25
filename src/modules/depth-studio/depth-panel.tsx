@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Pause, Play, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseTypedNumber, stepTypedNumber } from "@/engines/content/typed-value";
 import { depthCamera, depthWindow, projectPoint, vanishingPoint } from "@/engines/depth/camera";
 import { loopFrameCount } from "@/engines/depth/config";
 import { depthTargets, pickDepthTarget } from "@/engines/depth/targets";
@@ -21,7 +22,68 @@ const FRAME_MARGIN = 24;
 
 function isTyping(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "BUTTON" || target.isContentEditable || target.getAttribute("role") === "combobox";
+  return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "BUTTON" || target.isContentEditable || ["combobox", "checkbox"].includes(target.getAttribute("role") ?? "");
+}
+
+/**
+ * The loop position as a number. The animation loop writes to it directly, so it isn't a React value:
+ * Enter or leaving the field moves the loop, Escape restores the playing frame.
+ */
+function FrameField({ ref, frames }: { ref: RefObject<HTMLInputElement | null>; frames: number }) {
+  const [message, setMessage] = useState<string | null>(null);
+  const edited = useRef(false);
+  const limit = { min: 0, max: frames - 1, step: 1 };
+  const playing = () => String(depthFrameAt(useDepth.getState(), performance.now()));
+
+  const commit = (el: HTMLInputElement) => {
+    edited.current = false;
+    const typed = parseTypedNumber(el.value, limit, { whole: true });
+    setMessage(typed.ok ? typed.limited : typed.reason);
+    if (typed.ok) useDepth.getState().seek(typed.value);
+    el.value = typed.ok ? String(typed.value) : playing();
+  };
+
+  return (
+    <span className="relative">
+      <input
+        ref={ref}
+        id="depth-frame"
+        defaultValue="0"
+        inputMode="numeric"
+        autoComplete="off"
+        aria-describedby={message ? "depth-frame-message" : undefined}
+        className="h-6 w-12 rounded border border-input bg-transparent px-1 text-right font-semibold text-foreground outline-none focus-visible:border-ring"
+        data-testid="depth-frame"
+        onFocus={(e) => e.currentTarget.select()}
+        onInput={() => {
+          edited.current = true;
+          setMessage(null);
+        }}
+        onBlur={(e) => {
+          if (edited.current) commit(e.currentTarget);
+        }}
+        onKeyDown={(e) => {
+          const el = e.currentTarget;
+          if (e.key === "Enter") commit(el);
+          if (e.key === "Escape") {
+            edited.current = false;
+            setMessage(null);
+            el.value = playing();
+            el.blur();
+          }
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            const next = stepTypedNumber(el.value, (e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 10 : 1), limit, { whole: true });
+            if (next !== null) {
+              el.value = next;
+              commit(el);
+            }
+          }
+        }}
+      />
+      {message && <span id="depth-frame-message" role="status" className="absolute right-0 bottom-full mb-2 rounded border border-border bg-popover px-2 py-1 text-xs whitespace-nowrap text-warn">{message}</span>}
+    </span>
+  );
 }
 
 /**
@@ -44,7 +106,7 @@ export default function DepthPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<DepthRenderer | null>(null);
   const scrubRef = useRef<HTMLInputElement>(null);
-  const frameText = useRef<HTMLSpanElement>(null);
+  const frameField = useRef<HTMLInputElement>(null);
   const timecodeText = useRef<HTMLSpanElement>(null);
   const fpsText = useRef<HTMLSpanElement>(null);
 
@@ -114,7 +176,8 @@ export default function DepthPanel() {
       renderer.renderFrame(frame);
       live.current.dirty = false;
       if (frame !== live.current.lastFrame) {
-        if (frameText.current) frameText.current.textContent = String(frame).padStart(4, "0");
+        // While it's being typed in, the field keeps what's typed.
+        if (frameField.current && document.activeElement !== frameField.current) frameField.current.value = String(frame);
         if (timecodeText.current) timecodeText.current.textContent = timecode(frame, state.config.fps);
         if (scrubRef.current && document.activeElement !== scrubRef.current) scrubRef.current.value = String(frame);
       }
@@ -247,7 +310,8 @@ export default function DepthPanel() {
           data-testid="depth-scrub"
         />
         <span className="flex items-baseline gap-1.5 text-xs whitespace-nowrap text-muted-foreground tabular-nums">
-          Frame <span ref={frameText} className="font-semibold text-foreground" data-testid="depth-frame">0000</span>
+          <label htmlFor="depth-frame">Frame</label>
+          <FrameField ref={frameField} frames={frames} />
           <span>of {frames}</span>
           <span ref={timecodeText} className="text-foreground" data-testid="depth-timecode">00:00:00:00</span>
         </span>
