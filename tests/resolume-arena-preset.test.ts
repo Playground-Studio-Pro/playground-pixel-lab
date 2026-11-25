@@ -168,6 +168,10 @@ describe("in the Resolume package", () => {
     expect(readme).toContain("## Arena preset (test)");
     expect(readme).toContain("First save your current Advanced Output setup");
     expect(readme).toContain("Arena 7.28.1");
+    expect(readme).toContain("`~/Documents/Resolume Arena/Presets/Advanced Output/`");
+    expect(readme).toContain("`Documents\\Resolume Arena\\Presets\\Advanced Output`, **not verified**");
+    expect(readme).toContain("restart Arena");
+    expect(readme).toContain("Never copy it over `Preferences/AdvancedOutput.xml`");
     expect(readme).toContain("## Setup");
     expect(readme).not.toContain("Not verified");
   });

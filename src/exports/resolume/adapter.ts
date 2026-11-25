@@ -139,7 +139,7 @@ function arenaPresetSection(setup: ResolumeSetup, file: string): string[] {
     ...(several ? [`> **Not verified: ${setup.screens.length} Screens.** This preset has one Screen per output. Only presets with one Screen have been loaded in Arena. Check every Screen and slice.`] : []),
     [
       `1. **First save your current Advanced Output setup** from the preset menu at the top left of Advanced Output, so you can go back to it.`,
-      `2. Copy the file into the folder where Arena keeps its Advanced Output presets, in the Resolume Arena folder of your Documents, and choose it from that preset menu. Pixel Lab never writes into Resolume's folders.`,
+      `2. Copy the file into Arena's Advanced Output presets folder. On macOS, with Arena ${TESTED_ARENA}, it's \`~/Documents/Resolume Arena/Presets/Advanced Output/\`. On Windows it's probably \`Documents\\Resolume Arena\\Presets\\Advanced Output\`, **not verified**. Then choose it from that preset menu; if it isn't listed, restart Arena. Arena saves the preset back into the same folder when you use it. Never copy it over \`Preferences/AdvancedOutput.xml\`: that file holds Arena's live settings. Pixel Lab never writes into Resolume's folders.`,
       `3. Each Screen's device is a virtual one, so loading the preset never opens a monitor. Choose the real display as each Screen's device, then continue with step 7 of the setup below.`,
       `4. Compare every slice with the tables above and the pixel map guides, as in “Check the mapping”. If anything differs, use the manual setup below and delete the preset.`,
     ].join("\n"),
