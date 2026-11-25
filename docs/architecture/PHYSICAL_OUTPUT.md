@@ -757,7 +757,7 @@ Small, in order. Each ends with `npm run typecheck && npm run lint && npm test` 
 
 ### 8.11 Resolume Arena test procedure
 
-Resolume hasn't been tested with Pixel Lab yet. Nothing below assumes a result: each box records what was actually seen. Run it on the dev Mac with one external monitor at its native mode, scale 1. Results and photos go into `docs/integrations/RESOLUME.md`. No Arena preset file is generated (same rule as that document).
+First run on 2026-11-24: results and limits in `docs/integrations/RESOLUME.md`. Nothing below assumes a result: each box records what was actually seen. Run it on the dev Mac with one external monitor at its native mode, scale 1. Results and photos go into `docs/integrations/RESOLUME.md`. No Arena preset file is generated (same rule as that document).
 
 **Setup**
 
@@ -785,7 +785,7 @@ Resolume hasn't been tested with Pixel Lab yet. Nothing below assumes a result: 
 **B. Master MP4, cut by slices**
 
 - [ ] Composition size = master size (1920 × 1080), 30 fps; master MP4 in a clip slot, no fit or scale.
-- [ ] Advanced Output: enter every slice from the package's slice table by hand (input rectangle in master px, output rectangle in output px).
+- [ ] Advanced Output: enter every slice from the package's slice table by hand (centre X, centre Y, W, H: Arena's X and Y are the slice's centre, see `docs/integrations/RESOLUME.md`; input in master px, output in output px).
 - [ ] Load the package's input guide and output guide images. Each slice outline sits exactly on its guide: ☐ yes ☐ no (which slice, how many px).
 - [ ] On the monitor, every slice shows its own edge lines, corner markers and label (`SCR-xx · w × h · master x,y · out x,y`), and the label's numbers match the slice table: ☐ yes ☐ no.
 - [ ] Where slices touch, no line is doubled or missing (no off-by-one at the seam): ☐ yes ☐ no.

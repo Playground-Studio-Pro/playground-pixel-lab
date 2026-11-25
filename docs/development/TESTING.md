@@ -50,7 +50,7 @@ Vitest, in `tests/`. Fast (about 1 s) and in Node, with `fake-indexeddb` for sto
 | Konva canvas, gestures, dialogs, keyboard shortcuts | Manual acceptance run |
 | PNG pixels in a real browser | Manual acceptance run |
 | Depth Studio shaders and WebGL rendering | Looked at in a real browser: depth with particles off, 16:9, ultrawide and portrait framing, guides matching the room. Rendered pixels aren't compared automatically yet |
-| Resolume behaviour | [Not yet tested](../integrations/RESOLUME.md#first-real-world-check) |
+| Resolume behaviour | [Slice values and MP4 cut checked once by hand in Arena 7.28.1, macOS](../integrations/RESOLUME.md#o11-checked-in-arena-7281-2026-11-24) |
 
 Automated browser tests are a [Phase 1](../product/ROADMAP.md#phase-1-mapping-studio) decision. They'd add a dependency, so they need a stated reason first.
 

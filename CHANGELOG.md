@@ -40,6 +40,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 - Session state moved from `.claude/SESSION.md` to a tracked `SESSION.md`.
 
 ### Fixed
+- Resolume package: the slice values to type are now the slice's centre, as Arena's X and Y fields mean (checked in Arena 7.28.1, macOS). Earlier packages listed top-left corners there, which put every slice half its size off; those are now apart, for reference. Slices with an odd size have .5 centres and a warning. `slices.csv` columns renamed.
 - Desktop: closing an output no longer leaves macOS's menu bar and Dock hidden while Pixel Lab is in front.
 - Desktop: after an output closes, its monitor can be opened again; the panel no longer says another output is already on it.
 - Exported MP4s give AVFoundation (QuickTime, Resolume Arena on macOS) their real length and frame rate. Not yet replayed in Arena. Every MP4 exported before this reads as twice as long at half the frame rate there: export it again.
