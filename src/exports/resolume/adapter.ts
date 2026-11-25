@@ -5,11 +5,11 @@ import { mdCell, mdTable } from "../report";
 /**
  * Resolume adapter.
  *
- * Native preset generation is deliberately off. Advanced Output presets are XML
- * files, but Resolume doesn't publish the format, and no generated file has been
- * tested in Arena. A writer can be plugged in here once a preset saved by Arena
- * has been analysed and generated files have been loaded and verified.
- * See docs/integrations/RESOLUME.md.
+ * Native preset support stays off. Advanced Output presets are XML files whose
+ * format Resolume doesn't publish. One generated preset (one Screen) was loaded
+ * and saved back by Arena 7.28.1 on macOS, so the package ships one marked as a
+ * test (`arena-preset.ts`), next to the manual steps. Several setups, several
+ * Screens and Windows are still untested. See docs/integrations/RESOLUME.md.
  */
 export type NativePresetSupport =
   | { readonly status: "unsupported"; readonly reason: string }
@@ -17,7 +17,7 @@ export type NativePresetSupport =
 
 export const nativePresetSupport: NativePresetSupport = {
   status: "unsupported",
-  reason: "Resolume does not publish the Advanced Output preset format, and generated files have not been tested in Arena.",
+  reason: "Resolume does not publish the Advanced Output preset format. One generated preset with one Screen loaded in Arena 7.28.1 on macOS; several setups, several Screens and Windows haven't been tested.",
 };
 
 /** The Arena version these values were typed into and checked with. See docs/integrations/RESOLUME.md. */
@@ -126,6 +126,25 @@ export function buildSlicesCsv(setup: ResolumeSetup): string {
 
 export interface GuideFiles {
   readonly masterPng: string;
+  /** The test preset, when the package has one. */
+  readonly arenaPreset?: string;
+}
+
+/** How to try the test preset, and what it was tested with. */
+function arenaPresetSection(setup: ResolumeSetup, file: string): string[] {
+  const several = setup.screens.length > 1;
+  return [
+    `## Arena preset (test)`,
+    `\`${file}\` holds every Screen and slice above, as an Advanced Output preset. **It's a test.** One preset in this form, with one Screen and eight slices, loaded in **Arena ${TESTED_ARENA}** on macOS: Arena saved it back with every slice unchanged. Other versions, Windows and several setups haven't been tried.`,
+    ...(several ? [`> **Not verified: ${setup.screens.length} Screens.** This preset has one Screen per output. Only presets with one Screen have been loaded in Arena. Check every Screen and slice.`] : []),
+    [
+      `1. **First save your current Advanced Output setup** from the preset menu at the top left of Advanced Output, so you can go back to it.`,
+      `2. Copy the file into the folder where Arena keeps its Advanced Output presets, in the Resolume Arena folder of your Documents, and choose it from that preset menu. Pixel Lab never writes into Resolume's folders.`,
+      `3. Each Screen's device is a virtual one, so loading the preset never opens a monitor. Choose the real display as each Screen's device, then continue with step 7 of the setup below.`,
+      `4. Compare every slice with the tables above and the pixel map guides, as in “Check the mapping”. If anything differs, use the manual setup below and delete the preset.`,
+    ].join("\n"),
+    `Corners are written as whole pixels, as in the tables. The only other numbers are the 4 × 4 warp grid Arena keeps for each slice, at thirds of its size, written to 10 significant digits as in the tested file. Nothing is warped.`,
+  ];
 }
 
 /** The manual setup guide, written with this project's exact values. */
@@ -148,11 +167,12 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
   return [
     `# Resolume setup: ${project.meta.name}`,
     `Composition **${width} × ${height} px**, ${setup.screens.length} ${setup.screens.length === 1 ? "screen" : "screens"}, ${sliceCount} ${sliceCount === 1 ? "slice" : "slices"}.`,
-    `This package has no Resolume preset file. Resolume doesn't publish that format, so you enter the values below by hand and check them against the pixel map. Output Transformation requires Arena. The slice values were checked by hand with **Arena ${TESTED_ARENA}** (trial, macOS); other versions and Windows haven't been. Menu and field names can differ between versions.`,
+    `${files.arenaPreset ? `This package has a **test** Arena preset (see “Arena preset (test)” below), and the values to enter by hand. Resolume doesn't publish the preset format, so check every slice against the pixel map either way.` : `This package has no Resolume preset file. Resolume doesn't publish that format, so you enter the values below by hand and check them against the pixel map.`} Output Transformation requires Arena. The slice values were checked by hand with **Arena ${TESTED_ARENA}** (trial, macOS); other versions and Windows haven't been. Menu and field names can differ between versions.`,
     `## Files`,
     mdTable(["File", "Use"], [
       [`manifest.json`, "Every coordinate in machine-readable form. Its x and y are top-left corners: don't type them into Resolume"],
       [`slices.csv`, "The slice tables below, for a spreadsheet"],
+      ...(files.arenaPreset ? [[files.arenaPreset, "Test Arena preset with these slices. See “Arena preset (test)”"]] : []),
       [files.masterPng, "Test content for the composition, and the Input Selection guide"],
       [`pixelmaps/outputs/`, "Output Transformation guides, one per Resolume screen"],
       [`pixelmaps/screens/`, "One reference image per LED screen"],
@@ -170,6 +190,7 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
     `### For reference only: top-left corners`,
     `Where each slice starts, as in the pixel maps. Use these to read the guides, not to type into Arena.`,
     reference,
+    ...(files.arenaPreset ? arenaPresetSection(setup, files.arenaPreset) : []),
     `## Setup`,
     [
       `1. Set the composition size to exactly **${width} × ${height}**.`,
