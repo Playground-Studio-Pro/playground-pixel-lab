@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertCircle, AlertTriangle, Info, Plus } from "lucide-react";
+import { AlertCircle, AlertTriangle, ClipboardList, Info, Plus } from "lucide-react";
+import { useFastMapOpen } from "@/components/shell/fast-map/open-store";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Id } from "@/domain/model";
@@ -94,6 +95,10 @@ export function Explorer() {
             ))}
             {ungrouped.map((s) => screenRow(s.id, s.name, s.color, false))}
             {project.physical.screens.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">No screens yet.</p>}
+            <Row onClick={() => useFastMapOpen.getState().show()} testId="open-fast-map">
+              <ClipboardList className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="min-w-0 truncate text-muted-foreground">Fast map: paste a list, fix on the wall</span>
+            </Row>
           </div>
 
           <div>

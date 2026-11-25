@@ -3,7 +3,7 @@ import { BUILTIN_CABINETS, SEED_LIBRARY_CABINETS, type LibraryCabinet } from "@/
 import type { CabinetProfile } from "@/domain/model";
 import { mmToUm, px } from "@/domain/units";
 import { parseScreenList, type ParseOptions } from "@/engines/fast-map";
-import { choices, HP_STAGE_LIST, SIZE_500 } from "./design-fast-map-fixtures";
+import { choices, HP_SIZES, HP_STAGE_LIST, SIZE_500 } from "./design-fast-map-fixtures";
 import * as ops from "@/engines/project-ops";
 import { testContext } from "./helpers";
 
@@ -13,7 +13,7 @@ const firstError = (text: string, extra?: Partial<ParseOptions>) => parseScreenL
 
 describe("fast map list: the HP Stage list", () => {
   it("gives 8 screens with the expected sizes once 500×500 is chosen for lines without a size", () => {
-    const result = parseScreenList(HP_STAGE_LIST, opts({ sizeIfMissing: SIZE_500 }));
+    const result = parseScreenList(HP_STAGE_LIST, opts({ sizesIfMissing: HP_SIZES }));
     expect(result.errors).toEqual([]);
     expect(result.ok).toBe(true);
     expect(result.screens.map((s) => s.name)).toEqual(["Header", "Torre izq", "Cuchilla izq", "Centro", "Cuchilla der", "Torre der", "DJ", "Cinta"]);
@@ -22,7 +22,7 @@ describe("fast map list: the HP Stage list", () => {
   });
 
   it("picks the generic profile, says so, and names the same-size cabinets it could also be", () => {
-    const centro = parseScreenList(HP_STAGE_LIST, opts({ sizeIfMissing: SIZE_500 })).screens[3];
+    const centro = parseScreenList(HP_STAGE_LIST, opts({ sizesIfMissing: HP_SIZES })).screens[3];
     expect(centro.cabinet.id).toBe("builtin-500x500-p26");
     expect(centro.cabinetNote).toContain("Size not written: 500×500 mm, as chosen");
     expect(centro.cabinetNote).toContain("Unilumin Upad IV 2.6");
@@ -36,11 +36,27 @@ describe("fast map list: the HP Stage list", () => {
     const header = result.errors[0];
     expect(header.message).toContain("fits different cabinets");
     expect(header.candidates.map((c) => c.id).sort()).toEqual(["builtin-500x1000-p391", "builtin-500x500-p391"]);
-    expect(result.missingSizeOptions).toEqual([SIZE_500, { widthUm: mmToUm(500), heightUm: mmToUm(1000) }]);
+    const sizes = [SIZE_500, { widthUm: mmToUm(500), heightUm: mmToUm(1000) }];
+    expect(result.missingSizes).toEqual([
+      { pitchUm: mmToUm(2.6), sizes, lines: 1, chosen: null },
+      { pitchUm: mmToUm(3.9), sizes, lines: 5, chosen: null },
+    ]);
+  });
+
+  it("one pick per pitch applies to every line of that pitch without a size, and only to them", () => {
+    const p39 = parseScreenList(HP_STAGE_LIST, opts({ sizesIfMissing: [HP_SIZES[0]] }));
+    expect(p39.missingSizes.map((m) => [m.lines, m.chosen])).toEqual([[1, null], [5, SIZE_500]]);
+    // Only Centro (P2.6) is still an error; the blades state 500x1000 and keep it.
+    expect(p39.errors.map((e) => e.line)).toEqual([2]);
+    expect(p39.screens.filter((s) => s.name.startsWith("Cuchilla")).map((s) => s.heightPx)).toEqual([512, 512]);
+    expect(p39.screens.filter((s) => s.cabinetNote.includes("as chosen for P3.9")).map((s) => s.name)).toEqual(["Header", "Torre izq", "Torre der", "DJ", "Cinta"]);
+    const both = parseScreenList(HP_STAGE_LIST, opts({ sizesIfMissing: HP_SIZES }));
+    expect(both.ok).toBe(true);
+    expect(both.missingSizes.map((m) => m.lines)).toEqual([1, 5]);
   });
 
   it("is deterministic", () => {
-    expect(parseScreenList(HP_STAGE_LIST, opts({ sizeIfMissing: SIZE_500 }))).toEqual(parseScreenList(HP_STAGE_LIST, opts({ sizeIfMissing: SIZE_500 })));
+    expect(parseScreenList(HP_STAGE_LIST, opts({ sizesIfMissing: HP_SIZES }))).toEqual(parseScreenList(HP_STAGE_LIST, opts({ sizesIfMissing: HP_SIZES })));
   });
 });
 
@@ -177,7 +193,7 @@ describe("fast map list: which cabinet", () => {
   });
 
   it("only uses the chosen size for lines that need one", () => {
-    const result = parseScreenList("A 1x1 P5.95", opts({ sizeIfMissing: SIZE_500 }));
+    const result = parseScreenList("A 1x1 P5.95", opts({ sizesIfMissing: [{ pitchUm: mmToUm(5.95), size: SIZE_500 }] }));
     expect(result.screens[0].cabinet.id).toBe("builtin-1000x500-p595");
     expect(result.screens[0].cabinetNote).not.toContain("as chosen");
   });

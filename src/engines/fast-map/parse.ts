@@ -12,7 +12,7 @@ import { MAX_SIDE_PX } from "../validation";
  *   Torre 2x6 Generic 500×500 P3.91      (a cabinet named exactly, instead of a pitch)
  *
  * Pure. A cabinet is never guessed, scaled or defaulted silently: an unknown or ambiguous one is an error on its
- * line, listing the candidates. The only way to settle a missing cabinet size is `sizeIfMissing`, which the person
+ * line, listing the candidates. The only way to settle a missing cabinet size is `sizesIfMissing`, one size per pitch, which the person
  * chooses and the interface shows.
  */
 
@@ -33,10 +33,31 @@ export interface CabinetSize {
 export interface ParseOptions {
   /** Every cabinet the list may use, as `cabinetOptions` lists them: project, generic, catalog, library. */
   readonly cabinets: readonly CabinetChoice[];
-  /** Chosen by the person: the cabinet size for lines that write none and fit more than one. Null: those lines are errors. */
-  readonly sizeIfMissing?: CabinetSize | null;
+  /**
+   * Chosen by the person, one per written pitch: the cabinet size for every line of that pitch that writes no size and
+   * fits more than one. Never applied to a line that states a size. A pitch without a choice: those lines are errors.
+   */
+  readonly sizesIfMissing?: readonly SizeChoice[];
   /** Screen names already in the project, when the list is added to it. */
   readonly takenNames?: readonly string[];
+}
+
+/** A size chosen for one written pitch, such as P3.9 → 500×500 mm. */
+export interface SizeChoice {
+  /** The pitch as written, in µm: P3.9 is 3900. */
+  readonly pitchUm: Um;
+  readonly size: CabinetSize;
+}
+
+/** A written pitch that fits more than one cabinet size on lines that write none. */
+export interface MissingSize {
+  readonly pitchUm: Um;
+  /** The sizes to choose from. */
+  readonly sizes: readonly CabinetSize[];
+  /** Lines of this pitch with no size written: all of them take the choice. */
+  readonly lines: number;
+  /** The size chosen for this pitch, or null. */
+  readonly chosen: CabinetSize | null;
 }
 
 export interface ParsedScreen {
@@ -67,8 +88,8 @@ export interface LineError {
 export interface ParseResult {
   readonly screens: readonly ParsedScreen[];
   readonly errors: readonly LineError[];
-  /** Cabinet sizes that would settle every line whose only problem is a missing size. */
-  readonly missingSizeOptions: readonly CabinetSize[];
+  /** Each written pitch whose lines without a size need a size choice, chosen or not, in pitch order. */
+  readonly missingSizes: readonly MissingSize[];
   /** True when there is at least one screen and no error: only then may anything be created. */
   readonly ok: boolean;
 }
@@ -130,7 +151,8 @@ const geometryKey = (c: CabinetProfile) => `${c.widthUm}x${c.heightUm}:${c.pixel
 export const sizeLabel = (s: CabinetSize) => `${formatMm(s.widthUm)}×${formatMm(s.heightUm)} mm`;
 const cabinetLabel = (c: CabinetProfile) => `${c.name} (${sizeLabel(c)}, ${c.pixelsX}×${c.pixelsY} px)`;
 
-type Match = { ok: true; cabinet: CabinetProfile; note: string } | { ok: false; message: string; candidates: CabinetProfile[]; missingSize: CabinetSize[] };
+type Ambiguous = { pitchUm: Um; sizes: CabinetSize[] };
+type Match = ({ ok: true; cabinet: CabinetProfile; note: string } | { ok: false; message: string; candidates: CabinetProfile[] }) & { ambiguous?: Ambiguous };
 
 /** Several cabinets of the same size and pixels map identically. A project or generic one wins; otherwise it must be unique. */
 function pickOne(same: readonly CabinetChoice[], how: string): Match {
@@ -143,7 +165,6 @@ function pickOne(same: readonly CabinetChoice[], how: string): Match {
       ok: false,
       message: `${how} fits ${list.length} cabinets of the same size: ${list.map((c) => `“${c.name}”`).join(", ")}. Write the cabinet's name instead.`,
       candidates: list,
-      missingSize: [],
     };
   }
   const chosen = top[0].cabinet;
@@ -161,24 +182,24 @@ function byGeometry(choices: readonly CabinetChoice[]): CabinetChoice[][] {
 function matchCabinet(spec: Spec, options: ParseOptions): Match {
   const all = options.cabinets;
   if (spec.kind === "none") {
-    return { ok: false, message: "no cabinet. Add the pitch, such as P2.6, and the cabinet size in mm when the pitch comes in more than one: 500x1000.", candidates: [], missingSize: [] };
+    return { ok: false, message: "no cabinet. Add the pitch, such as P2.6, and the cabinet size in mm when the pitch comes in more than one: 500x1000.", candidates: [] };
   }
   if (spec.kind === "name") {
     const found = all.filter((c) => nameKey(c.cabinet.name) === nameKey(spec.name));
     if (found.length === 0) {
-      return { ok: false, message: `No cabinet called “${spec.name}”. Write a pitch such as P2.6, or a cabinet name from the project or library.`, candidates: [], missingSize: [] };
+      return { ok: false, message: `No cabinet called “${spec.name}”. Write a pitch such as P2.6, or a cabinet name from the project or library.`, candidates: [] };
     }
     const geometries = byGeometry(found);
     if (geometries.length > 1) {
       const list = found.map((c) => c.cabinet);
-      return { ok: false, message: `Several different cabinets are called “${spec.name}”: ${list.map(cabinetLabel).join("; ")}. Rename one in the library.`, candidates: list, missingSize: [] };
+      return { ok: false, message: `Several different cabinets are called “${spec.name}”: ${list.map(cabinetLabel).join("; ")}. Rename one in the library.`, candidates: list };
     }
     return pickOne(geometries[0], `“${spec.name}”`);
   }
 
   const written = [spec.pitchUm !== null && `P${formatMm(spec.pitchUm)}`, spec.size && sizeLabel(spec.size)].filter(Boolean).join(" ");
   if (spec.pitchUm === null) {
-    return { ok: false, message: `${written}: add the pitch, such as P3.9. A size alone doesn't say which cabinet.`, candidates: [], missingSize: [] };
+    return { ok: false, message: `${written}: add the pitch, such as P3.9. A size alone doesn't say which cabinet.`, candidates: [] };
   }
   const pitchUm = spec.pitchUm;
   const samePitch = all.filter((c) => Math.abs(c.cabinet.nominalPitchUm - pitchUm) <= PITCH_TOLERANCE_UM);
@@ -190,24 +211,24 @@ function matchCabinet(spec: Spec, options: ParseOptions): Match {
       ok: false,
       message: `No ${written} cabinet in the project, the generic profiles, the catalog or your library. Add it in Cabinets first; it is never guessed.` + (unique.length ? ` Closest: ${unique.map(cabinetLabel).join("; ")}.` : ""),
       candidates: unique,
-      missingSize: [],
     };
   }
   let geometries = byGeometry(fits);
-  if (geometries.length > 1 && !spec.size && options.sizeIfMissing) {
-    const chosen = options.sizeIfMissing;
+  const sizesOf = (gs: CabinetChoice[][]) => [...new Map(gs.map((g) => g[0].cabinet).map((c) => [`${c.widthUm}x${c.heightUm}`, { widthUm: c.widthUm, heightUm: c.heightUm }])).values()];
+  const ambiguous: Ambiguous | undefined = geometries.length > 1 && !spec.size && sizesOf(geometries).length > 1 ? { pitchUm, sizes: sizesOf(geometries) } : undefined;
+  const chosen = ambiguous && options.sizesIfMissing?.find((c) => c.pitchUm === pitchUm)?.size;
+  if (chosen) {
     const narrowed = geometries.filter((g) => g[0].cabinet.widthUm === chosen.widthUm && g[0].cabinet.heightUm === chosen.heightUm);
     if (narrowed.length === 1) {
       const match = pickOne(narrowed[0], written);
-      return match.ok ? { ...match, note: `${match.note}. Size not written: ${sizeLabel(chosen)}, as chosen for lines without a size` } : match;
+      return { ...(match.ok ? { ...match, note: `${match.note}. Size not written: ${sizeLabel(chosen)}, as chosen for P${formatMm(pitchUm)} lines without a size` } : match), ambiguous };
     }
     if (narrowed.length > 1) geometries = narrowed;
   }
   if (geometries.length > 1) {
     const list = geometries.map((g) => g[0].cabinet);
-    const sizes = [...new Map(list.map((c) => [`${c.widthUm}x${c.heightUm}`, { widthUm: c.widthUm, heightUm: c.heightUm }])).values()];
-    const hint = spec.size ? "Write the cabinet's name instead." : `Add the cabinet size, such as ${formatMm(list[0].widthUm)}x${formatMm(list[0].heightUm)}, or choose a size for lines without one.`;
-    return { ok: false, message: `${written} fits different cabinets: ${list.map(cabinetLabel).join("; ")}. ${hint}`, candidates: list, missingSize: spec.size ? [] : sizes };
+    const hint = !ambiguous ? "Write the cabinet's name instead." : `Add the cabinet size, such as ${formatMm(list[0].widthUm)}x${formatMm(list[0].heightUm)}, or choose a size for P${formatMm(pitchUm)} lines without one.`;
+    return { ok: false, message: `${written} fits different cabinets: ${list.map(cabinetLabel).join("; ")}. ${hint}`, candidates: list, ambiguous };
   }
   return pickOne(geometries[0], written);
 }
@@ -244,7 +265,7 @@ function cells(text: string): Cell[] {
 export function parseScreenList(text: string, options: ParseOptions): ParseResult {
   const screens: ParsedScreen[] = [];
   const errors: LineError[] = [];
-  const missing = new Map<string, CabinetSize>();
+  const missing = new Map<number, { pitchUm: Um; sizes: Map<string, CabinetSize>; lines: number }>();
   const seen = new Map<string, number>();
   const taken = new Set((options.takenNames ?? []).map(nameKey));
   const all = cells(text);
@@ -293,9 +314,14 @@ export function parseScreenList(text: string, options: ParseOptions): ParseResul
     seen.set(key, cell.line);
 
     const match = matchCabinet(spec, options);
+    if (match.ambiguous) {
+      const entry = missing.get(match.ambiguous.pitchUm) ?? { pitchUm: match.ambiguous.pitchUm, sizes: new Map(), lines: 0 };
+      for (const s of match.ambiguous.sizes) entry.sizes.set(`${s.widthUm}x${s.heightUm}`, s);
+      entry.lines++;
+      missing.set(entry.pitchUm, entry);
+    }
     if (!match.ok) {
       fail(`“${name}”: ${match.message}`, match.candidates);
-      for (const s of match.missingSize) missing.set(`${s.widthUm}x${s.heightUm}`, s);
       continue;
     }
     const size = computeScreenSpec({ columns, rows }, match.cabinet);
@@ -309,6 +335,13 @@ export function parseScreenList(text: string, options: ParseOptions): ParseResul
   if (all.length > MAX_LIST_SCREENS) {
     errors.push({ line: all[MAX_LIST_SCREENS].line, text: all[MAX_LIST_SCREENS].raw, message: `The list has ${all.length} screens. Fast map takes up to ${MAX_LIST_SCREENS} at a time.`, candidates: [] });
   }
-  const missingSizeOptions = [...missing.values()].sort((a, b) => a.widthUm - b.widthUm || a.heightUm - b.heightUm);
-  return { screens, errors: errors.sort((a, b) => a.line - b.line), missingSizeOptions, ok: screens.length > 0 && errors.length === 0 };
+  const missingSizes: MissingSize[] = [...missing.values()]
+    .sort((a, b) => a.pitchUm - b.pitchUm)
+    .map((m) => ({
+      pitchUm: m.pitchUm,
+      sizes: [...m.sizes.values()].sort((a, b) => a.widthUm - b.widthUm || a.heightUm - b.heightUm),
+      lines: m.lines,
+      chosen: options.sizesIfMissing?.find((c) => c.pitchUm === m.pitchUm)?.size ?? null,
+    }));
+  return { screens, errors: errors.sort((a, b) => a.line - b.line), missingSizes, ok: screens.length > 0 && errors.length === 0 };
 }

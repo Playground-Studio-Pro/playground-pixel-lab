@@ -89,5 +89,6 @@ A new `src/state/preferences.ts`:
 ## Status
 
 - **Done, in review:** screen identification and calibration frames in the Preview dialog, requested by the user outside D1–D7. Design and handoff notes are in [DESIGN_SYSTEM](../product/DESIGN_SYSTEM.md#screen-identification-and-calibration).
+- **Fast map, in review (2026-11-25):** steps 1–3 of the approved prototype. Engine PR #70, interface PR stacked on it. The two-minute goal is not measured yet.
 - **Not started:** D1, D2, D3.
-- **Files outside this lane's list:** `public/brand/playground-studio-outline-white.png` (new) and `tests/design-calibration.test.ts` (new).
+- **Files outside this lane's list:** `public/brand/playground-studio-outline-white.png` (new) and `tests/design-calibration.test.ts` (new). For Fast map: `src/engines/fast-map/**` (new), new functions in `src/engines/project-ops.ts`, and three lines in `src/components/workspace/app.tsx`, with the Lead Architect's leave.

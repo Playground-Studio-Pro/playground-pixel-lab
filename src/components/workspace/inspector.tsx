@@ -202,6 +202,11 @@ function ScreenPanel({ id }: { id: Id }) {
             <CommitField label="Y in canvas" suffix="px" value={String(resolved.canvasRect.y)} step={intStep} onCommit={(t) => edit((p) => ops.setRegionPosition(p, id, resolved.canvasRect.x, px(requireWhole(t, "Y"))))} />
           </div>
           <Readout label="On master canvas" value={`${resolved.masterRect.x}, ${resolved.masterRect.y}`} />
+          {resolved.followsContent && (
+            <p className="text-xs leading-snug text-warn" data-testid="follows-content-note">
+              “Same as content position” is on under Output position, so moving this content also moves the output signal.
+            </p>
+          )}
           <CheckRow label="Can share pixels with other marked screens" checked={resolved.allowOverlap} onChange={(value) => tryEdit((p) => ops.setRegionShared(p, id, value))} />
         </Section>
       )}
