@@ -1,4 +1,5 @@
 import type { PixelLabModule } from "../contract";
+import "./depth-saved";
 import { depthSource } from "./source";
 
 /** Depth Studio, in the Content Studio. Owned by Content Engineering from Sprint 3. */

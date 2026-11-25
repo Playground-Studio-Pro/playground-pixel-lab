@@ -85,3 +85,15 @@ No network code until the user decides.
 - Tests: `tests/content-aurora.test.ts`, 23 tests for determinism, loop closure, FPS independence, settings, and continuity across every Festival Main Stage seam.
 - Small edits in Lead Architect files, listed in the PR: `domain/motion.ts`, `engines/motion/patterns.ts`, `preview/live-renderer.ts`, `components/motion/live-preview.tsx`, `components/workspace/canvas-header.tsx`.
 - C1 not started yet.
+
+**2026-11-25: typed values** (owner's request, branch `feature/content-typed-values`).
+- Every Content slider has an editable number: Depth Studio's twelve values and its loop position. Every Content color takes `#RRGGBB`: Depth Studio's palette and Aurora's colors. None had text entry before.
+- Parsing is pure, in `src/engines/content/typed-value.ts`; the fields are in `src/modules/content/value-fields.tsx`. Aurora's panel moved to `settings-popover.tsx`, fixed to the window, because the Live preview header cut it off.
+- Not sliders, so unchanged: Aurora's flow speed and direction, frame rates, playback speed and test card options are fixed choices. Aurora's speeds are powers of two so the loop closes exactly.
+
+**2026-11-25: saved looks** (owner's request, branch `feature/content-saved-looks`, after typed values).
+- Depth Studio's scene and Aurora's settings are saved with the project, under `modules["depth-studio"]` and `modules["aurora"]`, version 1: `{ settings, looks }`. No schema change. Every change autosaves and undoes. A drag of one value is one undo step.
+- Opening a project never edits it. A project without this data, or with data that can't be read, shows the defaults.
+- Named looks: save the current settings, apply, rename, delete. Each undoes in one step. A look keeps its own copy of the settings.
+- `saved-content.ts` binds a store to the project. The stores don't import the project store, so the output page still can't reach it.
+- Not saved: Depth Studio's framing target, perspective guides and playback position, which are editor state.

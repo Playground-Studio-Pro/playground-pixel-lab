@@ -90,6 +90,17 @@ export function auroraPalette(colors: readonly string[]): readonly string[] {
   return valid.length >= 2 ? valid : DEFAULT_AURORA.colors;
 }
 
+/** Makes any input valid settings: anything missing or not offered takes the default. */
+export function normalizeAurora(input: unknown): AuroraSettings {
+  const src = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const colors = Array.isArray(src.colors) ? src.colors.filter((c): c is string => typeof c === "string" && HEX.test(c)) : [];
+  return {
+    colors: auroraPalette(colors).map((c) => c.toUpperCase()),
+    speed: AURORA_SPEEDS.find((s) => s === src.speed) ?? DEFAULT_AURORA.speed,
+    direction: AURORA_DIRECTIONS.find((d) => d === src.direction) ?? DEFAULT_AURORA.direction,
+  };
+}
+
 /**
  * Where the loop is, in [0, 1). Depends only on the frame, the content FPS and the speed, and the same
  * content time gives the same phase at every content FPS (frame 30 at 30 fps equals frame 60 at 60 fps).

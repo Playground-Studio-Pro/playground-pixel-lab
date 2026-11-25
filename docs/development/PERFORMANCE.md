@@ -248,6 +248,10 @@ Measured 2026-11-12: Apple M1 Max, 32 GB, Chrome, Node 26. Bundle from a product
 
 Each frame is one draw of the room (under 200 triangles, shaded per pixel) and one instanced draw of the particles. The preview renders at the size it is shown, capped at twice the CSS size and never above the target's own resolution.
 
+### Saved settings (Depth Studio and Aurora)
+
+Measured 2026-11-25: production build, Apple M1 Max, headless Chrome 158 at 1280 × 800. Every slider movement is now a project edit (validation, mapping and autosave). Dragging Depth Studio's virtual depth with one input per animation frame, three runs of 120 frames: Festival Main Stage and the 500-screen stress project both had a frame interval p95 of 16.7 to 16.8 ms, with no frame over 20 ms. There's no before figure from the same method. Initial JS stays at 172.8 KB.
+
 ## Product Design
 
 ### Screen identification and calibration (Preview dialog)
