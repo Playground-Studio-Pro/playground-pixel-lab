@@ -6,6 +6,7 @@ import { EXAMPLES, type ExampleId } from "@/examples/catalog";
 import { reportError } from "@/state/actions";
 import { useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
+import { useFastMapOpen } from "@/components/shell/fast-map/open-store";
 
 export function formatDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -49,6 +50,7 @@ export function StartScreen() {
         <p className="mt-1 mb-6 text-muted-foreground">Map LED screens to exact pixels and prepare them for Resolume.</p>
         <div className="mb-8 flex gap-2">
           <Button onClick={() => openDialog("new-project")}>New project</Button>
+          <Button variant="outline" onClick={() => useFastMapOpen.getState().show()}>Fast map</Button>
           <Button variant="outline" onClick={() => fileRef.current?.click()}>Import project file</Button>
           <ImportProjectInput inputRef={fileRef} />
         </div>

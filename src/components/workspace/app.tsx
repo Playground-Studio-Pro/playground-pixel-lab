@@ -15,6 +15,13 @@ import { TopBar } from "./top-bar";
 import dynamic from "next/dynamic";
 import { CanvasArea } from "./canvas-area";
 import { StudioBar } from "./studio-bar";
+import { useFastMapOpen } from "@/components/shell/fast-map/open-store";
+
+// Fast map loads on first use, like the studios.
+const FastMap = dynamic(() => import("@/components/shell/fast-map/fast-map"), {
+  ssr: false,
+  loading: () => <main className="h-full bg-stage" aria-busy="true" />,
+});
 
 // The other studios and their modules load on first use, so the editor doesn't pay for them.
 const StudioHost = dynamic(() => import("./studio-host"), {
@@ -37,6 +44,8 @@ function useShortcuts() {
         void app.save();
         return;
       }
+      // Fast map has its own keys.
+      if (useFastMapOpen.getState().open) return;
       // Typing in a field keeps the browser's own text undo.
       if (!app.project || isTyping(e.target) || useUi.getState().dialog || useUi.getState().confirm) return;
       const step = historyShortcut(e);
@@ -71,6 +80,7 @@ export function App() {
   const hasProject = useApp((s) => s.project !== null);
   const init = useApp((s) => s.init);
   const studio = useUi((s) => s.studio);
+  const fastMap = useFastMapOpen((s) => s.open);
 
   useEffect(() => {
     void init();
@@ -105,7 +115,9 @@ export function App() {
 
   return (
     <TooltipProvider delay={400}>
-      {hasProject ? (
+      {fastMap ? (
+        <FastMap />
+      ) : hasProject ? (
         <div className="grid h-full grid-cols-[256px_minmax(0,1fr)_288px] grid-rows-[auto_auto_minmax(0,1fr)]">
           <TopBar />
           <StudioBar />
