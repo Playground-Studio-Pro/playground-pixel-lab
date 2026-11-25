@@ -1,0 +1,30 @@
+{
+  "festival-main-stage.pixellab.json": {
+    "manifest": "5479ece39e9639fd",
+    "report": "2717546ea44795ab",
+    "svgMaster": "82791d77d4fe3e7c",
+    "svgOutputs": "73991ed0d3429524",
+    "slices": "25d53ff85382342a"
+  },
+  "corporate-keynote.pixellab.json": {
+    "manifest": "549c5d93bc4ca24e",
+    "report": "db3aaf9c31ae3638",
+    "svgMaster": "6696fddbf2e418d4",
+    "svgOutputs": "14932627c8a59413",
+    "slices": "b5c19dfcb96d79e6"
+  },
+  "pixel-test.pixellab.json": {
+    "manifest": "07095ed3992585ae",
+    "report": "35a723892616ef92",
+    "svgMaster": "55cabf9defe9c00e",
+    "svgOutputs": "48100dac9b1cdc20",
+    "slices": "c48aa277890db89b"
+  },
+  "festival-main-stage.schema-1.pixellab.json": {
+    "manifest": "5479ece39e9639fd",
+    "report": "2717546ea44795ab",
+    "svgMaster": "82791d77d4fe3e7c",
+    "svgOutputs": "73991ed0d3429524",
+    "slices": "25d53ff85382342a"
+  }
+}

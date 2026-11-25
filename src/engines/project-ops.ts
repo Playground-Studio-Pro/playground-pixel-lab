@@ -567,4 +567,183 @@ export function assignOutput(project: Project, screenId: Id, outputId: Id): Proj
   };
 }
 
+// ─── Fast map ──────────────────────────────────────────────────────────────
+// Added for the fast map flow (`engines/fast-map/`). Each is one atomic edit, so through `edit()` it is one undo step.
+
+/** One screen to create, with every position already decided. Positions are in the named space. */
+export interface PlannedScreen {
+  readonly name: string;
+  readonly cabinet: CabinetProfile;
+  readonly columns: number;
+  readonly rows: number;
+  /** Stage space, micrometres. */
+  readonly stageX: Um;
+  readonly stageY: Um;
+  /** Master space, pixels. Converted into the first canvas's space when applied. */
+  readonly masterX: Px;
+  readonly masterY: Px;
+  /** An output already in the project, or the n-th output listed in `ScreenPlan.newOutputs`. */
+  readonly output: { readonly kind: "existing"; readonly id: Id } | { readonly kind: "new"; readonly index: number };
+  /** Output space, pixels. */
+  readonly outputX: Px;
+  readonly outputY: Px;
+}
+
+export interface ScreenPlan {
+  readonly screens: readonly PlannedScreen[];
+  /** Outputs to create, fixed at these sizes, in order. */
+  readonly newOutputs: readonly { readonly width: Px; readonly height: Px }[];
+}
+
+/**
+ * A project with no screens, ready for a new list: every screen, group, extra canvas and output is removed, the first
+ * canvas moves to (0, 0), the master goes back to auto size. The first output is kept (its id and name) for reuse.
+ * Cabinets, metadata and module data stay.
+ */
+export function clearScreens(project: Project): Project {
+  const canvas = project.content.canvases[0];
+  const output = project.output.outputs[0];
+  return {
+    ...project,
+    physical: { screens: [], groups: [] },
+    content: { master: { mode: "auto" }, canvases: [{ ...canvas, originX: px(0), originY: px(0) }], regions: [] },
+    output: { outputs: [output], slices: [] },
+  };
+}
+
+/**
+ * Creates every screen of a plan in one edit. Each slice is placed explicitly (“Same as content position” off), so
+ * moving content later never moves an output. New outputs are fixed at their planned size; when `reuseFirstOutput` is
+ * set, the first new output is the project's first output, resized. Returns the new screen ids in plan order.
+ */
+export function applyScreenPlan(project: Project, plan: ScreenPlan, ctx: OpContext, options: { reuseFirstOutput?: boolean } = {}): { project: Project; screenIds: Id[] } {
+  if (plan.screens.length === 0) throw new DomainError("The list has no screens.");
+  const canvas = project.content.canvases[0];
+  const ids = new Set<Id>([project.id, ...project.physical.screens.map((s) => s.id), ...project.content.canvases.map((c) => c.id), ...project.output.outputs.map((o) => o.id)]);
+  const fresh = () => {
+    const id = ctx.newId();
+    if (ids.has(id)) throw new DomainError(`Id “${id}” is already used in this project.`);
+    ids.add(id);
+    return id;
+  };
+  const freshCtx: OpContext = { newId: fresh, now: () => ctx.now() };
+  let next = project;
+  const newOutputIds: Id[] = [];
+  plan.newOutputs.forEach((size, i) => {
+    const sizing: CanvasSizing = { mode: "fixed", width: size.width, height: size.height };
+    validateSizing(sizing);
+    if (i === 0 && options.reuseFirstOutput) {
+      const first = next.output.outputs[0];
+      next = updateOutput(next, first.id, { sizing });
+      newOutputIds.push(first.id);
+    } else {
+      const added = addOutput(next, `Output ${next.output.outputs.length + 1}`, freshCtx);
+      next = updateOutput(added.project, added.outputId, { sizing });
+      newOutputIds.push(added.outputId);
+    }
+  });
+
+  const names = new Set(next.physical.screens.map((s) => s.name.trim().toLowerCase()));
+  const screens: LedScreen[] = [];
+  const regions: ContentRegion[] = [];
+  const slices: OutputSlice[] = [];
+  for (const planned of plan.screens) {
+    requireArrangement(planned.columns, "Columns");
+    requireArrangement(planned.rows, "Rows");
+    const name = requireName(planned.name, "A screen");
+    if (names.has(name.toLowerCase())) throw new DomainError(`“${name}” is already a screen name.`);
+    names.add(name.toLowerCase());
+    next = addCabinet(next, planned.cabinet);
+    const outputId = planned.output.kind === "existing" ? planned.output.id : newOutputIds[planned.output.index];
+    if (!outputId || !next.output.outputs.some((o) => o.id === outputId)) throw new DomainError(`“${name}” points to an output that doesn't exist.`);
+    requireNonNegative(planned.masterX - canvas.originX, "Canvas X");
+    requireNonNegative(planned.masterY - canvas.originY, "Canvas Y");
+    requireNonNegative(planned.outputX, "Output X");
+    requireNonNegative(planned.outputY, "Output Y");
+    const id = fresh();
+    screens.push({
+      id,
+      name,
+      cabinetId: planned.cabinet.id,
+      columns: planned.columns,
+      rows: planned.rows,
+      groupId: null,
+      color: SCREEN_COLORS[(next.physical.screens.length + screens.length) % SCREEN_COLORS.length],
+      stageX: um(planned.stageX),
+      stageY: um(planned.stageY),
+    });
+    regions.push({ screenId: id, canvasId: canvas.id, x: px(planned.masterX - canvas.originX), y: px(planned.masterY - canvas.originY), allowOverlap: false });
+    slices.push({ screenId: id, outputId, followsContent: false, x: px(planned.outputX), y: px(planned.outputY) });
+  }
+  return {
+    screenIds: screens.map((s) => s.id),
+    project: {
+      ...next,
+      physical: { ...next.physical, screens: [...next.physical.screens, ...screens] },
+      content: { ...next.content, regions: [...next.content.regions, ...regions] },
+      output: { ...next.output, slices: [...next.output.slices, ...slices] },
+    },
+  };
+}
+
+function resolvedPair(project: Project, a: Id, b: Id) {
+  if (a === b) throw new DomainError("Choose two different screens.");
+  const mapping = resolveMapping(project);
+  const first = mapping.screens.find((s) => s.screenId === a);
+  const second = mapping.screens.find((s) => s.screenId === b);
+  if (!first || !second) throw new DomainError("Both screens must exist and be mapped.");
+  if (first.outputRect.width !== second.outputRect.width || first.outputRect.height !== second.outputRect.height) {
+    throw new DomainError(
+      `“${first.name}” is ${first.outputRect.width}×${first.outputRect.height} px and “${second.name}” is ${second.outputRect.width}×${second.outputRect.height} px. Only screens of the same size can do this 1:1.`,
+    );
+  }
+  return [first, second] as const;
+}
+
+/**
+ * Two same-size screens trade output and output position. Their content doesn't move. Both slices become explicit
+ * (“Same as content position” off), so a later content move can't undo the swap.
+ */
+export function swapOutputs(project: Project, a: Id, b: Id): Project {
+  const [first, second] = resolvedPair(project, a, b);
+  const to = new Map([
+    [a, second],
+    [b, first],
+  ]);
+  return {
+    ...project,
+    output: {
+      ...project.output,
+      slices: project.output.slices.map((s) => {
+        const other = to.get(s.screenId);
+        return other ? { ...s, outputId: other.outputId, x: other.outputRect.x, y: other.outputRect.y, followsContent: false } : s;
+      }),
+    },
+  };
+}
+
+/**
+ * The second screen shows the same content as the first: it takes the first's canvas and position, and both are
+ * marked as sharing pixels. The second's output stays exactly where it was, whether or not it followed its content
+ * before, so the wall keeps its signal. The first screen's output doesn't move either.
+ */
+export function sameContent(project: Project, fromId: Id, toId: Id): Project {
+  const [from, to] = resolvedPair(project, fromId, toId);
+  return {
+    ...project,
+    content: {
+      ...project.content,
+      regions: project.content.regions.map((r) => {
+        if (r.screenId === fromId) return { ...r, allowOverlap: true };
+        if (r.screenId === toId) return { ...r, canvasId: from.canvasId, x: from.canvasRect.x, y: from.canvasRect.y, allowOverlap: true };
+        return r;
+      }),
+    },
+    output: {
+      ...project.output,
+      slices: project.output.slices.map((s) => (s.screenId === toId ? { ...s, followsContent: false, x: to.outputRect.x, y: to.outputRect.y } : s)),
+    },
+  };
+}
+
 export { computeScreenSpec };
