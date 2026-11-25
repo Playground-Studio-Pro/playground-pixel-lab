@@ -239,3 +239,156 @@ export function colourWarning(display: DisplayInfo | null): string | null {
   if (!cs) return null;
   return cs.includes("primaries:BT709") && cs.includes("transfer:SRGB") ? null : SRGB_WARNING;
 }
+
+// ── Live adjust (D-4, approved by the owner 2026-11-25; desktop/docs/LIVE-ADJUST.md) ─────────────────────────────
+
+/** At most one update this often per output. Provisional until measured on the HP at 60 Hz. */
+export const LIVE_INTERVAL_MS = 50;
+
+/** What Live would send now, and why it can't, if it can't (the mapping has errors). */
+export interface LiveSnapshot<T> {
+  readonly payload: T;
+  readonly blocked: string | null;
+}
+
+export interface LiveSenderState {
+  readonly on: boolean;
+  /** Why nothing is sent while on: the mapping has errors. */
+  readonly paused: string | null;
+  /** On, but the output waits for its display or is held: sends once after Resume. */
+  readonly holding: boolean;
+  readonly sentRevision: number | null;
+  /** Shared clock (ms) when the last update was sent. */
+  readonly sentAt: number | null;
+  readonly sends: number;
+  /** The last refused update, in plain language. Cleared by the next one that goes through. */
+  readonly error: string | null;
+  /** Why Live turned itself off, or null. */
+  readonly stopped: string | null;
+}
+
+export interface LiveSenderDeps<T> {
+  /** Sends one update with this revision. Rejects as `output.update` does. */
+  send(payload: T, revision: number): Promise<OutputStatus>;
+  /** The highest revision known elsewhere (sent by Update output, or reported by main). */
+  baseRevision(): number;
+  now(): number;
+  setTimer(run: () => void, ms: number): () => void;
+  onChange?(state: LiveSenderState): void;
+  intervalMs?: number;
+}
+
+export interface LiveSender<T> {
+  /** Turns Live on and sends the current state at once. Only while the output is live. */
+  start(snapshot: LiveSnapshot<T>, state: OutputStatus["state"]): void;
+  /** The project changed. Ignored while off. */
+  offer(snapshot: LiveSnapshot<T>): void;
+  /** The output's state changed. Failed or closed turns Live off; held or waiting holds it. */
+  status(status: OutputStatus): void;
+  stop(reason: string | null): void;
+  state(): LiveSenderState;
+}
+
+const HOLDING_STATES: readonly OutputStatus["state"][] = ["waiting-display", "held"];
+
+/**
+ * One output's Live sender. Latest wins: while an update is in flight or inside the interval only the newest
+ * snapshot is kept, and the last one always goes out. Revisions go up by one from the highest known. Nothing is sent
+ * while the mapping has errors, nor while the output is held or waiting. Pure apart from the injected clock and timer.
+ */
+export function createLiveSender<T>(deps: LiveSenderDeps<T>): LiveSender<T> {
+  const interval = deps.intervalMs ?? LIVE_INTERVAL_MS;
+  let state: LiveSenderState = { on: false, paused: null, holding: false, sentRevision: null, sentAt: null, sends: 0, error: null, stopped: null };
+  let latest: LiveSnapshot<T> | null = null;
+  let dirty = false;
+  let inFlight = false;
+  let outputState: OutputStatus["state"] | null = null;
+  let cancelTimer: (() => void) | null = null;
+  // Bumped by stop, so a send that resolves after it changes nothing.
+  let generation = 0;
+
+  const set = (patch: Partial<LiveSenderState>) => {
+    const next = { ...state, ...patch };
+    if (Object.keys(patch).every((k) => next[k as keyof LiveSenderState] === state[k as keyof LiveSenderState])) return;
+    state = next;
+    deps.onChange?.(state);
+  };
+
+  function pump() {
+    if (!state.on || inFlight || cancelTimer) return;
+    const holding = outputState !== null && HOLDING_STATES.includes(outputState);
+    set({ paused: latest?.blocked ?? null, holding });
+    if (!dirty || !latest || latest.blocked || holding) return;
+    const wait = state.sentAt === null ? 0 : state.sentAt + interval - deps.now();
+    if (wait > 0) {
+      cancelTimer = deps.setTimer(() => {
+        cancelTimer = null;
+        pump();
+      }, wait);
+      return;
+    }
+    const snapshot = latest;
+    const revision = Math.max(state.sentRevision ?? 0, deps.baseRevision()) + 1;
+    const mine = generation;
+    dirty = false;
+    inFlight = true;
+    set({ sentAt: deps.now() });
+    deps.send(snapshot.payload, revision).then(
+      () => {
+        if (mine !== generation) return;
+        set({ sentRevision: revision, sends: state.sends + 1, error: null });
+      },
+      (error: unknown) => {
+        if (mine !== generation) return;
+        const { code, text } = codeOfRejection(error);
+        if (code === "UNKNOWN_OUTPUT") {
+          stopNow("The output closed.");
+          return;
+        }
+        // Main refuses updates while held; the newest state goes out after Resume.
+        if (code === "BAD_REQUEST" && outputState !== null && HOLDING_STATES.includes(outputState)) dirty = true;
+        set({ error: text });
+      },
+    ).finally(() => {
+      if (mine !== generation) return;
+      inFlight = false;
+      pump();
+    });
+  }
+
+  function stopNow(reason: string | null) {
+    generation++;
+    cancelTimer?.();
+    cancelTimer = null;
+    inFlight = false;
+    dirty = false;
+    latest = null;
+    set({ on: false, paused: null, holding: false, stopped: reason });
+  }
+
+  return {
+    start(snapshot, outputStateNow) {
+      if (outputStateNow !== "live") return;
+      outputState = outputStateNow;
+      latest = snapshot;
+      dirty = true;
+      set({ on: true, stopped: null, error: null });
+      pump();
+    },
+    offer(snapshot) {
+      if (!state.on) return;
+      latest = snapshot;
+      dirty = true;
+      pump();
+    },
+    status(status) {
+      outputState = status.state;
+      if (!state.on) return;
+      if (status.state === "failed") stopNow("The output failed.");
+      else if (status.state === "closed") stopNow(null);
+      else pump();
+    },
+    stop: stopNow,
+    state: () => state,
+  };
+}

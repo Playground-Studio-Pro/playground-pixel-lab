@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Section, SelectField } from "@/components/workspace/fields";
 import type { ContentFps } from "@/domain/motion";
-import type { DisplayInfo, OutputClock, OutputControlApi, OutputSourceId, OutputStatus } from "@/domain/physical-output";
+import type { DisplayInfo, OutputControlApi, OutputSourceId, OutputStatus } from "@/domain/physical-output";
 import { useApp } from "@/state/store";
 import { buildOutputSession, buildUpdateSession, codeOfRejection, colourWarning, displayLabel, openBlocker, outputView, playingFromStart, updateAvailability, updateClock, updateErrorText, type OutputView } from "./output-control";
+import { attachLiveOutput, lastSent, noteStatus, recordSent, startLive, stopLive, useLiveOutputStore } from "./live-output-store";
 import { frozenSettings } from "./output-sources";
 
 /**
@@ -56,21 +57,21 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
   const [coverControl, setCoverControl] = useState(false);
   const [pending, setPending] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
-  // What this panel last sent per output: its clock and revision. `retimed` once main has paused and resumed it
-  // (disconnect → held → resume), since main then owns a new clock the panel can't see.
-  const sent = useRef(new Map<string, { clock: OutputClock; revision: number; retimed: boolean }>());
+  // What was last sent per output (clock, revision, source) lives in the Live store, so it outlives this panel.
+  useEffect(() => attachLiveOutput(api), [api]);
 
   useEffect(() => {
     let live = true;
     api.listDisplays().then((d) => live && setDisplays(d)).catch(() => undefined);
-    api.status().then((list) => live && setStatuses(Object.fromEntries(list.map((s) => [s.outputId, s])))).catch(() => undefined);
+    api.status()
+      .then((list) => {
+        list.forEach(noteStatus);
+        if (live) setStatuses(Object.fromEntries(list.map((s) => [s.outputId, s])));
+      })
+      .catch(() => undefined);
     const offDisplays = api.onDisplays((d) => setDisplays(d));
-    const offStatus = api.onStatus((s) => {
-      const last = sent.current.get(s.outputId);
-      if (last && (s.state === "waiting-display" || s.state === "held")) last.retimed = true;
-      if (s.state === "closed") sent.current.delete(s.outputId);
-      setStatuses((prev) => ({ ...prev, [s.outputId]: s }));
-    });
+    // The Live store keeps its own subscription for the clock and Live; this one is for what the panel shows.
+    const offStatus = api.onStatus((s) => setStatuses((prev) => ({ ...prev, [s.outputId]: s })));
     return () => {
       live = false;
       offDisplays();
@@ -110,15 +111,10 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
     const allowControlDisplay = display.hostsControlWindow && coverControl;
     setCoverControl(false);
     void run(async () => {
-      const session = buildOutputSession({
-        project,
-        mapping,
-        outputId: output.outputId,
-        source: { id: sourceId, settings: frozenSettings(sourceId) },
-        clock: playingFromStart(fps, performance.timeOrigin + performance.now()),
-      });
+      const source = { id: sourceId, settings: frozenSettings(sourceId) };
+      const session = buildOutputSession({ project, mapping, outputId: output.outputId, source, clock: playingFromStart(fps, performance.timeOrigin + performance.now()) });
       const next = await api.open({ outputId: output.outputId, display: display.key, ...(allowControlDisplay ? { allowControlDisplay: true } : {}), session });
-      sent.current.set(output.outputId, { clock: session.clock, revision: session.revision, retimed: false });
+      recordSent(output.outputId, { clock: session.clock, revision: session.revision, source });
       setStatuses((prev) => ({ ...prev, [next.outputId]: next }));
     });
   }
@@ -126,19 +122,23 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
   /** Sends the current project and content to the open output, keeping its frame and play state. */
   function update() {
     if (!project || !mapping || !output || !sourceId) return;
-    const last = sent.current.get(output.outputId);
+    const last = lastSent(output.outputId);
     const previousRevision = Math.max(last?.revision ?? 0, status?.sessionRevision ?? 0);
     const clock = last
       ? updateClock(last.clock, { retimed: last.retimed, reportedFrame: status?.render?.frame ?? null, nowMs: performance.timeOrigin + performance.now() })
       : playingFromStart(fps, performance.timeOrigin + performance.now());
     void run(async () => {
-      const session = buildUpdateSession({ project, mapping, outputId: output.outputId, source: { id: sourceId, settings: frozenSettings(sourceId) }, clock, previousRevision });
+      const source = { id: sourceId, settings: frozenSettings(sourceId) };
+      const session = buildUpdateSession({ project, mapping, outputId: output.outputId, source, clock, previousRevision });
       const next = await api.update(output.outputId, session);
-      sent.current.set(output.outputId, { clock: session.clock, revision: session.revision, retimed: false });
+      recordSent(output.outputId, { clock: session.clock, revision: session.revision, source });
       setStatuses((prev) => ({ ...prev, [next.outputId]: next }));
     }, updateErrorText);
   }
-  const updatable = updateAvailability(view.state);
+  const liveState = useLiveOutputStore((s) => (output ? s.outputs[output.outputId] ?? null : null));
+  const liveOn = !!liveState?.on;
+  // Live sends every change itself; Update output would race it for the next revision.
+  const updatable = liveOn ? null : updateAvailability(view.state);
   const colour = colourWarning(shown);
 
   return (
@@ -207,6 +207,23 @@ function DesktopOutputControls({ api, sourceId, fps }: { api: ControlApi; source
             </Button>
           )}
         </div>
+        {output && status && (view.state === "live" || liveOn) && (
+          <div className="flex flex-col gap-1" data-testid="output-live">
+            <Label className="flex items-start gap-2 text-xs font-normal leading-snug">
+              <Checkbox
+                checked={liveOn}
+                onCheckedChange={(v) => (v === true ? startLive(output.outputId, status) : stopLive(output.outputId))}
+                className="mt-0.5"
+                data-testid="output-live-switch"
+              />
+              <span>Live: send every mapping change to this output as you make it.</span>
+            </Label>
+            {liveState?.paused && <p className="text-xs text-amber-400" data-testid="output-live-paused">Live paused: {liveState.paused} The wall keeps the last good map.</p>}
+            {liveOn && liveState?.holding && <p className="text-xs text-muted-foreground">Live holds until Resume, then sends the latest map once.</p>}
+            {liveState?.error && <p className="text-xs text-destructive">{liveState.error}</p>}
+          </div>
+        )}
+        {!liveOn && liveState?.stopped && view.state !== "live" && <p className="text-xs text-muted-foreground" data-testid="output-live-stopped">Live turned off: {liveState.stopped}</p>}
         {updatable && !updatable.enabled && <p className="text-xs text-muted-foreground" data-testid="output-update-reason">Update output: {updatable.reason}</p>}
         <p className="text-[11px] text-muted-foreground">Plays the content above from frame 0 at {fps} fps. Update output sends your latest edits and keeps the frame playing.</p>
       </div>
