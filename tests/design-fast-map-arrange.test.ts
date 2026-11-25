@@ -8,12 +8,12 @@ import { resolveMapping } from "@/engines/mapping";
 import * as ops from "@/engines/project-ops";
 import { validateProject } from "@/engines/validation";
 import { parseProjectFile, serializeProject } from "@/persistence/schema";
-import { choices, HP_STAGE_LIST, SIZE_500 } from "./design-fast-map-fixtures";
+import { choices, HP_SIZES, HP_STAGE_LIST } from "./design-fast-map-fixtures";
 import { testContext, threeScreenProject } from "./helpers";
 
 const HD = { width: 1920, height: 1080 };
 const settings = (extra: Partial<ArrangeSettings> = {}): ArrangeSettings => ({ mode: "replace", gapPx: 32, stageGapUm: 0, output: HD, newOutputs: 1, ...extra });
-const hpScreens = () => parseScreenList(HP_STAGE_LIST, { cabinets: choices(), sizeIfMissing: SIZE_500 }).screens;
+const hpScreens = () => parseScreenList(HP_STAGE_LIST, { cabinets: choices(), sizesIfMissing: HP_SIZES }).screens;
 const empty = () => ops.createProject({ name: "Fast" }, testContext());
 /** Ids for what Fast map creates, apart from the project's own. */
 const fm = (): ops.OpContext => {

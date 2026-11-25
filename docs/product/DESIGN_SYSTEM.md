@@ -115,7 +115,7 @@ From a supplier's screen list to a mapped wall in three steps. Opened from the s
 
 | Step | What it does | Rules |
 | --- | --- | --- |
-| 1 Paste | The list, read on every keystroke: errors per line, then each screen with its size and how its cabinet was found. Stage, content and output previews | Nothing is created until every line is valid. A pitch that comes in more than one cabinet size is an error, with a button per size: "Lines without a size use 500 × 500 mm" is shown and can be cleared |
+| 1 Paste | The list, read on every keystroke: errors per line, then each screen with its size and how its cabinet was found. Stage, content and output previews | Nothing is created until every line is valid. A pitch that comes in more than one cabinet size is an error, with a button per size. One pick per pitch applies to every line of that pitch without a size, never to lines that state one, and says so: "P3.9: 500×500 mm, applied to 5 lines without a size", with Clear |
 | 2 Arrange | Output size, how many outputs, space between screens in content (px) and on stage (mm) | Never scales. Says what doesn't fit, and offers the number of outputs that would hold everything. **Create screens** is one edit and one undo step. On a project that already has screens: **Add** keeps them exactly, **Replace** asks first |
 | 3 Fix | The screens, numbered in project order, matching SCR-01, SCR-02 on the test card. Content and output previews | Keys below. Each change is one undo step. An error is shown with its reason and stays in the project until fixed |
 

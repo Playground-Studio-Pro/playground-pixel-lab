@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { useCabinetOptions } from "@/components/workspace/cabinet-options";
 import { SelectField } from "@/components/workspace/fields";
 import type { Id, Project } from "@/domain/model";
-import { parseMm, px } from "@/domain/units";
-import { buildFastMap, MAX_GAP_PX, MAX_NEW_OUTPUTS, parseScreenList, sameContent, sizeLabel, swapOutputs, type ArrangeSettings, type CabinetSize, type FastMapBuild } from "@/engines/fast-map";
+import { formatMm, parseMm, px } from "@/domain/units";
+import { buildFastMap, MAX_GAP_PX, MAX_NEW_OUTPUTS, parseScreenList, sameContent, sizeLabel, swapOutputs, type ArrangeSettings, type FastMapBuild, type SizeChoice } from "@/engines/fast-map";
 import * as ops from "@/engines/project-ops";
 import { cn } from "@/lib/utils";
 import { opContext, useApp } from "@/state/store";
@@ -30,7 +30,8 @@ interface Session {
   step: Step;
   name: string;
   text: string;
-  sizeIfMissing: CabinetSize | null;
+  /** One size per written pitch, for lines that write none. */
+  sizesIfMissing: readonly SizeChoice[];
   mode: "add" | "replace";
   gapPx: string;
   stageGapMm: string;
@@ -49,7 +50,7 @@ const useSession = create<Session>((set) => ({
   step: 0,
   name: "New show",
   text: "",
-  sizeIfMissing: null,
+  sizesIfMissing: [],
   mode: "add",
   gapPx: "32",
   stageGapMm: "0",
@@ -158,8 +159,8 @@ export default function FastMap() {
   }, [session.step]);
 
   const parsed = useMemo(
-    () => parseScreenList(session.text, { cabinets, sizeIfMissing: session.sizeIfMissing, takenNames: mode === "add" ? project?.physical.screens.map((s) => s.name) : [] }),
-    [session.text, cabinets, session.sizeIfMissing, mode, project],
+    () => parseScreenList(session.text, { cabinets, sizesIfMissing: session.sizesIfMissing, takenNames: mode === "add" ? project?.physical.screens.map((s) => s.name) : [] }),
+    [session.text, cabinets, session.sizesIfMissing, mode, project],
   );
   const settings = readSettings(session, mode);
   const preview: FastMapBuild | null = useMemo(() => {
@@ -301,24 +302,28 @@ function PastePanel({ parsed, hasProject, screenCount, mode, onNext }: { parsed:
         </fieldset>
       )}
       <div id="fast-map-result" className="flex flex-col gap-2" aria-live="polite">
-        {parsed.missingSizeOptions.length > 0 && !session.sizeIfMissing && (
-          <Note tone="warn">
-            <p className="mb-1.5">Some lines don&apos;t say the cabinet size and fit more than one. Choose the size for lines without one, or write it on each line:</p>
-            <div className="flex flex-wrap gap-1.5">
-              {parsed.missingSizeOptions.map((s) => (
-                <Button key={`${s.widthUm}x${s.heightUm}`} variant="outline" size="xs" className="rounded" onClick={() => session.set({ sizeIfMissing: s })}>
-                  {sizeLabel(s)}
-                </Button>
-              ))}
-            </div>
-          </Note>
-        )}
-        {session.sizeIfMissing && (
-          <Note tone="info">
-            Lines without a size use {sizeLabel(session.sizeIfMissing)} cabinets.{" "}
-            <button type="button" className="underline underline-offset-2 focus-visible:outline-2" onClick={() => session.set({ sizeIfMissing: null })}>Clear</button>
-          </Note>
-        )}
+        {parsed.missingSizes.map((m) => {
+          const pitch = `P${formatMm(m.pitchUm)}`;
+          const lines = `${m.lines} ${m.lines === 1 ? "line" : "lines"}`;
+          const others = session.sizesIfMissing.filter((c) => c.pitchUm !== m.pitchUm);
+          return m.chosen ? (
+            <Note key={m.pitchUm} tone="info">
+              {pitch}: {sizeLabel(m.chosen)}, applied to {lines} without a size.{" "}
+              <button type="button" className="underline underline-offset-2 focus-visible:outline-2" onClick={() => session.set({ sizesIfMissing: others })}>Clear</button>
+            </Note>
+          ) : (
+            <Note key={m.pitchUm} tone="warn">
+              <p className="mb-1.5">{pitch} on {lines} has no cabinet size and fits more than one. Choose the size for all of them, or write it on each line:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {m.sizes.map((size) => (
+                  <Button key={`${size.widthUm}x${size.heightUm}`} variant="outline" size="xs" className="rounded" onClick={() => session.set({ sizesIfMissing: [...others, { pitchUm: m.pitchUm, size }] })}>
+                    {sizeLabel(size)}
+                  </Button>
+                ))}
+              </div>
+            </Note>
+          );
+        })}
         {parsed.errors.length > 0 && (
           <ul className="flex flex-col gap-1.5" aria-label="Lines to fix">
             {parsed.errors.map((e, i) => (

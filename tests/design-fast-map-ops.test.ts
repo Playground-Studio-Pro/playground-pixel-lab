@@ -15,7 +15,7 @@ import { masterScene, outputScene } from "@/exports/scene";
 import { renderSvg } from "@/exports/svg";
 import { parseProjectFile } from "@/persistence/schema";
 import { useApp } from "@/state/store";
-import { choices, HP_STAGE_LIST, SIZE_500 } from "./design-fast-map-fixtures";
+import { choices, HP_SIZES, HP_STAGE_LIST } from "./design-fast-map-fixtures";
 import { testContext } from "./helpers";
 
 function fm(): ops.OpContext {
@@ -25,7 +25,7 @@ function fm(): ops.OpContext {
 
 /** The HP Stage map: eight screens, two same-size pairs (the towers and the blades). */
 function hp(): { project: Project; id: Record<string, string> } {
-  const screens = parseScreenList(HP_STAGE_LIST, { cabinets: choices(), sizeIfMissing: SIZE_500 }).screens;
+  const screens = parseScreenList(HP_STAGE_LIST, { cabinets: choices(), sizesIfMissing: HP_SIZES }).screens;
   const build = buildFastMap(ops.createProject({ name: "HP" }, testContext()), screens, { mode: "replace", gapPx: 32, stageGapUm: 0, output: { width: 1920, height: 1080 }, newOutputs: 1 }, fm());
   return { project: build.project, id: Object.fromEntries(build.mapping.screens.map((s) => [s.name, s.screenId])) };
 }
@@ -154,7 +154,7 @@ describe("one edit, one undo step", () => {
   it("creating the list, swapping and sharing content each undo exactly", async () => {
     await app().newProject({ name: "Fast map undo" });
     const start = content(app().project!);
-    const screens = parseScreenList(HP_STAGE_LIST, { cabinets: choices(), sizeIfMissing: SIZE_500 }).screens;
+    const screens = parseScreenList(HP_STAGE_LIST, { cabinets: choices(), sizesIfMissing: HP_SIZES }).screens;
     const steps = app().history.past.length;
 
     app().edit((p) => buildFastMap(p, screens, { mode: "replace", gapPx: 32, stageGapUm: 0, output: { width: 1920, height: 1080 }, newOutputs: 1 }, fm()).project);

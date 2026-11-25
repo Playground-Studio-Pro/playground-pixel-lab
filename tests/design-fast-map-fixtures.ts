@@ -12,6 +12,12 @@ Cinta 14x1 P3.9`;
 
 export const SIZE_500 = { widthUm: mmToUm(500), heightUm: mmToUm(500) };
 
+/** One pick per pitch in the HP list: 500×500 for P3.9 and for P2.6. */
+export const HP_SIZES = [
+  { pitchUm: mmToUm(3.9), size: SIZE_500 },
+  { pitchUm: mmToUm(2.6), size: SIZE_500 },
+];
+
 /** Every cabinet a new project offers: generic, catalog and the seeded library, as the dropdowns list them. */
 export function choices(project: Project | null = null, library: readonly LibraryCabinet[] = SEED_LIBRARY_CABINETS): CabinetChoice[] {
   return cabinetOptions(project, library);
