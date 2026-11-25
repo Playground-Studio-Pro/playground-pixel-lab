@@ -16,7 +16,7 @@ Machine: MacBook Pro, Apple M1 Max, macOS 26.2 (25C56), Node 24.13.1, npm 11.8.0
 | Engineering studio | 🟡 opens; it's a placeholder ("its tools are being built") |
 | Autosave and recovery after quit and relaunch | ✅ |
 | Project file export and import through native dialogs | ✅ |
-| MP4 export of an output test card inside Electron | ✅ ffprobe-checked, plays in QuickTime |
+| MP4 export of an output test card inside Electron | 🟡 ffprobe-checked, shows in QuickTime; length and rate were wrong there (section 7), fixed since, not re-exported |
 | Unsigned `.app` (`pack:mac`) launched from a path with spaces | ✅ |
 | Signed / notarized build, DMG, Gatekeeper on another Mac | ⬜ out of Phase B |
 | Windows | ⬜ not run. No Windows support is claimed |
@@ -116,6 +116,8 @@ ffmpeg -i … -f null -   → decodes with no errors
 ```
 
 Played in QuickTime Player ([12](evidence/phase-b/12-quicktime.jpg)); a frame at 5 s matches the preview ([08](evidence/phase-b/08-mp4-frame5s.jpg)).
+
+**Corrected 2026-11-24:** that check looked at the picture, not the length. MP4s exported then read as twice as long at half the frame rate in AVFoundation (QuickTime, Arena on macOS); ffprobe doesn't show it. The header is fixed since (`docs/integrations/video-encoding.md`), but the export inside Electron hasn't been repeated.
 
 Electron's log shows the encode went through **OpenH264**, Chromium's software encoder, not VideoToolbox. Fine for a still test card at this size; speed on long or 4K animated exports wasn't measured. The stream-level `nb_frames` is `N/A` (the muxer doesn't write it); counting decoded frames gives 300.
 
