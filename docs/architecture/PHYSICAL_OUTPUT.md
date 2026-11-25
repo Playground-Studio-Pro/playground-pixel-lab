@@ -599,6 +599,8 @@ Three numbers, never confused: **content fps** (24/25/30/50/60, the clock's `fps
 | 50 | 1, 1, 1, 1, 2 (uneven) | 1 (even) |
 | 60 | 1 (even) | 1 frame in 6 never shown |
 
+**Reported rates carry float noise.** Electron has reported 60.000003814697266 Hz for 60 Hz monitors and 120.0006103515625 Hz for a 120 Hz panel. `cadencePattern` reads a rate within 0.001 Hz of a whole number as that number, so the table above applies; 59.94, 23.976 and 119.88 stay fractional. The tolerance covers that noise only and isn't a claim of zero drift: real clocks drift by more. `DisplayInfo.refreshHz` and the report keep the raw value.
+
 Pure function, unit-tested against this table:
 
 ```ts
@@ -764,7 +766,7 @@ Resolume hasn't been tested with Pixel Lab yet. Nothing below assumes a result: 
 
 - [ ] Composition size = 1920 × 1080, frame rate 30.
 - [ ] Advanced Output: the external monitor as the output device, at its native resolution; one slice, input = 0, 0, 1920, 1080, output = 0, 0, 1920, 1080.
-- [ ] Drop the OUT 1 MP4 in a clip slot. Check the clip's reported size is 1920 × 1080 and that its transform does no fit, scale or offset.
+- [ ] Drop the OUT 1 MP4 in a clip slot. Check the clip's reported size is 1920 × 1080, its length is 10 s at 30 fps (an MP4 exported before the duration fix shows 20 s at 15 fps: export it again, see `docs/integrations/video-encoding.md`), and that its transform does no fit, scale or offset.
 - [ ] Close-up photos of the four corners and the centre. All four edge lines present: ☐ yes ☐ no (which side).
 - [ ] Inner lines distinct from the edge lines (white-black-white, not gray): ☐ yes ☐ no.
 - [ ] Corner markers: right colours, complete 16 × 16: ☐ yes ☐ no.

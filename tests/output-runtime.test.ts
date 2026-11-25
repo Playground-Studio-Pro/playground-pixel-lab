@@ -247,6 +247,16 @@ describe("OutputRuntime (PHYSICAL_OUTPUT 8.1, 8.3, 8.4)", () => {
     expect(h.reports.reduce((n, r) => n + r.skippedFrames, 0)).toBe(0);
   });
 
+  it("a 60 Hz monitor reported as 60.000003814697266 Hz is even at 30 and 60 fps, and the report keeps the raw rate", async () => {
+    for (const [fps, pattern] of [[30, [2]], [60, [1]]] as const) {
+      const h = harness();
+      h.callbacks.session!(session({ clock: { state: "playing", fps, startFrame: 0, epochMs: 0 }, display: display({ width: 1920, height: 1080 }, 1, 60.000003814697266) }));
+      await h.settle();
+      h.run(121, 1000 / 60.000003814697266);
+      expect(h.reports.at(-1)!.cadence).toMatchObject({ contentFps: fps, refreshHz: 60.000003814697266, pattern, even: true });
+    }
+  });
+
   it("counts skipped frames when refreshes are missed", async () => {
     const h = harness();
     h.callbacks.session!(session({ clock: { state: "playing", fps: 60, startFrame: 0, epochMs: 0 } }));
