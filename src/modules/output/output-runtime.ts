@@ -1,6 +1,7 @@
 import type { ContentFps } from "@/domain/motion";
 import type { DisplayInfo, OutputClock, OutputRenderErrorCode, OutputRenderReport, OutputWindowApi, OutputWindowSession, Size } from "@/domain/physical-output";
-import { cadencePattern, contentFrame, medianInterval, needsReanchor, outputLayout, type OutputLayout, type RefreshGrid } from "@/engines/output-layout";
+import { cadencePattern, contentFrame, outputLayout, type OutputLayout } from "@/engines/output-layout";
+import { CadenceCounter, RefreshTracker } from "@/engines/output/refresh-grid";
 import { CHROMIUM_CANVAS_LIMITS, OutputSessionError, prepareSession, type PrepareEnv, type PreparedSession } from "./output-session";
 import { createOutputSource } from "./output-sources";
 import { targetSource } from "./target-source";
@@ -13,7 +14,7 @@ import { targetSource } from "./target-source";
  * - A session is prepared to the side and swapped in at the next frame only once fully prepared. A session that
  *   fails keeps the previous one on screen (or black, if none drew yet) and reports the code.
  * - The frame is a pure function of the shared clock: `contentFrame(clock, t, grid)` on the rAF timestamp,
- *   quantized to the measured refresh grid.
+ *   quantized to the refresh grid that `RefreshTracker` keeps.
  * - It draws only when the session, the content frame or the layout changed. A still card costs nothing.
  * - It reports at most every 500 ms, from its first frame, with or without a session. Nothing is ever drawn on
  *   the wall but content.
@@ -39,7 +40,7 @@ export interface OutputRuntimeEnv {
 
 const REPORT_EVERY_MS = 500;
 const FPS_WINDOW_MS = 2000;
-const GRID_SAMPLES = 60;
+const FPS_SAMPLES = 60;
 const MAX_ERROR = 500;
 const PAINT_SAMPLES = 4000;
 
@@ -69,14 +70,10 @@ export class OutputRuntime {
   private error: { code: OutputRenderErrorCode; message: string } | null = null;
   private contentBox: Size | null = null;
   private stamps: number[] = [];
-  private grid: RefreshGrid | null = null;
+  private readonly refreshes = new RefreshTracker();
+  private readonly cadence = new CadenceCounter();
   private lastStamp: number | null = null;
   private lateFrames = 0;
-  private skippedFrames = 0;
-  private repeated = 0;
-  private held = 0;
-  /** The last frame drawn under the current clock; a new clock (play, pause, seek) starts counting afresh. */
-  private cadenceFrame: number | null = null;
   private lastReportAt = -Infinity;
   private limitsCache: NonNullable<OutputRenderReport["limits"]> | null = null;
   private disposers: (() => void)[] = [];
@@ -152,7 +149,7 @@ export class OutputRuntime {
       l.clock = clock;
       l.fps = fpsOf(clock, l.fps);
     }
-    this.cadenceFrame = null;
+    this.cadence.reset();
   }
 
   private setDisplay(display: DisplayInfo): void {
@@ -180,16 +177,14 @@ export class OutputRuntime {
     this.lastReportAt = -Infinity;
   }
 
-  /** Measured refresh period and grid from the last rAF timestamps (8.6). */
+  /** Follows the display's refreshes from the rAF timestamps (8.6). */
   private sample(t: number): void {
-    if (this.lastStamp !== null && this.grid && t - this.lastStamp > 1.5 * this.grid.periodMs) this.lateFrames++;
+    const { grid } = this.refreshes;
+    if (this.lastStamp !== null && grid && t - this.lastStamp > 1.5 * grid.periodMs) this.lateFrames++;
     this.lastStamp = t;
     this.stamps.push(t);
-    if (this.stamps.length > GRID_SAMPLES) this.stamps.shift();
-    const period = medianInterval(this.stamps);
-    if (period === null) return;
-    if (!this.grid || Math.abs(this.grid.periodMs - period) > 0.01) this.grid = { periodMs: period, anchorMs: this.grid?.anchorMs ?? t };
-    if (needsReanchor(t, this.grid)) this.grid = { periodMs: period, anchorMs: t };
+    if (this.stamps.length > FPS_SAMPLES) this.stamps.shift();
+    this.refreshes.push(t, (this.live ?? this.pending)?.display.refreshHz);
   }
 
   private relayout(live: Live): void {
@@ -230,34 +225,23 @@ export class OutputRuntime {
     const live = this.live;
     if (live) {
       if (this.layoutDirty) this.relayout(live);
-      const frame = contentFrame(live.clock, t, this.grid);
+      const frame = contentFrame(live.clock, t, this.refreshes.grid);
       const last = this.drawn;
       if (live.prepared.usesGpu && this.gpuLost) {
         // Nothing to draw with until the context is back; the last frame stays, and the report says why.
         if (this.error?.code !== "GPU_UNAVAILABLE") this.fail("GPU_UNAVAILABLE", "The GPU took the WebGL context away. The last frame stays on screen until it comes back.");
       } else if (!last || last.revision !== live.prepared.revision || last.frame !== frame) {
-        this.countCadence(live.clock, frame);
+        this.countCadence(live.clock, frame, t);
         this.paint(live, frame);
-      } else if (live.clock.state === "playing") {
-        this.held++;
       }
     }
     if (t - this.lastReportAt >= REPORT_EVERY_MS) this.report(t);
   }
 
-  /** Skipped: the frame jumped further than one refresh allows. Repeated: held longer than the pattern says. */
-  private countCadence(clock: OutputClock, frame: number): void {
-    const held = this.held;
-    const previous = this.cadenceFrame;
-    this.held = 1;
-    this.cadenceFrame = frame;
-    if (clock.state !== "playing" || previous === null || !this.grid) return;
-    const hz = 1000 / this.grid.periodMs;
-    const maxStep = Math.max(1, Math.ceil(clock.fps / hz - 1e-6));
-    const step = frame - previous;
-    if (step > maxStep) this.skippedFrames += step - maxStep;
-    const { pattern } = cadencePattern(clock.fps, Math.round(hz));
-    if (pattern.length && held > Math.max(...pattern)) this.repeated++;
+  /** Skipped and repeated frames, only while playing and from the epoch on: frame 0 waiting for it isn't a repeat. */
+  private countCadence(clock: OutputClock, frame: number, t: number): void {
+    if (clock.state !== "playing" || t < clock.epochMs || this.refreshes.gridHz === 0) return this.cadence.reset();
+    this.cadence.draw(frame, this.refreshes.refresh, clock.fps, this.refreshes.gridHz);
   }
 
   private paint(live: Live, frame: number): void {
@@ -320,7 +304,7 @@ export class OutputRuntime {
     // window is alive and how it is laid out.
     this.lastReportAt = t;
     const canvas = this.canvas!;
-    const measuredHz = this.grid ? Math.round((1000 / this.grid.periodMs) * 100) / 100 : 0;
+    const measuredHz = Math.round(this.refreshes.measuredHz * 100) / 100;
     const report: OutputRenderReport = {
       sessionRevision: live?.prepared.revision ?? 0,
       firstFrameDrawn: this.firstFrameDrawn,
@@ -331,7 +315,7 @@ export class OutputRuntime {
       outputPx: live ? { width: live.prepared.target.width, height: live.prepared.target.height } : { width: 1, height: 1 },
       browserFps: this.browserFps(t),
       lateFrames: this.lateFrames,
-      skippedFrames: this.skippedFrames,
+      skippedFrames: this.cadence.skipped,
       contentBoxDevicePx: this.contentBox,
       ...(live ? { masterPx: { width: live.prepared.master.width, height: live.prepared.master.height }, sourceId: live.prepared.sourceId } : {}),
       ...(this.error ? { error: this.error.message, errorCode: this.error.code } : {}),
@@ -339,14 +323,14 @@ export class OutputRuntime {
         ? (() => {
             const refreshHz = live.display.refreshHz > 0 ? live.display.refreshHz : measuredHz;
             const { pattern, even } = cadencePattern(live.clock.fps, refreshHz);
-            return { cadence: { contentFps: live.clock.fps, refreshHz, measuredHz, pattern, even, repeated: this.repeated } };
+            return { cadence: { contentFps: live.clock.fps, refreshHz, measuredHz, pattern, even, repeated: this.cadence.repeated } };
           })()
         : {}),
       ...(this.limitsCache ? { limits: this.limitsCache } : {}),
     };
     this.lateFrames = 0;
-    this.skippedFrames = 0;
-    this.repeated = 0;
+    this.cadence.skipped = 0;
+    this.cadence.repeated = 0;
     api.report(report);
   }
 }
