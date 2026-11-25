@@ -29,21 +29,12 @@ State on 2026-11-24, 23:55 (Mac time). Talk to the owner in Spanish, in short me
 | 58 | this file | Docs | Owner's approval |
 | 57 | `322aa28` | Wall Build, draft | Waits for Alpha 0.1 |
 
-`main` is `8ba1e7d`. Merge order when the owner approves: 63, 62, 64. After 64, the uneven-cadence warnings (PHYSICAL_OUTPUT 8.6) are still to be built by Output Engineering: not part of this handoff.
+`main` is `8ba1e7d`. Merge order when the owner approves: 63, 62, 64. **62 and 63 both add a line at the same place in `CHANGELOG.md`:** merging one makes the other conflict. Don't resolve it yourself: its lane merges main in, and the owner approves the new head. After 64, the uneven-cadence warnings (PHYSICAL_OUTPUT 8.6) are still to be built by Output Engineering: not part of this handoff.
 
 ## Prepare (no windows)
 
 1. Check: `system_profiler SPDisplaysDataType` shows the built-in as **Main** and the HP 27er 1920 × 1080; no Arena, Pixel Lab or Electron running.
-2. Build the test app outside the repo, as earlier builds were. Make a folder, copy `origin/main` with `git archive`, then add each PR with `git diff origin/main...<branch>` piped to `git apply --3way` (branches `fix/resolume-centres`, `fix/output-close-menu-bar`, `fix/playback-grid`). If one doesn't apply, stop and report. Then:
-   ```sh
-   npm ci
-   npm --prefix desktop ci
-   npm run typecheck && npm run lint && npm test
-   npm --prefix desktop test
-   npm --prefix desktop run build:web
-   cd desktop && npm run test:smoke && npx electron-builder --mac --arm64 --dir --publish never
-   ```
-   Put the app in `~/Play.Code/playground.pixel/builds/test-62-63-64/`. It is a test build, not `main`; say so.
+2. The test app is **already built** by the Lead: `~/Play.Code/playground.pixel/builds/test-62-63-64/Pixel Lab.app` (main `8ba1e7d` + the code of PRs 62, 63 and 64, not `main`). Typecheck, lint, 540 tests, 98 desktop tests and the hidden smoke passed on that combination. The packaged app itself hasn't been opened. To rebuild it, apply each `git diff origin/main...<branch> -- . ':!CHANGELOG.md'` to a `git archive` of main.
 3. The harness for Run 2 is the worktree `~/Play.Code/playground.pixel/agents/desktop-engineering`, branch `test/d6-harness` at `fcbc9fc` (**local only, never push**). For the fixed code, merge `fix/playback-grid` into it locally and rebuild `build:web`.
 
 ## Run 1: the menu bar (real app, owner's hands)
