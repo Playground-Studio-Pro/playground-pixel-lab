@@ -20,6 +20,11 @@ export function validateVideoSettings(s: Mp4Settings): void {
   }
 }
 
+/** The rate the encoder is asked for, in bits per second. */
+export function h264Bitrate(width: number, height: number, fps: number): number {
+  return Math.min(60_000_000, Math.max(2_000_000, width * height * fps * 0.18));
+}
+
 /** Bounded raw memory: one canvas/frame; flush every four submissions. Only compressed MP4 is retained. */
 export async function exportMp4(options: VideoExportOptions): Promise<Blob> {
   validateVideoSettings(options);
@@ -31,7 +36,7 @@ export async function exportMp4(options: VideoExportOptions): Promise<Blob> {
       !Number.isFinite(logo.opacity ?? 1) || (logo.opacity ?? 1) < 0 || (logo.opacity ?? 1) > 1)) throw new Error('Invalid centered logo dimensions or opacity.');
   const config: VideoEncoderConfig = {
     codec: 'avc1.640033', width, height, framerate: fps,
-    bitrate: Math.min(60_000_000, Math.max(2_000_000, width * height * fps * 0.18)),
+    bitrate: h264Bitrate(width, height, fps),
     latencyMode: 'realtime', avc: { format: 'avc' },
   };
   const support = await VideoEncoder.isConfigSupported(config);

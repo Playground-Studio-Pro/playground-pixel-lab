@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Export MP4 for every screen at once (Output Studio, **For → Every screen**): one MP4 per screen at its exact size, all on the same frame clock, in one uncompressed ZIP named for the project. Screens H.264 can't take are listed with the reason and left out, never scaled. Wall Build can now be exported (not sent to a monitor), with its build time plus a hold as the duration.
 - Desktop output keeps the display awake while held after a reconnect (paused frame on the monitor, waiting for Resume), not only while live, so the LED wall can't go black from display sleep. It is still released while the display is gone.
 - Update output (desktop): the control window can send a new session to an open output, and the output window swaps to it without being closed or recreated. Refused while the output waits for its display or is held after a reconnect, so playback never restarts before Resume.
 - Desktop output test mode (for O6): the output page sees `pixelLabOutput.testMode` as true only in an unpackaged `--smoke-test` run, so hidden-test-only helpers stay off in packaged builds and normal runs. Main sets it when it creates the window; the page can't change it.
