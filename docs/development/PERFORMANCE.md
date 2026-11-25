@@ -278,3 +278,15 @@ Measured 2026-11-19 on the static export (`npm --prefix desktop run build:web`),
 The output page imports nothing from the editor: no `state/store`, no module registry, no studio panels or workspace components (`tests/output-runtime.test.ts` walks its import graph). Its size is the three output sources (test card, pixel grid, Depth Studio's WebGL renderer), the project schema and the mapping engines.
 
 **Draw time, one output, in-app Chromium with the pane hidden** (a background page, so treat it as a rough figure): Festival Main Stage, Processor A (3072 × 1920 from a 5120 × 1664 master), median of 10 frames: calibration test card 22 ms, pixel grid 16 ms. Preparing a session (parse, mapping, source) took 0–10 ms. Not a frame-rate claim: O8 measures frame time, memory and the GPU path in the Electron output window on a visible display.
+
+## Fast map (Product Design, 2026-11-25)
+
+`npm run perf:bundle`, production build, same machine as the baseline.
+
+| | Before (main `b433074`, and PR #70) | After (Fast map interface) |
+| --- | --- | --- |
+| Initial JS | 172.8 KB gzip | 172.9 KB gzip (+0.1: `open-store.ts` and the start screen button) |
+| Largest lazy chunk | 163.2 KB gzip | 161.9 KB gzip (chunks are split differently; the app code didn't shrink) |
+| Fast map chunk, on first use | n/a | 12.3 KB gzip (36.9 KB raw), engine included |
+
+Parsing and arranging the 8-screen HP Stage list, and 60-screen seeded lists, run on every keystroke with no visible delay on this machine. That is not measured with timings yet.

@@ -107,6 +107,26 @@ Product Design owns the design and the preview. Three things belong to other lan
 | Output Engineering | Calibration frames in the Export menu and the Resolume package | An `ExportEntry` per mode. `PixelMapScene` has no image node and its text is centered Arial, so either add `image` and left-aligned monospace text to `SceneNode`, or rasterize `CalNode`s directly as `calibration-view.tsx` does. The dialog's own "Export frame (PNG)" is a stopgap until then. An SVG version needs the font embedded or converted to outlines |
 | Lead Architect | The mapping canvas still draws the checkerboard | `workspace-canvas.tsx` could take its screen fill and labels from `tokens.ts`. Inconsistency 2 below still applies |
 
+## Fast map
+
+From a supplier's screen list to a mapped wall in three steps. Opened from the start screen (**Fast map**) or from Mapping (the explorer's "Fast map" row). It replaces the workspace until **Back to Mapping**.
+
+**Code.** The engine is `src/engines/fast-map/`, pure; the interface is `src/components/shell/fast-map/`, loaded on first use. `open-store.ts` is the only part in the shell bundle.
+
+| Step | What it does | Rules |
+| --- | --- | --- |
+| 1 Paste | The list, read on every keystroke: errors per line, then each screen with its size and how its cabinet was found. Stage, content and output previews | Nothing is created until every line is valid. A pitch that comes in more than one cabinet size is an error, with a button per size: "Lines without a size use 500 × 500 mm" is shown and can be cleared |
+| 2 Arrange | Output size, how many outputs, space between screens in content (px) and on stage (mm) | Never scales. Says what doesn't fit, and offers the number of outputs that would hold everything. **Create screens** is one edit and one undo step. On a project that already has screens: **Add** keeps them exactly, **Replace** asks first |
+| 3 Fix | The screens, numbered in project order, matching SCR-01, SCR-02 on the test card. Content and output previews | Keys below. Each change is one undo step. An error is shown with its reason and stays in the project until fixed |
+
+**Keys in Fix.** `1`–`9` choose a screen. `X` then two numbers swaps their outputs; `T` then two numbers gives the second the first's content. Arrows move the chosen output 1 px, Shift 10 px. ⌘Z / Ctrl+Z undo, ⇧⌘Z / Ctrl+Y redo, Esc cancels. No key fires while typing in a field or while a dialog or menu is open (`keys.ts`, tested). The workspace's own shortcuts are off while Fast map is open.
+
+**Previews** are SVG drawings of `resolveMapping` rectangles: screen color at 55%, white outline when chosen, the number in white with a dark stroke. Screens showing the same content share one label, "3 = 5". The stage is drawn in millimetres because browsers can't draw text at micrometre sizes; nothing is computed from the drawing.
+
+**Send to the wall.** `wall-link.ts` is the hook: another lane registers a link, and Fix sends each change through it, only when the map has no errors. Nothing registers one yet, and Fix says so.
+
+**Inspector.** With "Same as content position" on, the Content position section says that moving the content also moves the output: the trap from Act 4 of the HP Stage demo.
+
 ## Known inconsistencies
 
 Found in the audit, recorded for [Phase 1](ROADMAP.md#phase-1-mapping-studio). Only item 9 has been partly fixed so far.
