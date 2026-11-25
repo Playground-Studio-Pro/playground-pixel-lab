@@ -58,7 +58,7 @@ interface Size { width: number; height: number }
 - The display hosting the control window can be chosen only with an explicit `allowControlDisplay: true`, for rehearsal on a single laptop. Default refuses (`CONTROL_DISPLAY`).
 - When the output's size isn't the display's `devicePx`, `output:open` still works, but the result carries a `sizeMatch` warning (section 4). Nothing is ever scaled to fit.
 
-**Events.** Main listens to `screen` `display-added`, `display-removed` and `display-metrics-changed` (with `changedMetrics`: `bounds`, `workArea`, `scaleFactor`, `rotation`). On each event it rebuilds the list, pushes `output:displays-changed` to the control window and applies section 2's disconnect rules to any affected output window. Metric events arrive in bursts while macOS rearranges displays, so main debounces them by 250 ms before acting.
+**Events.** Main listens to `screen` `display-added`, `display-removed` and `display-metrics-changed` (with `changedMetrics`: `bounds`, `workArea`, `scaleFactor`, `rotation`). On each event it rebuilds the list, pushes `output:displays-changed` to the control window and applies section 2's disconnect rules to any affected output window. Metric events arrive in bursts while macOS rearranges displays, so main debounces them by 250 ms before acting. Main also pushes the list when an output starts or stops occupying a display.
 
 ## 2. Output windows
 
@@ -93,6 +93,7 @@ new BrowserWindow({
 - **Esc closes, in main:** `webContents.on('before-input-event')` on the output window: Esc `keyDown` → close this output. It runs in the main process, so it works even when the output renderer is hung. A global shortcut is **not** registered (it would steal Esc from other apps); Esc works when the output window has focus, and the control window always has a Close button and `output:close`.
 - **Independent close:** closing an output window changes nothing in the control window except its status. Quitting the app closes every output window. Closing the control window while outputs run is an owner decision (D-3).
 - **Sleep:** while at least one output is `live` or `held`, main holds one `powerSaveBlocker.start('prevent-display-sleep')`; it stops when the last output leaves those states. One blocker for all outputs. `held` keeps it because the window is on the monitor showing the paused frame while the operator decides to Resume, and a sleeping display would black out the LED wall. `waiting-display` releases it: there's no monitor to keep awake. Decided after the D7 review.
+- **Closing leaves full screen first.** macOS simple full screen hides the menu bar and Dock for the whole app, and destroying the window doesn't give them back. Every close path (Close, Esc, a lost display while opening or failed, a crashed or hung page, app quit, a close macOS starts such as ⌘W, the smoke dead-man switch) leaves full screen in main and destroys the window in the same tick. Nothing waits for the renderer or for a full-screen event. A `failed` output stays in full screen until it's closed (D-1).
 - **Content protection is off.** `setContentProtection` would black the window out in screen recordings and some capture setups.
 - **Colour: the output display's macOS profile must be sRGB IEC61966-2.1.** Output sends the same RGB values as the MP4 only on a display using that profile.
   - **Why the app doesn't force it:** by default Chromium colour-manages each frame to the display's profile. On the dev Mac's XDR display, pure green (0,255,0) reads back as (1,255,0) at 1× and 2× (O5). With `--force-color-profile=srgb`, Chromium tags frames as sRGB instead, and macOS WindowServer is expected to convert them to the display's ColorSync profile. That is the Lead Architect's reading, **not measured yet**: the physical session's sRGB check confirms or corrects it. Either way, the values on the cable should be unchanged only when that profile is sRGB, which makes both paths an identity transform. So the app never sets the switch (and in Electron 43 it can't: see Measured, below).
@@ -587,7 +588,11 @@ Three numbers, never confused: **content fps** (24/25/30/50/60, the clock's `fps
 **Which frame.** Desktop's formula (section 4) stays: `frame = startFrame + floor((t − epochMs) × fps / 1000)`. Output refines how `t` is taken, inside the page:
 
 1. `t` is the rAF callback's own timestamp (`performance.timeOrigin + rafTimestamp`), which Chromium aligns to the vsync it's producing for, not `performance.now()` at some later point in the callback.
-2. **Quantized to the refresh grid**, so jitter of a fraction of a millisecond can't flip `floor` at a frame boundary (a 60 fps clock on a 60 Hz display would otherwise show a random double and skip). With `P` the median rAF interval over the last 60 callbacks and `t0` the first rAF timestamp after the clock arrived: `t' = t0 + round((t − t0) / P) × P`. Re-anchor `t0` when `|t − t'| > P / 4` (display clock drift, a dropped vsync). Every window still computes a pure function of time, so outputs stay within one refresh of each other, as section 4 promises.
+2. **Quantized to the refresh grid**, so noise in `t` can't flip `floor` at a frame boundary (a 60 fps clock on a 60 Hz display would otherwise show a random double and skip): `t' = t0 + round((t − t0) / P) × P`. `RefreshTracker` (`src/engines/output/refresh-grid.ts`) keeps `P` and `t0`:
+   - **`P` is `1000 / N`**, with `N` the display's rate as a whole number: the reported rate where the timestamps agree with it, otherwise what they measure. It's a ruler, not the measurement. Content rates are whole numbers too, so on a steady whole-rate display every frame boundary stays at one phase. Before, `P` was the median of 60 intervals. Chromium rounds rAF timestamps to 0.1 ms (the page isn't cross-origin isolated), so 60 Hz came out as 16.7 ms: `t'` ran ahead and was pulled back by P / 4 about every 2 s, and at some phases each pull repeated one content frame and skipped another.
+   - **`t0` follows a least-squares line** through the last 120 timestamps, looked at every 10. It stays put until the line is more than P / 8 away, then moves onto it. Rounding and jitter far below P / 8 can't move it. A display that isn't at `N` exactly (59.94 Hz, or any real clock's ppm) moves it one way only, so it costs the one skip or repeat the drift makes unavoidable and never goes back over a boundary.
+   - **Refreshes are counted**, so a dropped callback takes two steps and changes neither `P` nor `t0`. `N` changes when the median of 60 intervals leaves it (by 3 %, or by more than their own spread explains) or when the line's slope is more than 0.6 Hz away.
+   - Every window still computes its frame from the shared clock and its own display's refreshes, so outputs stay within one refresh of each other, as section 4 promises.
 
 **Expected pattern.** Refreshes each content frame stays on screen, over one cycle:
 
@@ -608,7 +613,7 @@ Pure function, unit-tested against this table:
 interface OutputCadence {
   contentFps: ContentFps;
   refreshHz: number;        // DisplayInfo.refreshHz, or the measured rate when it is 0
-  measuredHz: number;       // 1000 / P
+  measuredHz: number;       // from the slope of the line through the last 120 timestamps, not from P
   pattern: number[];        // refreshes per content frame over one cycle (capped at 1 s for 59.94-style rates)
   even: boolean;            // every entry equal and fps <= refreshHz
   repeated: number;         // since last report: content frames held longer than the pattern says
@@ -616,7 +621,7 @@ interface OutputCadence {
 export function cadencePattern(fps: number, refreshHz: number): { pattern: number[]; even: boolean };
 ```
 
-`skippedFrames` counts content frames the pattern says should have appeared and didn't (frame number jumped by more than the pattern allows); `lateFrames` counts rAF intervals over 1.5 P. Both reset at every report.
+`skippedFrames` and `repeated` come from `CadenceCounter`, which looks only at which frame was shown at which refresh, against the pattern for `N`. **Skipped:** the frame number jumped by more than one refresh allows (by 2 at 60 fps on 60 Hz is 1 skipped). **Repeated:** a frame was held for more refreshes than any entry of the pattern, or a whole cycle of frames took more refreshes than the pattern's (3, 3 where 24 on 60 says 3, 2). A refresh whose callback never came counts as a refresh. On 59.94 Hz the skip that the rates make unavoidable (60 fps: one every 16.7 s) is counted too: that frame really never appeared. `lateFrames` counts rAF intervals over 1.5 P. All three reset at every report; a new clock starts the cadence counts afresh.
 
 **Warning in the control window** (not on the wall) when `even` is false: "25 fps content on a 60 Hz display can't play evenly (3-2-3-2-2). Set the display to 50 Hz if it offers it, or use 30 or 60 fps." When `measuredHz` differs from `refreshHz` by more than 2 %: "This window receives 30 frames per second but the display runs at 60 Hz. Content may stutter." (that also catches Chromium syncing the window to another display's vsync, which must be checked on a real second display, O9).
 
@@ -711,7 +716,8 @@ Measured 2026-11-20 by `desktop/tests/smoke-scripts/o8-limits.cjs`, hidden smoke
 - **What "late" means:** a rAF interval longer than 1.5 refresh periods.
 
 **Against the trigger for region rendering (8.2):** "O8 shows Festival can't hold the content rate, or `MAX_OUTPUTS` goes above 1."
-- **Content rate:** Festival held both 30 and 60 fps with every source, with 0 skipped frames.
+- **Content rate:** Festival drew every due frame at 30 and 60 fps with every source, with 0 skipped frames.
+- **Pacing (corrected 2026-11-24):** this section first said the rates were "held". Every due frame was drawn, but not evenly: at 120 Hz the test card's p99 intervals, 25.1 ms at 60 fps and 42.1 ms at 30 fps, are 3 and 5 refreshes where the pattern says 2 and 4. Depth Studio's 42.3 ms at 30 fps is 5 too; the rest (36.0, 18.8 and 19.5 ms) are off the pattern by less than a refresh. Part of it may be the hidden window's own callbacks, which jitter by milliseconds and follow no real vsync; part may be the period bias since fixed (8.6). The table is from before that fix and wasn't measured again. Pacing needs the cadence video on a real display (O9).
 - **Headroom:** the slowest paint (pixel grid at 30 fps, max 8.9 ms) is about half a 60 fps frame (16.7 ms).
 - **`MAX_OUTPUTS`:** still 1.
 - **Verdict: the trigger isn't met; region rendering stays documented, not built.**

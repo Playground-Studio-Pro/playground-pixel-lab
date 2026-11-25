@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cadencePattern, contentFrame, MAX_CADENCE_ENTRIES, medianInterval, needsReanchor, outputLayout, quantizeToRefresh } from "@/engines/output-layout";
+import { cadencePattern, contentFrame, MAX_CADENCE_ENTRIES, median, outputLayout } from "@/engines/output-layout";
 
 const size = (width: number, height: number) => ({ width, height });
 
@@ -191,19 +191,24 @@ describe("contentFrame and the refresh grid (section 4, 8.6)", () => {
     expect(sameCycle(pattern, cadencePattern(25, 60).pattern)).toBe(true);
   });
 
-  it("quantizeToRefresh snaps to the nearest refresh; needsReanchor fires past a quarter period", () => {
+  it("snaps to the nearest refresh; without a usable grid uses the timestamp itself", () => {
+    const clock = { state: "playing" as const, fps: 50 as const, startFrame: 0, epochMs: 0 };
     const grid = { periodMs: 10, anchorMs: 100 };
-    expect(quantizeToRefresh(104, grid)).toBe(100);
-    expect(quantizeToRefresh(106, grid)).toBe(110);
-    expect(quantizeToRefresh(104, null)).toBe(104);
-    expect(quantizeToRefresh(104, { periodMs: 0, anchorMs: 100 })).toBe(104);
-    expect(needsReanchor(102, grid)).toBe(false);
-    expect(needsReanchor(103, grid)).toBe(true);
+    expect(contentFrame(clock, 124, grid)).toBe(6); // 120 ms
+    expect(contentFrame(clock, 136, grid)).toBe(7); // 140 ms
+    expect(contentFrame(clock, 136, null)).toBe(6);
+    expect(contentFrame(clock, 136, { periodMs: 0, anchorMs: 100 })).toBe(6);
   });
 
-  it("medianInterval ignores one late frame", () => {
-    expect(medianInterval([0])).toBeNull();
-    expect(medianInterval([0, 16, 32, 48, 100, 116])).toBe(16);
-    expect(medianInterval([0, 10, 30])).toBe(15);
+  it("a boundary exactly on a refresh stays on one side on the real clock's scale, for hours", () => {
+    const epochMs = 1_763_000_000_123.4;
+    const clock = { state: "playing" as const, fps: 60 as const, startFrame: 0, epochMs };
+    const grid = { periodMs: P, anchorMs: epochMs };
+    for (let k = 0; k < 4 * 3600 * 60; k += 7) if (contentFrame(clock, epochMs + k * P, grid) !== k) throw new Error(`refresh ${k} shows ${contentFrame(clock, epochMs + k * P, grid)}`);
+  });
+
+  it("median ignores one late interval", () => {
+    expect(median([16, 16, 52, 16, 16])).toBe(16);
+    expect(median([10, 20])).toBe(15);
   });
 });

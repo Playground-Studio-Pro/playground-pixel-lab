@@ -150,33 +150,31 @@ export interface RefreshGrid {
   readonly anchorMs: number;
 }
 
-/** `t' = t0 + round((t − t0) / P) × P`. Without a usable period, `t` unchanged. */
-export function quantizeToRefresh(t: number, grid: RefreshGrid | null): number {
-  if (!grid || !Number.isFinite(grid.periodMs) || grid.periodMs <= 0 || !Number.isFinite(grid.anchorMs)) return t;
-  return grid.anchorMs + Math.round((t - grid.anchorMs) / grid.periodMs) * grid.periodMs;
+function usable(grid: RefreshGrid | null): grid is RefreshGrid {
+  return !!grid && Number.isFinite(grid.periodMs) && grid.periodMs > 0 && Number.isFinite(grid.anchorMs);
 }
 
-/** True when `t` has drifted more than a quarter period from the grid: re-anchor at `t`. */
-export function needsReanchor(t: number, grid: RefreshGrid): boolean {
-  return Math.abs(t - quantizeToRefresh(t, grid)) > grid.periodMs / 4;
+function refreshIndex(t: number, grid: RefreshGrid): number {
+  return Math.round((t - grid.anchorMs) / grid.periodMs);
 }
 
 /**
  * The content frame for a rAF timestamp `t` (ms on the shared clock):
- * `startFrame + floor((t' − epochMs) × fps / 1000)`, with `t'` quantized to the refresh grid.
+ * `startFrame + floor((t' − epochMs) × fps / 1000)`, with `t'` quantized to the refresh grid
+ * (`t' = t0 + round((t − t0) / P) × P`), or `t` itself without a usable grid.
  * Before the epoch it holds `startFrame`.
  */
 export function contentFrame(clock: OutputClockInput, t: number, grid: RefreshGrid | null): number {
   if (clock.state === "paused") return clock.frame;
-  const elapsed = quantizeToRefresh(t, grid) - clock.epochMs;
+  // From the anchor, not from `t`: at 1.7e12 ms a double is only good to 2e-4 ms, coarser than EPS.
+  const elapsed = usable(grid) ? grid.anchorMs - clock.epochMs + refreshIndex(t, grid) * grid.periodMs : t - clock.epochMs;
   if (elapsed <= 0) return clock.startFrame;
   return clock.startFrame + Math.floor((elapsed * clock.fps) / 1000 + EPS);
 }
 
-/** Median of the intervals between consecutive timestamps, or null with fewer than two. */
-export function medianInterval(timestamps: readonly number[]): number | null {
-  if (timestamps.length < 2) return null;
-  const d = timestamps.slice(1).map((t, i) => t - timestamps[i]).sort((a, b) => a - b);
+/** Median of at least one number. */
+export function median(values: readonly number[]): number {
+  const d = [...values].sort((a, b) => a - b);
   const mid = d.length >> 1;
   return d.length % 2 ? d[mid] : (d[mid - 1] + d[mid]) / 2;
 }
