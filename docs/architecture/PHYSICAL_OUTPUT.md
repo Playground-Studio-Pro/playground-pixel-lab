@@ -766,7 +766,7 @@ Resolume hasn't been tested with Pixel Lab yet. Nothing below assumes a result: 
 
 - [ ] Composition size = 1920 × 1080, frame rate 30.
 - [ ] Advanced Output: the external monitor as the output device, at its native resolution; one slice, input = 0, 0, 1920, 1080, output = 0, 0, 1920, 1080.
-- [ ] Drop the OUT 1 MP4 in a clip slot. Check the clip's reported size is 1920 × 1080 and that its transform does no fit, scale or offset.
+- [ ] Drop the OUT 1 MP4 in a clip slot. Check the clip's reported size is 1920 × 1080, its length is 10 s at 30 fps (an MP4 exported before the duration fix shows 20 s at 15 fps: export it again, see `docs/integrations/video-encoding.md`), and that its transform does no fit, scale or offset.
 - [ ] Close-up photos of the four corners and the centre. All four edge lines present: ☐ yes ☐ no (which side).
 - [ ] Inner lines distinct from the edge lines (white-black-white, not gray): ☐ yes ☐ no.
 - [ ] Corner markers: right colours, complete 16 × 16: ☐ yes ☐ no.
