@@ -107,6 +107,37 @@ describe("cadencePattern (PHYSICAL_OUTPUT 8.6 table)", () => {
     expect(cadencePattern(24, 59.94).even).toBe(false);
   });
 
+  // Rates Electron reported for 60 Hz monitors and a 120 Hz panel: nominal rates with float noise.
+  it.each(table.filter(([, hz]) => hz === 60))("%i fps on a 60 Hz display reported as 60.000003814697266", (fps, _hz, pattern, even) => {
+    const result = cadencePattern(fps, 60.000003814697266);
+    expect(sameCycle(result.pattern, pattern), `got ${result.pattern.join(",")}`).toBe(true);
+    expect(result.even).toBe(even);
+    expect(result).toEqual(cadencePattern(fps, 60));
+  });
+
+  it.each([24, 25, 30, 50, 60])("%i fps on a 120 Hz display reported as 120.0006103515625", (fps) => {
+    expect(cadencePattern(fps, 120.0006103515625)).toEqual(cadencePattern(fps, 120));
+    expect(cadencePattern(fps, 120.0006103515625).even).toBe(120 % fps === 0);
+  });
+
+  it.each([59.94, 23.976, 119.88, 60000 / 1001, 24000 / 1001, 120000 / 1001])("%d Hz stays fractional: one second of content, never even", (hz) => {
+    for (const fps of [24, 25, 30, 50, 60]) {
+      const { pattern, even } = cadencePattern(fps, hz);
+      expect(even).toBe(false);
+      expect(pattern).toHaveLength(fps);
+    }
+  });
+
+  it("the tolerance ends at 0.001 Hz on both sides: just outside it a rate stays fractional", () => {
+    for (const hz of [60.0009, 59.9991]) expect(cadencePattern(30, hz)).toEqual({ pattern: [2], even: true });
+    for (const hz of [60.0011, 59.9989]) {
+      expect(cadencePattern(30, hz).even).toBe(false);
+      expect(cadencePattern(30, hz).pattern).toHaveLength(30);
+    }
+    // A rate near zero isn't read as 0 Hz.
+    expect(cadencePattern(30, 0.0005).even).toBe(false);
+  });
+
   it("never exceeds the shared report's entry limit", () => {
     expect(cadencePattern(60, 59.94).pattern.length).toBeLessThanOrEqual(MAX_CADENCE_ENTRIES);
     expect(cadencePattern(59, 60).pattern.length).toBe(59);

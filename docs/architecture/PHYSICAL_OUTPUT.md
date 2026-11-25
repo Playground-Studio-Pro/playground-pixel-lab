@@ -599,6 +599,8 @@ Three numbers, never confused: **content fps** (24/25/30/50/60, the clock's `fps
 | 50 | 1, 1, 1, 1, 2 (uneven) | 1 (even) |
 | 60 | 1 (even) | 1 frame in 6 never shown |
 
+**Reported rates carry float noise.** Electron has reported 60.000003814697266 Hz for 60 Hz monitors and 120.0006103515625 Hz for a 120 Hz panel. `cadencePattern` reads a rate within 0.001 Hz of a whole number as that number, so the table above applies; 59.94, 23.976 and 119.88 stay fractional. The tolerance covers that noise only and isn't a claim of zero drift: real clocks drift by more. `DisplayInfo.refreshHz` and the report keep the raw value.
+
 Pure function, unit-tested against this table:
 
 ```ts
