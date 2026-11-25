@@ -86,4 +86,14 @@ Run against a production build (`npm run build && npm start`) when canvas, state
     - Switch back to Mapping and export the project file. **Expect:** byte-identical to an export made before opening Live preview.
     - Clear "Can share pixels" on one shared screen. **Expect:** the overlap turns red and Checks shows the error, while playback continues. Undo it.
 
+## Fast map engine (Product Design)
+
+`tests/design-fast-map-*.test.ts`, shared data in `tests/design-fast-map-fixtures.ts`.
+
+- **Parser:** tables of good and bad lines, spreadsheet separators, Spanish names with accents, and the HP Stage list: 8 screens, 1024×128, 256×768, 128×512, 960×576, 128×512, 256×768, 512×128, 1792×128, once 500×500 is chosen for lines without a size. Without that choice the same list is an error on each line that could be two cabinets.
+- **Packing:** 40 seeded lists of up to 60 screens. No slice overlaps or leaves its output, every slice is 1:1, the same input gives the same result.
+- **Edits:** swap twice is the identity; same content in all four combinations of "Same as content position"; one undo restores exactly, through the store.
+- **Bytes:** `tests/fixtures/fast-map-export-hashes.json` holds hashes of the manifest, report, SVG maps and slice CSV of every fixture, built on main `b433074` before Fast map. Regenerate only on purpose: `UPDATE_FAST_MAP_HASHES=1 npx vitest run tests/design-fast-map-ops.test.ts`.
+- **Mutation check, 2026-11-25:** 13 deliberate bugs, 12 caught. The miss: dropping the packer's fallback orders. They only improve how tightly screens pack, and no test asks for that yet.
+
 Performance measurement is covered in [PERFORMANCE](PERFORMANCE.md).
