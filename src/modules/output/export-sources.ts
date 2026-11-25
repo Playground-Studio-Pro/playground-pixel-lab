@@ -1,4 +1,5 @@
 import { OUTPUT_SOURCE_IDS, type OutputSourceId, type Size } from "@/domain/physical-output";
+import { auroraLoopSeconds, type AuroraSpeed } from "@/engines/content/aurora";
 import type { WallBuildSettings } from "@/engines/content/wall-build/settings";
 import { prepareWallBuildSource, WALL_BUILD_SOURCE_ID } from "@/modules/content/wall-build-source";
 import { useWallBuild } from "@/modules/content/wall-build-store";
@@ -14,7 +15,14 @@ export type ExportSourceId = OutputSourceId | (typeof EXPORT_ONLY_SOURCE_IDS)[nu
 export const EXPORT_SOURCE_IDS: readonly ExportSourceId[] = [...OUTPUT_SOURCE_IDS, ...EXPORT_ONLY_SOURCE_IDS];
 
 /** The source's part of an exported file's name. */
-const FILE_LABELS: Readonly<Record<ExportSourceId, string>> = { "calibration-test-card": "calibration", "pixel-grid": "pixel-grid", "depth-scene": "depth", "wall-build": "wall-build" };
+const FILE_LABELS: Readonly<Record<ExportSourceId, string>> = {
+  "calibration-test-card": "calibration",
+  "pixel-grid": "pixel-grid",
+  "depth-scene": "depth",
+  "content-flow": "content-flow",
+  "aurora-gradient": "aurora",
+  "wall-build": "wall-build",
+};
 
 export function exportSourceLabel(id: ExportSourceId): string {
   return FILE_LABELS[id];
@@ -22,6 +30,31 @@ export function exportSourceLabel(id: ExportSourceId): string {
 
 export function exportSourceId(id: string): ExportSourceId | null {
   return EXPORT_SOURCE_IDS.find((s) => s === id) ?? null;
+}
+
+/** Motion Lab patterns that play in the output window and export: what the Live preview plays as a pattern. */
+export const PATTERN_SOURCES = [
+  { id: "content-flow", pattern: "flow", name: "Content Flow" },
+  { id: "aurora-gradient", pattern: "aurora", name: "Aurora Gradient" },
+] as const;
+
+/** The Export panel's source for what the Live preview is playing, if it can be exported. */
+export function exportSourceForPreview(sourceId: string | null, pattern: string): ExportSourceId | null {
+  if (sourceId) return exportSourceId(sourceId);
+  return PATTERN_SOURCES.find((p) => p.pattern === pattern)?.id ?? null;
+}
+
+/**
+ * Whether a pattern's file loops seamlessly, and why, for the Export panel. Aurora repeats exactly every
+ * 20 s ÷ flow speed; Content Flow's motions have unrelated periods and never repeat exactly.
+ */
+export function patternLoopNote(id: "content-flow" | "aurora-gradient", seconds: number, fps: number, auroraSpeed: AuroraSpeed): string {
+  if (id === "content-flow") return "Content Flow never repeats exactly, so the file won't loop seamlessly. Its waves and glows cross every screen edge, to check continuity.";
+  const loop = auroraLoopSeconds(auroraSpeed);
+  // Whole frames: the loop closes on a frame boundary only when loop × fps is a whole number of frames.
+  const frames = loop * fps;
+  if (Number.isInteger(frames) && Number.isInteger((seconds * fps) / frames)) return `Loops seamlessly: the picture repeats every ${loop} s at ${auroraSpeed}× flow speed.`;
+  return `The picture repeats every ${loop} s at ${auroraSpeed}× flow speed, so a ${seconds} s file won't loop seamlessly. Use a multiple of ${loop} s.`;
 }
 
 /** Wall Build with fixed settings. It never reads the store, and never draws before its engine is loaded. */

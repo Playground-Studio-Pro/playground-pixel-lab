@@ -95,10 +95,11 @@ const options = { projectName: "Test show", sourceLabel: "wall-build", fps: 30, 
 
 describe("export-only sources", () => {
   it("adds Wall Build to the export and nothing to the output window", () => {
-    expect([...OUTPUT_SOURCE_IDS]).toEqual(["calibration-test-card", "pixel-grid", "depth-scene"]);
+    expect([...OUTPUT_SOURCE_IDS]).toEqual(["calibration-test-card", "pixel-grid", "depth-scene", "content-flow", "aurora-gradient"]);
     expect([...EXPORT_SOURCE_IDS]).toEqual([...OUTPUT_SOURCE_IDS, "wall-build"]);
     expect(exportSourceId("wall-build")).toBe("wall-build");
-    expect(exportSourceId("content-flow")).toBeNull();
+    expect(exportSourceId("content-flow")).toBe("content-flow");
+    expect(exportSourceId("flow")).toBeNull();
   });
 
   it("refuses anything else", async () => {

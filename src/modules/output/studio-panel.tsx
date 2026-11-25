@@ -9,6 +9,8 @@ import { OUTPUT_SOURCE_IDS } from "@/domain/physical-output";
 import { videoTargets, type VideoTarget } from "@/engines/video-targets";
 import { assertExportable, slugify } from "@/exports/gate";
 import { MODULE_SOURCES } from "@/modules/catalog";
+import { AuroraControls } from "@/modules/content/aurora-controls";
+import { useAurora } from "@/modules/content/aurora-store";
 import { WallBuildControls } from "@/modules/content/wall-build-controls";
 import { WALL_BUILD_SOURCE_ID } from "@/modules/content/wall-build-source";
 import { useWallBuild } from "@/modules/content/wall-build-store";
@@ -20,7 +22,7 @@ import { exportScreenBatch, planScreenBatch, type BatchProgress } from "./batch-
 import { CalibrationSourceControls } from "./calibration-controls";
 import { useCalibrationSource } from "./calibration-store";
 import { BUILD_TIME, buildCutWarning, DEFAULT_HOLD_SECONDS, durationProblem, EXPORT_SECONDS, exportSeconds, HOLD_SECONDS } from "./export-duration";
-import { createExportSource, EXPORT_SOURCE_IDS, exportSourceId, exportSourceLabel } from "./export-sources";
+import { createExportSource, EXPORT_SOURCE_IDS, exportSourceForPreview, exportSourceId, exportSourceLabel, PATTERN_SOURCES, patternLoopNote } from "./export-sources";
 import { OutputControls } from "./output-controls";
 import { PIXEL_GRID_SOURCE_ID } from "./pixel-grid-source";
 import { MAX_ZIP_BYTES } from "./stored-zip";
@@ -32,7 +34,7 @@ const DEPTH = "depth-scene";
 /** The "For" choice that exports every screen at once. Target ids are "master", output ids and `screen:<id>`. */
 const EVERY_SCREEN = "every-screen";
 const exportSources = MODULE_SOURCES.filter((s) => (EXPORT_SOURCE_IDS as readonly string[]).includes(s.id));
-const sourceItems = exportSources.map((s) => ({ value: s.id, label: s.name }));
+const sourceItems = [...exportSources.map((s) => ({ value: s.id, label: s.name })), ...PATTERN_SOURCES.map((p) => ({ value: p.id, label: p.name }))];
 const fpsItems = CONTENT_FPS.map((f) => ({ value: String(f), label: `${f} fps` }));
 const secondItems = EXPORT_SECONDS.map((s) => ({ value: String(s), label: `${s} s` }));
 const holdItems = HOLD_SECONDS.map((s) => ({ value: String(s), label: `${s} s` }));
@@ -64,6 +66,8 @@ export default function OutputStudioPanel() {
   const issues = useApp((s) => s.issues);
   const liveSource = useMotion((s) => s.sourceId);
   const liveFps = useMotion((s) => s.fps);
+  const livePattern = useMotion((s) => s.pattern);
+  const aurora = useAurora((s) => s.settings);
   const calibrationMode = useCalibrationSource((s) => s.mode);
   const calibrationLogo = useCalibrationSource((s) => s.logoByMode[s.mode]);
   const depthConfig = useDepth((s) => s.config);
@@ -72,7 +76,7 @@ export default function OutputStudioPanel() {
   const targets = useMemo(() => (mapping ? videoTargets(mapping) : []), [mapping]);
   const exportable = targets.filter((t) => !t.problem);
   const blocked = targets.filter((t) => t.problem);
-  const [sourceId, setSourceId] = useState(liveSource && exportSources.some((s) => s.id === liveSource) ? liveSource : CALIBRATION);
+  const [sourceId, setSourceId] = useState<string>(exportSourceForPreview(liveSource, livePattern) ?? CALIBRATION);
   const [targetId, setTargetId] = useState<string | null>(null);
   const hasScreens = targets.some((t) => t.kind === "screen");
   const everyScreen = targetId === EVERY_SCREEN && hasScreens;
@@ -128,7 +132,7 @@ export default function OutputStudioPanel() {
     return () => {
       live = false;
     };
-  }, [sourceId, target, everyScreen, master, fps, calibrationMode, calibrationLogo, depthConfig, wallBuild]);
+  }, [sourceId, target, everyScreen, master, fps, calibrationMode, calibrationLogo, depthConfig, wallBuild, aurora]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -140,7 +144,9 @@ export default function OutputStudioPanel() {
   const canExport = !tooLong && (batch ? batch.files.length > 0 : !!target);
   const previewSize = target ?? (everyScreen ? master : null);
   const loopNote =
-    isWallBuild
+    sourceId === "content-flow" || sourceId === "aurora-gradient"
+      ? patternLoopNote(sourceId, seconds, fps, aurora.speed)
+      : isWallBuild
       ? "The wall builds from empty and the finished wall holds to the end, so the file doesn't loop seamlessly."
       : sourceId === DEPTH
       ? seconds % depthConfig.durationSeconds === 0
@@ -216,6 +222,11 @@ export default function OutputStudioPanel() {
           {sourceId === CALIBRATION && (
             <div className="flex flex-wrap gap-2">
               <CalibrationSourceControls />
+            </div>
+          )}
+          {sourceId === "aurora-gradient" && (
+            <div className="flex flex-wrap gap-2">
+              <AuroraControls />
             </div>
           )}
           {isWallBuild && (

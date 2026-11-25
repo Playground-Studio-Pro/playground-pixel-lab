@@ -1,11 +1,14 @@
 import type { CalibrationMode, LogoMode } from "@/components/shell/calibration/frame";
 import type { JsonValue, OutputRenderErrorCode, OutputSourceId, Size } from "@/domain/physical-output";
 import { OUTPUT_SOURCE_IDS } from "@/domain/physical-output";
+import { auroraPalette, parseAuroraSettings, type AuroraSettings } from "@/engines/content/aurora";
 import { normalizeDepthConfig } from "@/engines/depth/config";
+import { useAurora } from "@/modules/content/aurora-store";
 import { createDepthSource, depthMaxSize } from "@/modules/depth-studio/source";
 import { useDepth } from "@/modules/depth-studio/depth-store";
 import type { FrameSource } from "@/preview/contract";
 import { createCalibrationSource, currentCalibrationSettings, prepareCalibrationSource, type CalibrationAssets, type CalibrationSettings } from "./calibration-source";
+import { createPatternSource } from "@/modules/content/pattern-source";
 import { createPixelGridSource, PIXEL_GRID_LIVE_SETTINGS, type PixelGridSettings } from "./pixel-grid-source";
 
 /**
@@ -33,7 +36,9 @@ export class OutputSourceError extends Error {
 export type OutputSourceSettings =
   | { readonly id: "calibration-test-card"; readonly settings: CalibrationSettings }
   | { readonly id: "pixel-grid"; readonly settings: PixelGridSettings }
-  | { readonly id: "depth-scene"; readonly settings: ReturnType<typeof normalizeDepthConfig> };
+  | { readonly id: "depth-scene"; readonly settings: ReturnType<typeof normalizeDepthConfig> }
+  | { readonly id: "content-flow"; readonly settings: Record<string, never> }
+  | { readonly id: "aurora-gradient"; readonly settings: AuroraSettings };
 
 const CALIBRATION_MODES: readonly CalibrationMode[] = ["identification", "calibration"];
 const LOGO_MODES: readonly LogoMode[] = ["center", "watermark", "off"];
@@ -89,6 +94,14 @@ export function parseOutputSettings(id: string, settings: JsonValue): OutputSour
       if (!jsonEqual(config, settings)) invalid(id, "not a normalized Depth Studio config");
       return { id: "depth-scene", settings: config };
     }
+    case "content-flow":
+      exactKeys(id, settings, []);
+      return { id: "content-flow", settings: {} };
+    case "aurora-gradient": {
+      const parsed = parseAuroraSettings(settings);
+      if (!parsed.ok) invalid(id, parsed.reason);
+      return { id: "aurora-gradient", settings: parsed.settings };
+    }
   }
 }
 
@@ -103,6 +116,13 @@ export function frozenSettings(id: OutputSourceId): JsonValue {
       return { space: PIXEL_GRID_LIVE_SETTINGS.space, motion: PIXEL_GRID_LIVE_SETTINGS.motion };
     case "depth-scene":
       return JSON.parse(JSON.stringify(normalizeDepthConfig(useDepth.getState().config))) as JsonValue;
+    case "content-flow":
+      return {};
+    case "aurora-gradient": {
+      // What the Live preview shows: an invalid color list plays as the default palette there too.
+      const { colors, speed, direction } = useAurora.getState().settings;
+      return { colors: [...auroraPalette(colors)], speed, direction };
+    }
   }
 }
 
@@ -140,5 +160,9 @@ export async function createOutputSource(id: string, settings: JsonValue, master
       }
       return createDepthSource(parsed.settings);
     }
+    case "content-flow":
+      return createPatternSource("content-flow", "Content Flow", "flow", {});
+    case "aurora-gradient":
+      return createPatternSource("aurora-gradient", "Aurora Gradient", "aurora", { aurora: parsed.settings });
   }
 }

@@ -91,6 +91,31 @@ export function auroraPalette(colors: readonly string[]): readonly string[] {
 }
 
 /**
+ * Settings sent to an output or an export, checked exactly: anything not valid is refused with the reason,
+ * never replaced by a default.
+ */
+export function parseAuroraSettings(input: unknown): { readonly ok: true; readonly settings: AuroraSettings } | { readonly ok: false; readonly reason: string } {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return { ok: false, reason: "expected an object" };
+  const src = input as Record<string, unknown>;
+  const extra = Object.keys(src).filter((k) => !["colors", "speed", "direction"].includes(k));
+  if (extra.length) return { ok: false, reason: `unknown key ${extra.map((k) => `"${k}"`).join(", ")}` };
+  const { colors, speed, direction } = src;
+  if (!Array.isArray(colors) || colors.length < 2 || colors.length > 6 || !colors.every((c) => typeof c === "string" && HEX.test(c))) {
+    return { ok: false, reason: '"colors" must be two to six #RRGGBB colors' };
+  }
+  const s = AURORA_SPEEDS.find((v) => v === speed);
+  if (s === undefined) return { ok: false, reason: `"speed" must be one of ${AURORA_SPEEDS.join(", ")}` };
+  const d = AURORA_DIRECTIONS.find((v) => v === direction);
+  if (d === undefined) return { ok: false, reason: `"direction" must be one of ${AURORA_DIRECTIONS.join(", ")}` };
+  return { ok: true, settings: { colors: colors.map((c: string) => c.toUpperCase()), speed: s, direction: d } };
+}
+
+/** Seconds after which the picture repeats exactly: 20 s at 1×, 5 s at 4×. */
+export function auroraLoopSeconds(speed: AuroraSpeed): number {
+  return AURORA_LOOP_S / speed;
+}
+
+/**
  * Where the loop is, in [0, 1). Depends only on the frame, the content FPS and the speed, and the same
  * content time gives the same phase at every content FPS (frame 30 at 30 fps equals frame 60 at 60 fps).
  */

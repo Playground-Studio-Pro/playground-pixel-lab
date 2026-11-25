@@ -81,7 +81,7 @@ export type OutputClock =
 
 // ── Sessions (sections 3 and 8.5) ───────────────────────────────────────────
 
-export const OUTPUT_SOURCE_IDS = ["calibration-test-card", "pixel-grid", "depth-scene"] as const;
+export const OUTPUT_SOURCE_IDS = ["calibration-test-card", "pixel-grid", "depth-scene", "content-flow", "aurora-gradient"] as const;
 export type OutputSourceId = (typeof OUTPUT_SOURCE_IDS)[number];
 
 export interface OutputSession {
