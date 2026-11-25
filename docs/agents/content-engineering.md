@@ -37,7 +37,7 @@ Read first:
 | C3 | Saved content layouts | ⏸ | L2, C2 |
 | C4 | Stage mockup still, in the Physical view | ⏸ | C2 |
 | C5 | Video generation adapter, as a design note | ⏸ | User decision on keys versus a backend |
-| C6 | [Wall Build](../product/MODULES.md#wall-build) V1 | ✅ Character still first, then the rest. Merges after Alpha 0.1 | Owner approval of the still |
+| C6 | [Wall Build](../product/MODULES.md#wall-build) V1 | Built, draft PR. Merges after Alpha 0.1 | Alpha 0.1 physical tests |
 
 ### C1 Content templates
 
@@ -78,6 +78,16 @@ No network code until the user decides.
 - **No new dependencies** without the user's approval.
 
 ## Status
+
+**2026-11-23, C6 Wall Build V1: built, on a draft PR.** It merges only after Alpha 0.1 passes its physical tests.
+- **Character:** Pitch (working name), approved by the owner in this session after two fixes, contrast and a clear face while carrying overhead. Original art, described as data in `src/engines/content/wall-build/character.ts`.
+- **Engine:** `src/engines/content/wall-build/`. `plan.ts` schedules every cabinet from `ResolvedMapping`; `frame.ts` turns a tick into flat operations; time is whole ticks (600 a second), so every content FPS gives the same moment.
+- **Module:** `src/modules/content/` has the source, store, controls and painting. The engine and controls load on first use. Settings aren't saved.
+- **Registration:** four small edits outside this lane, reviewed by the Lead Architect: `modules/registry.ts`, `modules/catalog.ts`, `components/workspace/canvas-header.tsx`, and `modules/output/studio-panel.tsx` (Output Engineering), which now lists only sources it can export.
+- **Low walls** (one or two rows, fixed after the owner's demo): the worker is the largest that stays whole inside the wall in every pose it uses there, measured from its own shapes (`fit.ts`). Festival Main Stage: Ribbon 120 px, DJ Booth 192 px. Where there's no room beside the cabinet, it comes down from above and the worker guides it in. Below 8 px a wall builds without workers. Other walls draw exactly as before.
+- **Not exportable:** a test keeps `wall-build` out of `OUTPUT_SOURCE_IDS`.
+- **Tests:** `tests/content-wall-build.test.ts` and `tests/content-wall-build-character.test.ts`, 102 tests. Measurements are in [PERFORMANCE](../development/PERFORMANCE.md#wall-build-live-preview-source-c6).
+- **Found, not fixed:** the Aurora settings panel is cut off by the Live preview header, which scrolls sideways (`overflow-x-auto`). Wall Build's panel is fixed to the window, so it isn't affected.
 
 **2026-11-08, Sprint 1: Aurora Gradient, merged in PR #9** (approved by the user in this session; not one of C1–C5).
 - A new Motion Lab pattern, "Aurora Gradient", in the Live preview pattern selector. Pure engine in `src/engines/content/aurora.ts`: deterministic by frame number, defined once over the master canvas, loops exactly every 20 s ÷ flow speed.
