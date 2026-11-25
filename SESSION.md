@@ -51,8 +51,8 @@ State on 2026-11-24, SAMSUNG TV (2×) and HP 27er (1×). Results: `desktop/docs/
 | D6 | Spaces off (needs a log out), then the final simple or native choice; the Close button in the interface (in D11) |
 | D7 | Passed except a 75 ms strip on the laptop, accepted by the owner. A different or second identical monitor not tried; operator notice with the editor visible |
 | Colour | Exact values at a processor or capture card |
-| O10 | 1×: sharper top-left photo, touching seam, macOS scaled mode. 2× on the Samsung: all of it |
-| O9 | **10 minutes at 30 fps: skipped by the owner for now** ("saltala... dejala pendiente"). 240 fps video: no phone available yet. Re-read the cadence report after the fractional Hz fix |
+| O10 | 1×: sharper top-left photo, touching seam, macOS scaled mode. 2× on the Samsung: all of it, and the `sizeMatch` warning for a smaller output |
+| O9 | **10 minutes at 30 fps: skipped by the owner for now** ("saltala... dejala pendiente"); D11 can cover it if the skipped-frame counts are read there. 240 fps video: no phone available yet. Re-read the cadence report after the fractional Hz fix |
 | O11 | Resolume Arena, with a build from main |
 | D11 | 30-minute rehearsal in the real app |
 | Offline | One run with Wi-Fi physically off |
