@@ -21,7 +21,7 @@ describe("physical output contract", () => {
   it("has the states, sources and limits approved for Alpha 0.1", () => {
     expect(OUTPUT_STATES).toContain("held");
     expect(OUTPUT_ERROR_CODES).toEqual(expect.arrayContaining(["DISPLAY_AMBIGUOUS", "NOT_RESUMABLE", "NOT_ONE_TO_ONE"]));
-    expect([...OUTPUT_SOURCE_IDS]).toEqual(["calibration-test-card", "pixel-grid", "depth-scene"]);
+    expect([...OUTPUT_SOURCE_IDS]).toEqual(["calibration-test-card", "pixel-grid", "depth-scene", "content-flow", "aurora-gradient"]);
     expect(MAX_OUTPUTS).toBe(1);
   });
 
