@@ -44,6 +44,7 @@ Decisions made since 2026-11-18:
 
 ## Beyond Alpha 0.1 (owner requests)
 
+- **[Workflow sprint](docs/product/WORKFLOW.md):** planned 2026-11-24 at the owner's request, not approved to build.
 - **[Wall Build](docs/product/MODULES.md#wall-build):** V1 approved 2026-11-23, ahead of the items below.
 - **Cabinets and processors:** researched in [LED_HARDWARE_CATALOG](docs/engineering/LED_HARDWARE_CATALOG.md) (#43). Four cabinets are in the dropdowns (#44), marked as not checked against the PDFs. Processors, load, power and weight calculations, and a Nova setup sheet are the Engineering work (E2–E4), after Alpha 0.1.
 - **Test cards:** diagonal motion and a nicer-looking card ("Test card v2"), after Alpha 0.1, with pixel tests per pattern.
