@@ -8,6 +8,7 @@ import { masterScene, outputScene, screenScene, type PixelMapScene } from "../sc
 import { renderSvg } from "../svg";
 import { serializeProject } from "@/persistence/schema";
 import { buildResolumeGuide, buildResolumeSetup, buildSlicesCsv } from "./adapter";
+import { buildArenaPreset } from "./arena-preset";
 
 export interface PackageFile {
   readonly path: string;
@@ -56,12 +57,16 @@ export async function buildResolumePackage(
     scene: screenScene(s),
   }));
 
-  const guide = buildResolumeGuide(project, setup, { masterPng: `${masterBase}.png` });
+  // Arena names a preset after its file, so the XML says the same.
+  const presetName = `${slug}_arena-preset_TEST`;
+  const arenaPreset = `${presetName}.xml`;
+  const guide = buildResolumeGuide(project, setup, { masterPng: `${masterBase}.png`, arenaPreset });
 
   const files: PackageFile[] = [
     { path: "README.md", content: guide },
     { path: "manifest.json", content: JSON.stringify(buildManifest(project, mapping, issues, generatedAt), null, 2) + "\n" },
     { path: "slices.csv", content: buildSlicesCsv(setup) },
+    { path: arenaPreset, content: buildArenaPreset(setup, presetName) },
     { path: "mapping-report.md", content: buildReport(project, mapping, issues, generatedAt) },
     { path: `project/${slug}.pixellab.json`, content: serializeProject(project) },
     { path: `${masterBase}.svg`, content: renderSvg(master) },

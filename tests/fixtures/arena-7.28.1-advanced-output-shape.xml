@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<XmlState name="Synthetic shape">
+	<versionInfo name="Resolume Arena" majorVersion="7" minorVersion="28" microVersion="1" revision="26535"/>
+	<ScreenSetup name="ScreenSetup">
+		<CurrentCompositionTextureSize width="640" height="360"/>
+		<screens>
+			<Screen name="Screen A" uniqueId="1700000000000">
+				<Params name="Params">
+					<Param name="Name" T="STRING" default="" value="Screen A"/>
+				</Params>
+				<guides>
+					<ScreenGuide name="ScreenGuide" type="0"/>
+					<ScreenGuide name="ScreenGuide" type="1"/>
+				</guides>
+				<layers>
+					<Slice uniqueId="1700000000001">
+						<Params name="Common">
+							<Param name="Name" T="STRING" default="Layer" value="Slice A"/>
+						</Params>
+						<InputRect orientation="0">
+							<v x="10" y="20"/>
+							<v x="210" y="20"/>
+							<v x="210" y="120"/>
+							<v x="10" y="120"/>
+						</InputRect>
+						<OutputRect orientation="0">
+							<v x="30" y="40"/>
+							<v x="230" y="40"/>
+							<v x="230" y="140"/>
+							<v x="30" y="140"/>
+						</OutputRect>
+						<Warper>
+							<BezierWarper controlWidth="4" controlHeight="4">
+								<vertices>
+									<v x="30" y="40"/>
+									<v x="96.66666667" y="40"/>
+									<v x="163.3333333" y="40"/>
+									<v x="230" y="40"/>
+									<v x="30" y="73.33333333"/>
+									<v x="96.66666667" y="73.33333333"/>
+									<v x="163.3333333" y="73.33333333"/>
+									<v x="230" y="73.33333333"/>
+									<v x="30" y="106.6666667"/>
+									<v x="96.66666667" y="106.6666667"/>
+									<v x="163.3333333" y="106.6666667"/>
+									<v x="230" y="106.6666667"/>
+									<v x="30" y="140"/>
+									<v x="96.66666667" y="140"/>
+									<v x="163.3333333" y="140"/>
+									<v x="230" y="140"/>
+								</vertices>
+							</BezierWarper>
+							<Homography>
+								<src>
+									<v x="30" y="40"/>
+									<v x="230" y="40"/>
+									<v x="230" y="140"/>
+									<v x="30" y="140"/>
+								</src>
+								<dst>
+									<v x="30" y="40"/>
+									<v x="230" y="40"/>
+									<v x="230" y="140"/>
+									<v x="30" y="140"/>
+								</dst>
+							</Homography>
+						</Warper>
+					</Slice>
+				</layers>
+				<OutputDevice>
+					<OutputDeviceVirtual name="Screen A" deviceId="VirtualScreen A" width="320" height="180"/>
+				</OutputDevice>
+			</Screen>
+		</screens>
+	</ScreenSetup>
+</XmlState>
+
