@@ -317,3 +317,14 @@ Measured 2026-11-19 on the static export (`npm --prefix desktop run build:web`),
 The output page imports nothing from the editor: no `state/store`, no module registry, no studio panels or workspace components (`tests/output-runtime.test.ts` walks its import graph). Its size is the three output sources (test card, pixel grid, Depth Studio's WebGL renderer), the project schema and the mapping engines.
 
 **Draw time, one output, in-app Chromium with the pane hidden** (a background page, so treat it as a rough figure): Festival Main Stage, Processor A (3072 × 1920 from a 5120 × 1664 master), median of 10 frames: calibration test card 22 ms, pixel grid 16 ms. Preparing a session (parse, mapping, source) took 0–10 ms. Not a frame-rate claim: O8 measures frame time, memory and the GPU path in the Electron output window on a visible display.
+
+### Every screen as one MP4 each (Wall Build export)
+
+Measured 2026-11-25 in the in-app Chromium of the Claude desktop app, pane visible, dev server (`next dev`), Apple Silicon. Draw plus encode, one screen after another, settings frozen at the start:
+
+| Project | Files | Frames each | Total frames | Time | Per frame | ZIP |
+| --- | --- | --- | --- | --- | --- | --- |
+| HP Stage (8 screens, 1920 × 1080 master) | 8 | 690 (20 s build + 3 s hold, 30 fps) | 5,520 | 34.5 s | 6.3 ms | 6.5 MB |
+| Festival Main Stage (5 of 6 screens, 5120 × 1664 master) | 5 | 150 (5 s, 30 fps) | 750 | 9.4 s | 12.5 ms | 4.5 MB |
+
+JS heap (`performance.memory`) peaked at 78 MB against 62 MB before the export (HP Stage) and 76 MB (Festival). The encoded files live in Chromium's blob storage, not the JS heap, so that figure doesn't include them, and the renderer's own memory wasn't measured. Every screen draws the whole master frame, so the time grows with the number of screens times the master's draw time.

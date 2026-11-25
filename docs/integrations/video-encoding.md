@@ -2,6 +2,20 @@
 
 Independent Output Engineering implementation. No dependency added and no shared contracts changed. `src/modules/output/video-export.ts` consumes the existing `FrameSource` at scale 1. `mp4.ts` writes fragmented ISO BMFF with an AVC video track, no audio. It never uses MediaRecorder or WebM.
 
+## Every screen, one MP4 each (2026-11-25)
+
+**For → Every screen (one MP4 each)** in the Output Studio exports each mapped screen as its own file at its exact pixel size, 1:1, for any exportable content. All files share one frame clock: frame N of each file is its screen's part of master frame N, so playing them together rebuilds the mapping. Screens that share master pixels get the same pixels.
+
+- **Frozen once.** The source's settings, the project and the mapping are taken when Export is pressed, for the whole batch. Later edits don't reach it.
+- **One screen after another.** One encoder and one master canvas are alive at a time (`batch-export.ts`). Progress shows the screen, i of n, and the total.
+- **Delivery: one stored ZIP named for the project** (`<project>-<content>-screens-<fps>fps-<seconds>s.zip`). It's one download, so the desktop app shows one save dialog (`will-download` in `desktop/src/main.cjs` accepts `blob:` URLs from the control window), and a browser doesn't ask to allow several downloads. Nothing is compressed again (`stored-zip.ts`, no dependency): each finished MP4 is read back once in chunks for its CRC-32, which also checks it's complete, and the ZIP is a Blob that refers to the files without copying them. **Limit: 4 GB in all** (no ZIP64). Past it the export stops and saves nothing; the panel warns first when the encoder's target rate could get there. Chromium keeps large Blobs on disk when memory is short.
+- **Names** are `<project>-<content>-<screen>-<w>x<h>-<fps>fps-<seconds>s.mp4`. Screens whose names give the same slug get `-2`, `-3`, never a name another screen has as its own.
+- **Refused, never resized:** a screen H.264 can't take (odd size, over 4096 px a side or 8,847,360 pixels) or that the mapping can't place is listed with its reason before Export, and left out. If the device's encoder refuses a size, the whole batch fails naming the screen, and nothing is saved.
+- **Cancel** stops at once and saves nothing. A failure does the same.
+- **Wall Build** is exported here only (`export-sources.ts`). It isn't in `OUTPUT_SOURCE_IDS`, so it can't be sent to a monitor. Its own duration is the build time plus a hold of the finished wall (2 to 30 s, default 3 s); the panel warns when a duration ends before the last cabinet is placed.
+
+Checked 2026-11-25 on HP Stage (8 screens, 23 s) and Festival Main Stage (5 files; the 4608 px Ribbon is listed and left out): `unzip -t` clean, every file at its size with 690 or 150 frames in ffprobe and AVFoundation (`avfoundation-check.swift`), full decode without errors. Decoded HP Stage frames 0, 300, 600 and 689 match Wall Build's engine to within 9 levels away from the workers. The two HP screens on the same pixels came out byte for byte the same; Festival's Center Wall and Header agree at 54 dB PSNR where they overlap. A settings change in the middle of the export didn't reach the files. Existing single-file exports (calibration on a screen, pixel grid on an output) gave the same bytes before and after.
+
 ## Duration in AVFoundation (fixed 2026-11-24)
 
 Until this fix the init segment wrote the whole length in `mvhd`, `tkhd` and `mdhd` although every sample is in a fragment. AVFoundation adds the two, so QuickTime and Resolume Arena on macOS read **every exported MP4 as twice as long at half the frame rate** (30 fps and 10 s became 15 fps and 20 s; Arena 7.28.1). ffprobe and Chrome don't add them, so the checks below, which used only those, passed. **MP4s exported before the fix still carry the wrong header: export them again**, or remux with `ffmpeg -i old.mp4 -c copy new.mp4`, which doesn't touch the pictures.

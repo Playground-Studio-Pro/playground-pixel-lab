@@ -5,11 +5,12 @@ import type { FrameInput, FrameSource } from "@/preview/contract";
  * A master-canvas source as seen by one export target. The master target draws the source directly.
  * An output or screen target draws the whole master at scale 1 on its own canvas, then copies each
  * screen's master rectangle to its place in the target, pixel for pixel. Nothing is scaled, so the
- * export shows exactly the pixels the Live preview cuts out of the same master frame.
+ * export shows exactly the pixels the Live preview cuts out of the same master frame. Several targets drawn
+ * one after another can share one `masterCanvas`.
  */
-export function targetSource(source: FrameSource, target: VideoTarget, master: Omit<FrameInput, "frame" | "fps">): FrameSource {
+export function targetSource(source: FrameSource, target: VideoTarget, master: Omit<FrameInput, "frame" | "fps">, masterCanvas?: HTMLCanvasElement): FrameSource {
   if (!target.regions) return source;
-  let canvas: HTMLCanvasElement | null = null;
+  let canvas: HTMLCanvasElement | null = masterCanvas ?? null;
   return {
     id: `${source.id}@${target.id}`,
     name: `${source.name}, ${target.label}`,
