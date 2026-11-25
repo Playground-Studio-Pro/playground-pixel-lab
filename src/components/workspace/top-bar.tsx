@@ -254,6 +254,7 @@ export function TopBar() {
           <DropdownMenuItem disabled={blocked} onClick={() => exportPng(source)}>PNG pixel map, {sourceName}</DropdownMenuItem>
           <DropdownMenuItem disabled={blocked} onClick={() => exportSvg(source)}>SVG pixel map, {sourceName}</DropdownMenuItem>
           <DropdownMenuItem disabled={blocked} onClick={() => exportManifest()}>Mapping manifest (.json)</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void import("@/modules/content/template-export").then((m) => m.exportContentTemplates())}>Content templates (.zip)</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => exportReport()}>Technical report (.md)</DropdownMenuItem>
           <DropdownMenuItem onClick={() => exportProjectFile()}>Project file (.json)</DropdownMenuItem>

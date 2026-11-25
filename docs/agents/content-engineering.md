@@ -85,3 +85,8 @@ No network code until the user decides.
 - Tests: `tests/content-aurora.test.ts`, 23 tests for determinism, loop closure, FPS independence, settings, and continuity across every Festival Main Stage seam.
 - Small edits in Lead Architect files, listed in the PR: `domain/motion.ts`, `engines/motion/patterns.ts`, `preview/live-renderer.ts`, `components/motion/live-preview.tsx`, `components/workspace/canvas-header.tsx`.
 - C1 not started yet.
+
+**2026-11-25: C1 content templates** (owner's choice, branch `feature/content-templates`).
+- Export → Content templates (.zip): a PNG and an SVG for every screen, content canvas and output, at its exact pixel size. Each shows the cabinet grid, both safe areas (5 % and 10 % in), each screen's edge in its colour, and the name, resolution, position and cabinets.
+- Pure builders in `src/exports/templates/templates.ts`, as an `ExportEntry`. The download is in `src/modules/content/template-export.ts`, loaded when the item is used; it reuses `zipPackage`.
+- One menu line in `top-bar.tsx`, a coordinated file. Existing exports are unchanged, and a test pins their bytes.

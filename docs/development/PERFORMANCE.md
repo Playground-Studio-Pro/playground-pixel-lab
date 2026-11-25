@@ -248,6 +248,10 @@ Measured 2026-11-12: Apple M1 Max, 32 GB, Chrome, Node 26. Bundle from a product
 
 Each frame is one draw of the room (under 200 triangles, shaded per pixel) and one instanced draw of the particles. The preview renders at the size it is shown, capped at twice the CSS size and never above the target's own resolution.
 
+### Content templates (C1)
+
+Measured 2026-11-25 with `npm run perf:bundle`. Initial JS went from 172.8 to 172.9 KB gzip, for the menu line. The builders and the download are a 1.8 KB chunk, loaded when the item is used; JSZip loads as before. Not timed: building the ZIP. Festival Main Stage's 10 templates, PNG and SVG, downloaded within 6 s in headless Chrome.
+
 ## Product Design
 
 ### Screen identification and calibration (Preview dialog)
