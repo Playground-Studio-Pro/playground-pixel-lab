@@ -37,7 +37,7 @@ export function buildReport(project: Project, mapping: ResolvedMapping, issues: 
       ["Mapped LED pixels", totalPixels],
       ["Outputs", mapping.outputs.length],
     ]),
-    `Coordinates are whole LED pixels. The origin is top-left, with x to the right and y down.`,
+    `Coordinates are whole LED pixels. The origin is top-left, with x to the right and y down, and X and Y are a screen's top-left corner. Resolume Arena's X and Y fields mean a slice's centre instead: the Resolume package lists those values.`,
     `## Screens`,
     mdTable(
       ["Screen", "Cabinet", "Arrangement", "Cabinets", "Resolution (px)", "Physical size (mm)", "Stage position (mm)"],

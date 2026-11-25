@@ -1,6 +1,6 @@
 import type { Project } from "@/domain/model";
 import type { ResolvedMapping } from "@/engines/mapping";
-import { mdTable } from "../report";
+import { mdCell, mdTable } from "../report";
 
 /**
  * Resolume adapter.
@@ -20,13 +20,27 @@ export const nativePresetSupport: NativePresetSupport = {
   reason: "Resolume does not publish the Advanced Output preset format, and generated files have not been tested in Arena.",
 };
 
+/** The Arena version these values were typed into and checked with. See docs/integrations/RESOLUME.md. */
+export const TESTED_ARENA = "7.28.1";
+
+export interface ResolumeRect {
+  /** Top-left corner, as everywhere else in Pixel Lab. Never typed into Arena. */
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+  /** What Arena's X and Y fields mean: the slice's centre. Ends in .5 when the size is odd; never rounded. */
+  readonly centerX: number;
+  readonly centerY: number;
+}
+
 export interface ResolumeSlice {
   readonly name: string;
   readonly screenName: string;
   /** Input Selection rectangle, in composition pixels. */
-  readonly input: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly input: ResolumeRect;
   /** Output Transformation rectangle, in output pixels. */
-  readonly output: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly output: ResolumeRect;
 }
 
 export interface ResolumeScreenSetup {
@@ -39,6 +53,17 @@ export interface ResolumeScreenSetup {
 export interface ResolumeSetup {
   readonly composition: { readonly width: number; readonly height: number };
   readonly screens: readonly ResolumeScreenSetup[];
+}
+
+function resolumeRect(r: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }): ResolumeRect {
+  return { left: r.x, top: r.y, width: r.width, height: r.height, centerX: r.x + r.width / 2, centerY: r.y + r.height / 2 };
+}
+
+const wholeCenter = (r: ResolumeRect) => Number.isInteger(r.centerX) && Number.isInteger(r.centerY);
+
+/** Slices whose input or output centre isn't a whole pixel. Arena hasn't been checked with those. */
+export function halfPixelSlices(setup: ResolumeSetup): ResolumeSlice[] {
+  return setup.screens.flatMap((s) => s.slices).filter((s) => !wholeCenter(s.input) || !wholeCenter(s.output));
 }
 
 /** Translates the mapping into Resolume's terms: each video output is a Screen, each LED screen a Slice. */
@@ -56,8 +81,8 @@ export function buildResolumeSetup(mapping: ResolvedMapping): ResolumeSetup {
           .map((s) => ({
             name: s.name,
             screenName: output.name,
-            input: { x: s.masterRect.x, y: s.masterRect.y, width: s.masterRect.width, height: s.masterRect.height },
-            output: { x: s.outputRect.x, y: s.outputRect.y, width: s.outputRect.width, height: s.outputRect.height },
+            input: resolumeRect(s.masterRect),
+            output: resolumeRect(s.outputRect),
           })),
       })),
   };
@@ -70,20 +95,30 @@ function csvCell(value: string | number): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+/** The values to type first (centres), then the top-left corners for reference. No column is a bare x or y. */
 export function buildSlicesCsv(setup: ResolumeSetup): string {
-  const header = ["resolume_screen", "slice", "input_x", "input_y", "input_w", "input_h", "output_x", "output_y", "output_w", "output_h"];
+  const header = [
+    "resolume_screen", "slice",
+    "input_center_x", "input_center_y", "input_w", "input_h",
+    "output_center_x", "output_center_y", "output_w", "output_h",
+    "input_left", "input_top", "output_left", "output_top",
+  ];
   const rows = setup.screens.flatMap((screen) =>
     screen.slices.map((slice) => [
       screen.name,
       slice.name,
-      slice.input.x,
-      slice.input.y,
+      slice.input.centerX,
+      slice.input.centerY,
       slice.input.width,
       slice.input.height,
-      slice.output.x,
-      slice.output.y,
+      slice.output.centerX,
+      slice.output.centerY,
       slice.output.width,
       slice.output.height,
+      slice.input.left,
+      slice.input.top,
+      slice.output.left,
+      slice.output.top,
     ]),
   );
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
@@ -100,37 +135,51 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
   const screenSections = setup.screens.flatMap((screen) => [
     `### Screen: ${screen.name} (${screen.width} × ${screen.height} px)`,
     mdTable(
-      ["Slice", "Input X", "Input Y", "Input W", "Input H", "Output X", "Output Y", "Output W", "Output H"],
-      screen.slices.map((s) => [s.name, s.input.x, s.input.y, s.input.width, s.input.height, s.output.x, s.output.y, s.output.width, s.output.height]),
+      ["Slice", "Input centre X", "Input centre Y", "Input W", "Input H", "Output centre X", "Output centre Y", "Output W", "Output H"],
+      screen.slices.map((s) => [s.name, s.input.centerX, s.input.centerY, s.input.width, s.input.height, s.output.centerX, s.output.centerY, s.output.width, s.output.height]),
     ),
   ]);
+  const reference = mdTable(
+    ["Slice", "Screen", "Input left", "Input top", "Output left", "Output top"],
+    setup.screens.flatMap((screen) => screen.slices.map((s) => [s.name, screen.name, s.input.left, s.input.top, s.output.left, s.output.top])),
+  );
+  const half = halfPixelSlices(setup);
 
   return [
     `# Resolume setup: ${project.meta.name}`,
     `Composition **${width} × ${height} px**, ${setup.screens.length} ${setup.screens.length === 1 ? "screen" : "screens"}, ${sliceCount} ${sliceCount === 1 ? "slice" : "slices"}.`,
-    `This package has no Resolume preset file. Resolume doesn't publish that format, so you enter the values below by hand and check them against the pixel map. Output Transformation requires Arena. Menu and field names can differ between Resolume versions.`,
+    `This package has no Resolume preset file. Resolume doesn't publish that format, so you enter the values below by hand and check them against the pixel map. Output Transformation requires Arena. The slice values were checked by hand with **Arena ${TESTED_ARENA}** (trial, macOS); other versions and Windows haven't been. Menu and field names can differ between versions.`,
     `## Files`,
     mdTable(["File", "Use"], [
-      [`manifest.json`, "Every coordinate in machine-readable form"],
+      [`manifest.json`, "Every coordinate in machine-readable form. Its x and y are top-left corners: don't type them into Resolume"],
       [`slices.csv`, "The slice tables below, for a spreadsheet"],
       [files.masterPng, "Test content for the composition, and the Input Selection guide"],
       [`pixelmaps/outputs/`, "Output Transformation guides, one per Resolume screen"],
       [`pixelmaps/screens/`, "One reference image per LED screen"],
-      [`mapping-report.md`, "Full technical report"],
+      [`mapping-report.md`, "Full technical report. Its X and Y are top-left corners: don't type them into Resolume"],
       [`project/`, "Project file, to reopen in Pixel Lab"],
     ]),
     `## Slice values`,
-    `Input and output sizes are the same for every slice, so content plays back 1:1 with no scaling.`,
+    `**These are the values to type.** Arena's X and Y fields are the **centre** of the slice, not its top-left corner. Typing a top-left corner there moves the slice by half its size, up and to the left. Input and output sizes are the same for every slice, so content plays back 1:1 with no scaling.`,
+    ...(half.length > 0
+      ? [
+          `> **Warning: half-pixel centres.** ${half.map((s) => `“${mdCell(s.name)}” (${mdCell(s.screenName)})`).join(", ")}: an odd width or height puts the centre on half a pixel (.5). Type the .5 exactly as shown and never round it. Arena was only checked with whole centres, so check these slices on the pixel map, edge by edge, before relying on them.`,
+        ]
+      : []),
     ...screenSections,
+    `### For reference only: top-left corners`,
+    `Where each slice starts, as in the pixel maps. Use these to read the guides, not to type into Arena.`,
+    reference,
     `## Setup`,
     [
       `1. Set the composition size to exactly **${width} × ${height}**.`,
       `2. Open Output > Advanced Output.`,
       `3. Create one Screen for each “Screen” heading above, and choose the matching device as its output.`,
-      `4. On **Output Transformation**, create one slice per table row and name it. Select each slice and type its Output X, Y, W and H into the numeric fields on the right.`,
+      `4. On **Output Transformation**, create one slice per table row and name it. Select each slice and type its Output centre X, centre Y, W and H into the X, Y, W and H fields on the right.`,
       `5. Switch to **Input Selection**. Select all slices, right-click and choose **Match Output Shape**, so that input and output start identical.`,
-      `6. Still on Input Selection, select each slice and type its Input X, Y, W and H.`,
-      `7. Save the setup from the preset menu at the top left of Advanced Output, so it can be reloaded at the venue.`,
+      `6. Still on Input Selection, select each slice and type its Input centre X, centre Y, W and H.`,
+      `7. If the display shows the whole composition uncut, Arena's simple output is still on: choose **Output > Disabled**, then check in Advanced Output that the Screen's device is the right display. Seen in Arena ${TESTED_ARENA}.`,
+      `8. Save the setup from the preset menu at the top left of Advanced Output, so it can be reloaded at the venue.`,
     ].join("\n"),
     `Selecting several slices makes the numeric fields describe their combined box, so enter values with one slice selected. Arrow keys nudge the selection by 1 px, and Shift + arrow by 10 px.`,
     `## Check the mapping`,
