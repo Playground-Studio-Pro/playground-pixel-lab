@@ -3,8 +3,6 @@
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { deleteSelection, duplicateSelection, nudgeSelection } from "@/state/actions";
-import { historyShortcut } from "@/state/shortcuts";
 import { useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { Dialogs } from "./dialogs";
@@ -16,6 +14,8 @@ import dynamic from "next/dynamic";
 import { CanvasArea } from "./canvas-area";
 import { StudioBar } from "./studio-bar";
 import { useFastMapOpen } from "@/components/shell/fast-map/open-store";
+import { isTypingTarget } from "@/components/shell/fast-map/keys";
+import { MAPPING_SCOPE, runWorkspaceAction, workspaceAction } from "./workspace-keys";
 
 // Fast map loads on first use, like the studios.
 const FastMap = dynamic(() => import("@/components/shell/fast-map/fast-map"), {
@@ -29,45 +29,23 @@ const StudioHost = dynamic(() => import("./studio-host"), {
   loading: () => <main className="col-span-2 min-h-0 bg-stage" aria-busy="true" />,
 });
 
-function isTyping(target: EventTarget | null) {
-  const el = target as HTMLElement | null;
-  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-}
-
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const app = useApp.getState();
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void app.save();
-        return;
-      }
-      // Fast map has its own keys.
-      if (useFastMapOpen.getState().open) return;
-      // Typing in a field keeps the browser's own text undo.
-      if (!app.project || isTyping(e.target) || useUi.getState().dialog || useUi.getState().confirm) return;
-      const step = historyShortcut(e);
-      if (step) {
-        e.preventDefault();
-        if (step === "undo") app.undo();
-        else app.redo();
-      } else if (mod && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        duplicateSelection();
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        deleteSelection();
-      } else if (e.key === "Escape") {
-        app.select({ kind: "none" });
-      } else if (e.key.startsWith("Arrow")) {
-        e.preventDefault();
-        const step = e.shiftKey ? 10 : 1;
-        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
-        const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
-        nudgeSelection(dx, dy);
-      }
+      const target = e.target as Element | null;
+      const ui = useUi.getState();
+      const action = workspaceAction(e, {
+        studio: ui.studio,
+        hasProject: !!useApp.getState().project,
+        fastMapOpen: useFastMapOpen.getState().open,
+        // Typing in a field keeps the browser's own text undo.
+        typing: isTypingTarget(target),
+        dialogOpen: !!ui.dialog || !!ui.confirm || !!document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]'),
+        inMappingScope: !target || target === document.body || target === document.documentElement || !!target.closest(MAPPING_SCOPE),
+      });
+      if (!action) return;
+      e.preventDefault();
+      runWorkspaceAction(action);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
