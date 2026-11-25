@@ -580,3 +580,18 @@ Decided after the D7 review: the display sleep blocker is held in `held` as well
 | `npm --prefix desktop test` | 89/89 |
 
 Not verified: an actual display staying awake while held on a real monitor. That belongs to D11 in the physical session.
+
+## Menu bar and Dock after closing an output (2026-11-24)
+
+**Bug:** with the main build (7813fc9) on the owner's Mac, after an output closed, `currentSystemPresentationOptions` was 5 (auto-hide Dock and menu bar) with Pixel Lab in front and no output visible (read by Output and the Lead). Cause by reading the code, **not reproduced**: the window was destroyed while in simple full screen, which sets those options for the whole app.
+
+**Fix:** `output-presentation.cjs`. Every path that destroys an output window leaves full screen first, in the same tick.
+
+| Check | Result |
+| --- | --- |
+| Unit, order (leave, then destroy): Close, Esc, quit (`*`), display lost while opening and while failed, crash, a page that never answers, waiting-display, held, ⌘W (`close` event), a window never in full screen, an already destroyed one, an error while leaving | pass |
+| Unit: main has no other `destroy()` | pass |
+| The tests fail without the fix (line removed) | 6 fail |
+| `npm --prefix desktop test` | 98/98 |
+
+**Not tested:** anything in Electron (the owner was using Pixel Lab and Arena). Presentation options can't be checked in a hidden run: a hidden run never enters full screen, and the options apply to the app in front. It needs one visible run on an external display, with the owner's permission: options back to 0 after Close and after Esc with the editor in front.
