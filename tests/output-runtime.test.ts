@@ -134,7 +134,7 @@ describe("prepareSession: one mapping path (PHYSICAL_OUTPUT 8.1)", () => {
 
 // ── OutputRuntime ─────────────────────────────────────────────────────────────
 
-function harness(opts: { dpr?: number; limit?: number } = {}) {
+function harness(opts: { dpr?: number; limit?: number; roundMs?: number } = {}) {
   const callbacks: { session?: (s: OutputWindowSession) => void; clock?: (c: OutputClock) => void; display?: (d: DisplayInfo) => void } = {};
   const reports: OutputRenderReport[] = [];
   let ready = 0;
@@ -173,7 +173,8 @@ function harness(opts: { dpr?: number; limit?: number } = {}) {
   const run = (n: number, period = 1000 / 60) => {
     for (let i = 0; i < n; i++) {
       now += period;
-      queue.shift()!(now);
+      // Chromium rounds rAF timestamps to 0.1 ms.
+      queue.shift()!(opts.roundMs ? Math.round(now / opts.roundMs) * opts.roundMs : now);
     }
   };
   const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -245,6 +246,49 @@ describe("OutputRuntime (PHYSICAL_OUTPUT 8.1, 8.3, 8.4)", () => {
     const last = h.reports.at(-1)!;
     expect(last.cadence).toMatchObject({ contentFps: 30, refreshHz: 60, pattern: [2], even: true });
     expect(h.reports.reduce((n, r) => n + r.skippedFrames, 0)).toBe(0);
+  });
+
+  it("a 60 Hz monitor reported as 60.000003814697266 Hz is even at 30 and 60 fps, and the report keeps the raw rate", async () => {
+    for (const [fps, pattern] of [[30, [2]], [60, [1]]] as const) {
+      const h = harness();
+      h.callbacks.session!(session({ clock: { state: "playing", fps, startFrame: 0, epochMs: 0 }, display: display({ width: 1920, height: 1080 }, 1, 60.000003814697266) }));
+      await h.settle();
+      h.run(121, 1000 / 60.000003814697266);
+      expect(h.reports.at(-1)!.cadence).toMatchObject({ contentFps: fps, refreshHz: 60.000003814697266, pattern, even: true });
+    }
+  });
+
+  it("60 fps on 60 Hz with timestamps rounded to 0.1 ms: every frame once, nothing skipped or repeated, measured at 60", async () => {
+    for (let i = 0; i < 20; i++) {
+      const h = harness({ roundMs: 0.1 });
+      h.callbacks.session!(session({ clock: paused }));
+      await h.settle();
+      h.run(60);
+      h.frames.length = 0;
+      h.reports.length = 0;
+      h.callbacks.clock!({ state: "playing", fps: 60, startFrame: 0, epochMs: h.now() + (i / 20) * (1000 / 60) });
+      h.run(1800);
+      expect(h.frames.length).toBeGreaterThanOrEqual(1798);
+      expect(h.frames.slice(1).filter((f, k) => f - h.frames[k] !== 1)).toEqual([]);
+      expect(h.reports.reduce((n, r) => n + r.skippedFrames + r.lateFrames + (r.cadence?.repeated ?? 0), 0)).toBe(0);
+      expect(h.reports.at(-1)!.cadence!.measuredHz).toBeCloseTo(60, 1);
+    }
+  });
+
+  it("pause and resume: the paused frame is drawn once and held, and playing on from it counts nothing", async () => {
+    const h = harness({ roundMs: 0.1 });
+    h.callbacks.session!(session({ clock: { state: "playing", fps: 30, startFrame: 0, epochMs: 0 } }));
+    await h.settle();
+    h.run(121);
+    h.callbacks.clock!({ state: "paused", frame: 50 });
+    h.frames.length = 0;
+    h.run(90);
+    expect(h.frames).toEqual([50]);
+    h.reports.length = 0;
+    h.callbacks.clock!({ state: "playing", fps: 30, startFrame: 50, epochMs: h.now() });
+    h.run(121);
+    expect(h.frames.slice(0, 4)).toEqual([50, 51, 52, 53]);
+    expect(h.reports.reduce((n, r) => n + r.skippedFrames + r.lateFrames + (r.cadence?.repeated ?? 0), 0)).toBe(0);
   });
 
   it("counts skipped frames when refreshes are missed", async () => {

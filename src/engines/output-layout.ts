@@ -91,6 +91,20 @@ export const MAX_CADENCE_ENTRIES = 240;
 /** Tolerance for floating-point time at frame boundaries, in content frames. */
 const EPS = 1e-6;
 
+/**
+ * How far from a whole number a display's rate may be and still be read as that number, in Hz. Displays report
+ * their nominal rate with float noise: 60.000003814697266 and 120.0006103515625 have been measured for 60 and
+ * 120 Hz. It covers that noise only. It does not claim zero drift: a real clock drifts by more than this (and
+ * differs from the content clock anyway), which no reported rate shows. 59.94 and 23.976 are far outside it.
+ */
+const NOMINAL_HZ_TOLERANCE = 0.001;
+
+/** The whole rate a reported rate stands for, or the rate itself when it isn't within the tolerance of one. */
+function nominalHz(refreshHz: number): number {
+  const whole = Math.round(refreshHz);
+  return whole >= 1 && Math.abs(refreshHz - whole) <= NOMINAL_HZ_TOLERANCE ? whole : refreshHz;
+}
+
 function gcd(a: number, b: number): number {
   while (b) [a, b] = [b, a % b];
   return a;
@@ -102,22 +116,24 @@ function gcd(a: number, b: number): number {
  *
  * Refresh k shows content frame `floor(k × fps / refreshHz)`. The cycle is exact for whole rates
  * (`fps / gcd(fps, hz)` frames) and one second of content for fractional ones, such as 59.94 Hz.
- * `even` is true only when `refreshHz` is a whole multiple of `fps`.
+ * `even` is true only when `refreshHz` is a whole multiple of `fps`. A rate within `NOMINAL_HZ_TOLERANCE` of a
+ * whole number is read as that number throughout; callers keep and report the raw value.
  * Which entry comes first depends on the phase between the clock and the display, so two patterns that
  * are rotations of each other describe the same cadence.
  */
 export function cadencePattern(fps: number, refreshHz: number): { pattern: number[]; even: boolean } {
   if (!Number.isSafeInteger(fps) || fps < 1) throw new RangeError(`fps must be a whole number of at least 1, got ${fps}.`);
   if (!Number.isFinite(refreshHz) || refreshHz <= 0) throw new RangeError(`refreshHz must be a positive number, got ${refreshHz}.`);
-  const frames = Math.min(MAX_CADENCE_ENTRIES, Number.isSafeInteger(refreshHz) ? fps / gcd(fps, refreshHz) : fps);
+  const hz = nominalHz(refreshHz);
+  const frames = Math.min(MAX_CADENCE_ENTRIES, Number.isSafeInteger(hz) ? fps / gcd(fps, hz) : fps);
   // First refresh showing frame f: ceil(f × hz / fps).
-  const firstRefresh = (f: number) => Math.ceil((f * refreshHz) / fps - EPS);
+  const firstRefresh = (f: number) => Math.ceil((f * hz) / fps - EPS);
   const pattern: number[] = [];
   for (let f = 0; f < frames; f++) pattern.push(firstRefresh(f + 1) - firstRefresh(f));
   // Even only when every frame gets the same whole number of refreshes forever. A fractional display rate
   // drifts against whole-number content, so one frame is held short or long every few seconds even when the
   // one-second pattern above looks regular (30 fps on 59.94 Hz: once every 16.7 s).
-  const even = Number.isSafeInteger(refreshHz) && refreshHz % fps === 0;
+  const even = Number.isSafeInteger(hz) && hz % fps === 0;
   return { pattern, even };
 }
 
@@ -134,33 +150,31 @@ export interface RefreshGrid {
   readonly anchorMs: number;
 }
 
-/** `t' = t0 + round((t − t0) / P) × P`. Without a usable period, `t` unchanged. */
-export function quantizeToRefresh(t: number, grid: RefreshGrid | null): number {
-  if (!grid || !Number.isFinite(grid.periodMs) || grid.periodMs <= 0 || !Number.isFinite(grid.anchorMs)) return t;
-  return grid.anchorMs + Math.round((t - grid.anchorMs) / grid.periodMs) * grid.periodMs;
+function usable(grid: RefreshGrid | null): grid is RefreshGrid {
+  return !!grid && Number.isFinite(grid.periodMs) && grid.periodMs > 0 && Number.isFinite(grid.anchorMs);
 }
 
-/** True when `t` has drifted more than a quarter period from the grid: re-anchor at `t`. */
-export function needsReanchor(t: number, grid: RefreshGrid): boolean {
-  return Math.abs(t - quantizeToRefresh(t, grid)) > grid.periodMs / 4;
+function refreshIndex(t: number, grid: RefreshGrid): number {
+  return Math.round((t - grid.anchorMs) / grid.periodMs);
 }
 
 /**
  * The content frame for a rAF timestamp `t` (ms on the shared clock):
- * `startFrame + floor((t' − epochMs) × fps / 1000)`, with `t'` quantized to the refresh grid.
+ * `startFrame + floor((t' − epochMs) × fps / 1000)`, with `t'` quantized to the refresh grid
+ * (`t' = t0 + round((t − t0) / P) × P`), or `t` itself without a usable grid.
  * Before the epoch it holds `startFrame`.
  */
 export function contentFrame(clock: OutputClockInput, t: number, grid: RefreshGrid | null): number {
   if (clock.state === "paused") return clock.frame;
-  const elapsed = quantizeToRefresh(t, grid) - clock.epochMs;
+  // From the anchor, not from `t`: at 1.7e12 ms a double is only good to 2e-4 ms, coarser than EPS.
+  const elapsed = usable(grid) ? grid.anchorMs - clock.epochMs + refreshIndex(t, grid) * grid.periodMs : t - clock.epochMs;
   if (elapsed <= 0) return clock.startFrame;
   return clock.startFrame + Math.floor((elapsed * clock.fps) / 1000 + EPS);
 }
 
-/** Median of the intervals between consecutive timestamps, or null with fewer than two. */
-export function medianInterval(timestamps: readonly number[]): number | null {
-  if (timestamps.length < 2) return null;
-  const d = timestamps.slice(1).map((t, i) => t - timestamps[i]).sort((a, b) => a - b);
+/** Median of at least one number. */
+export function median(values: readonly number[]): number {
+  const d = [...values].sort((a, b) => a - b);
   const mid = d.length >> 1;
   return d.length % 2 ? d[mid] : (d[mid - 1] + d[mid]) / 2;
 }

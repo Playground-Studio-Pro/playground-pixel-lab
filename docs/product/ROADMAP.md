@@ -18,6 +18,8 @@ From 2026-11-08 the product is organized as four studios that share one preview 
 
 **Parallel start, inside approved scope:** module registry (L1), studio navigation spec, theme tokens and preferences (D1–D3), content templates (C1), cabinet library (E1), exports on the shared contract (O1). Everything else in the agent briefs waits for approval.
 
+**Proposed next sprint:** [Workflow](WORKFLOW.md), a guided five-step flow. Planned 2026-11-24, not approved to build.
+
 **Approved outside the phases:** [Wall Build](MODULES.md#wall-build) V1, approved 2026-11-23. Content Engineering builds it on its branch, and it merges after Alpha 0.1 passes.
 
 ## Phase 0: Foundation

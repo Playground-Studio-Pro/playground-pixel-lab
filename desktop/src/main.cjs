@@ -6,6 +6,8 @@ const { validateText, safeName, assetPath, MAX_PROJECT_BYTES, DEBUG_SWITCHES, de
 const { probeFFmpeg } = require('./native.cjs');
 const { createWindowRegistry, trustedURLForRole, outputURL } = require('./windows.cjs');
 const { createOutputWindow, outputTestMode } = require('./output-window.cjs');
+const { isFullScreen, setFullScreen, destroyOutputWindow, leaveFullScreenOnClose } = require('./output-presentation.cjs');
+const { createControlPush } = require('./output-push.cjs');
 const { OUTPUT_CHANNELS, OutputIpcError } = require('./output-ipc.cjs');
 const { createOutputController, outputKeyAction } = require('./output-controller.cjs');
 const { smokeMode, virtualDisplay, smokeScript, repoFile, VIRTUAL_DISPLAY_ID } = require('./smoke-mode.cjs');
@@ -123,12 +125,13 @@ else {
     });
     function openOutputWindow(outputId, display) {
       const window = createOutputWindow(BrowserWindow, { bounds: display.boundsDip, origin, isPackaged: app.isPackaged, testMode: outputTestMode({ isPackaged: app.isPackaged, argv: process.argv }) });
-      try { windows.addOutput(outputId, window); } catch (error) { window.destroy(); throw error; }
+      try { windows.addOutput(outputId, window); } catch (error) { destroyOutputWindow(window, process.platform); throw error; }
+      leaveFullScreenOnClose(window, process.platform);
       const contents = window.webContents;
       window.on('closed', () => { windows.removeOutput(outputId, window); outputs.onClosed(outputId); });
       if (smokeOutput && smokeOutput.visible) {
         // Dead-man switch for the interactive run: every visible output window closes after 20 s, whatever happens.
-        const deadMan = setTimeout(() => { if (!window.isDestroyed()) window.destroy(); }, smokeOutput.deadManMs);
+        const deadMan = setTimeout(() => destroyOutputWindow(window, process.platform), smokeOutput.deadManMs);
         window.on('closed', () => clearTimeout(deadMan));
       }
       contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => { if (isMainFrame && code !== -3) outputs.onLoadFailed(outputId, description); });
@@ -141,8 +144,8 @@ else {
         if (action === 'close') outputs.close(outputId);
       });
     }
-    const isFull = window => (process.platform === 'darwin' ? window.isSimpleFullScreen() : window.isFullScreen());
-    const setFull = (window, on) => (process.platform === 'darwin' ? window.setSimpleFullScreen(on) : window.setFullScreen(on));
+    const isFull = window => isFullScreen(window, process.platform);
+    const setFull = (window, on) => setFullScreen(window, on, process.platform);
     function showOutputWindow(outputId, display) {
       // Presentation hook: a hidden smoke run never shows, raises or full-screens an output window.
       if (hiddenSmoke) return;
@@ -173,16 +176,23 @@ else {
       if (window && !window.isDestroyed()) window.webContents.send(channel, value);
       if (smoke) smokeSent.push({ outputId, channel, value });
     };
+    // Statuses, and the display list whenever an output starts or stops occupying a display or the screens change.
+    const controlPush = createControlPush({
+      send: (channel, value) => { const control = windows.control; if (!control || control.isDestroyed()) return false; control.webContents.send(channel, value); return true; },
+      occupancy: () => outputs.outputOnDisplay(),
+      listDisplays: () => listDisplays(),
+      channels: OUTPUT_CHANNELS,
+    });
     const outputs = createOutputController({
       listDisplays: () => listDisplays(),
       openWindow: openOutputWindow,
       showWindow: showOutputWindow,
-      closeWindow: outputId => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.destroy(); },
+      closeWindow: outputId => destroyOutputWindow(windows.output(outputId), process.platform),   // leaves full screen first
       sendSession: (outputId, value) => sendToOutput(outputId, OUTPUT_CHANNELS.session, value),
       hideWindow: hideOutputWindow,
       sendClock: (outputId, clock) => sendToOutput(outputId, OUTPUT_CHANNELS.clock, clock),
       sendDisplay: (outputId, display) => sendToOutput(outputId, OUTPUT_CHANNELS.display, display),
-      pushStatus: status => { const control = windows.control; if (control && !control.isDestroyed()) control.webContents.send(OUTPUT_CHANNELS.status, status); },
+      pushStatus: status => controlPush.status(status),
       blocker: powerSaveBlocker,
       reloadWindow: outputId => { const window = windows.output(outputId); if (window && !window.isDestroyed()) window.loadURL(outputURL(origin)).catch(() => {}); },
       // Main-side liveness probe (D8): a trivial script the renderer must run on its main thread. Nothing is exposed
@@ -213,11 +223,10 @@ else {
       const fake = virtualDisplay(list.find(d => d.primary) || list[0]);
       return [...list, { ...fake, hostsOutput: context.outputOnDisplay.get(VIRTUAL_DISPLAY_ID) ?? null }];
     };
-    handler('output:list-displays', () => listDisplays());
+    handler('output:list-displays', () => { controlPush.listed(); return listDisplays(); });
     const pushDisplays = debounce(() => {
       outputs.onDisplaysChanged(listDisplays());   // D7: reconnects and metrics changes, after the burst settles
-      const control = windows.control;
-      if (control && !control.isDestroyed()) control.webContents.send('output:displays-changed', listDisplays());
+      controlPush.displays();
     }, DISPLAY_EVENT_DEBOUNCE_MS);
     for (const name of ['display-added', 'display-removed', 'display-metrics-changed']) screen.on(name, pushDisplays);
     // A removal hides its output at once, without waiting for the debounce (D7 criterion: within 500 ms).

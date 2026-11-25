@@ -16,7 +16,7 @@ Machine: MacBook Pro, Apple M1 Max, macOS 26.2 (25C56), Node 24.13.1, npm 11.8.0
 | Engineering studio | 🟡 opens; it's a placeholder ("its tools are being built") |
 | Autosave and recovery after quit and relaunch | ✅ |
 | Project file export and import through native dialogs | ✅ |
-| MP4 export of an output test card inside Electron | ✅ ffprobe-checked, plays in QuickTime |
+| MP4 export of an output test card inside Electron | 🟡 ffprobe-checked, shows in QuickTime; length and rate were wrong there (section 7), fixed since, not re-exported |
 | Unsigned `.app` (`pack:mac`) launched from a path with spaces | ✅ |
 | Signed / notarized build, DMG, Gatekeeper on another Mac | ⬜ out of Phase B |
 | Windows | ⬜ not run. No Windows support is claimed |
@@ -116,6 +116,8 @@ ffmpeg -i … -f null -   → decodes with no errors
 ```
 
 Played in QuickTime Player ([12](evidence/phase-b/12-quicktime.jpg)); a frame at 5 s matches the preview ([08](evidence/phase-b/08-mp4-frame5s.jpg)).
+
+**Corrected 2026-11-24:** that check looked at the picture, not the length. MP4s exported then read as twice as long at half the frame rate in AVFoundation (QuickTime, Arena on macOS); ffprobe doesn't show it. The header is fixed since (`docs/integrations/video-encoding.md`), but the export inside Electron hasn't been repeated.
 
 Electron's log shows the encode went through **OpenH264**, Chromium's software encoder, not VideoToolbox. Fine for a still test card at this size; speed on long or 4K animated exports wasn't measured. The stream-level `nb_frames` is `N/A` (the muxer doesn't write it); counting decoded frames gives 300.
 
@@ -578,3 +580,33 @@ Decided after the D7 review: the display sleep blocker is held in `held` as well
 | `npm --prefix desktop test` | 89/89 |
 
 Not verified: an actual display staying awake while held on a real monitor. That belongs to D11 in the physical session.
+
+## Menu bar and Dock after closing an output (2026-11-24)
+
+**Bug:** with the main build (7813fc9) on the owner's Mac, after an output closed, `currentSystemPresentationOptions` was 5 (auto-hide Dock and menu bar) with Pixel Lab in front and no output visible (read by Output and the Lead). Cause by reading the code, **not reproduced**: the window was destroyed while in simple full screen, which sets those options for the whole app.
+
+**Fix:** `output-presentation.cjs`. Every path that destroys an output window leaves full screen first, in the same tick.
+
+| Check | Result |
+| --- | --- |
+| Unit, order (leave, then destroy): Close, Esc, quit (`*`), display lost while opening and while failed, crash, a page that never answers, waiting-display, held, ⌘W (`close` event), a window never in full screen, an already destroyed one, an error while leaving | pass |
+| Unit: main has no other `destroy()` | pass |
+| The tests fail without the fix (line removed) | 6 fail |
+| `npm --prefix desktop test` | 98/98 |
+
+**Not tested:** anything in Electron (the owner was using Pixel Lab and Arena). Presentation options can't be checked in a hidden run: a hidden run never enters full screen, and the options apply to the app in front. It needs one visible run on an external display, with the owner's permission: options back to 0 after Close and after Esc with the editor in front.
+
+## Reopening on the same monitor (2026-11-25)
+
+**Bug:** on the owner's Mac (app from 8ba1e7d), after an output closed, Open was refused with "Another output is already on that monitor" with no output window open. Cause: `displays-changed` was sent only on screen events. Entering full screen sends one while the output is open, and nothing sent a new list when it closed.
+
+**Fix:** `output-push.cjs`. After each status, main sends the list if who occupies which display changed since the last list sent.
+
+| Check | Result |
+| --- | --- |
+| Hidden regression `reopen-display-list.cjs`, through the panel: a screen event while open, close with Close and with Esc, no screen event after; the monitor is free, Open is enabled, it reopens to live; reports alone send no list | pass; **fails with 004faef's `main.cjs`** ("the monitor is free in the last list") |
+| Unit: opened, closed, moved, waiting-display, held, reports, status before list, the screen push records, quit, crash and hang then close, display lost while opening and while failed, no control window, no call back into the controller | pass |
+| Plain hidden `test:smoke`; `o12-output-controls.cjs` | pass, no window shown |
+| `npm --prefix desktop test` | 108/108 |
+
+Not tested: a visible window. ⌘W and quit are unit tests only.

@@ -25,6 +25,11 @@ const matrix = u32(0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000);
 
 export interface Mp4Settings { width: number; height: number; fps: number; frames: number }
 
+/**
+ * The init segment. Every sample is in a fragment, so the moov's own durations (mvhd, tkhd, mdhd) are 0: they cover
+ * only samples listed in the moov, and AVFoundation (QuickTime, Resolume Arena on macOS) adds the fragments to them,
+ * reading the clip as twice as long at half the rate. The whole length is in mvex/mehd, where fragmented files say it.
+ */
 export function mp4Header(s: Mp4Settings, avcC: Uint8Array): Uint8Array {
   if (avcC.length < 7 || avcC[0] !== 1) throw new Error('Encoder did not provide an AVC configuration record.');
   const avc1 = box('avc1', new Uint8Array(6), u16(1), new Uint8Array(16),
@@ -34,13 +39,13 @@ export function mp4Header(s: Mp4Settings, avcC: Uint8Array): Uint8Array {
     full('stsc', 0, u32(0)), full('stsz', 0, u32(0, 0)), full('stco', 0, u32(0)));
   const minf = box('minf', full('vmhd', 1, u16(0, 0, 0, 0)),
     box('dinf', full('dref', 0, u32(1), full('url ', 1))), stbl);
-  const mdia = box('mdia', full('mdhd', 0, u32(0, 0, s.fps, s.frames), u16(0x55c4, 0)),
+  const mdia = box('mdia', full('mdhd', 0, u32(0, 0, s.fps, 0), u16(0x55c4, 0)),
     full('hdlr', 0, u32(0), str('vide'), new Uint8Array(12), str('Pixel Lab\0')), minf);
-  const trak = box('trak', full('tkhd', 7, u32(0, 0, 1, 0, s.frames), new Uint8Array(8),
+  const trak = box('trak', full('tkhd', 7, u32(0, 0, 1, 0, 0), new Uint8Array(8),
     u16(0, 0, 0, 0), matrix, u32(s.width * 65536, s.height * 65536)), mdia);
-  const moov = box('moov', full('mvhd', 0, u32(0, 0, s.fps, s.frames, 0x10000),
+  const moov = box('moov', full('mvhd', 0, u32(0, 0, s.fps, 0, 0x10000),
     u16(0x100, 0), new Uint8Array(8), matrix, new Uint8Array(24), u32(2)), trak,
-    box('mvex', full('trex', 0, u32(1, 1, 1, 0, 0))));
+    box('mvex', full('mehd', 0, u32(s.frames)), full('trex', 0, u32(1, 1, 1, 0, 0))));
   return bytes(box('ftyp', str('isom'), u32(512), str('isomiso6avc1mp41')), moov);
 }
 
