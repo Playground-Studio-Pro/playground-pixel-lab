@@ -2,7 +2,10 @@
 
 import { SelectField } from "@/components/workspace/fields";
 import { AURORA_DIRECTIONS, AURORA_PRESETS, AURORA_SPEEDS, type AuroraDirection, type AuroraSpeed } from "@/engines/content/aurora";
+import { activeLook } from "@/engines/content/looks";
+import "./aurora-saved";
 import { useAurora } from "./aurora-store";
+import { LooksField } from "./looks-field";
 import { SettingsPopover } from "./settings-popover";
 import { ColorField } from "./value-fields";
 
@@ -21,6 +24,7 @@ const directionItems = AURORA_DIRECTIONS.map((d) => ({ value: String(d), label: 
  */
 export function AuroraControls() {
   const settings = useAurora((s) => s.settings);
+  const looks = useAurora((s) => s.looks);
   const aurora = useAurora.getState();
   const preset = AURORA_PRESETS.find((p) => p.colors.length === settings.colors.length && p.colors.every((c, i) => c === settings.colors[i]))?.id ?? CUSTOM;
 
@@ -55,6 +59,14 @@ export function AuroraControls() {
         <SelectField label="Flow speed" className="w-20" value={String(settings.speed)} items={speedItems} onChange={(v) => aurora.setSpeed(Number(v) as AuroraSpeed)} />
         <SelectField label="Direction" className="flex-1" value={String(settings.direction)} items={directionItems} onChange={(v) => aurora.setDirection(Number(v) as AuroraDirection)} />
       </div>
+      <LooksField
+        looks={looks.map((l) => ({ id: l.id, name: l.name, swatches: l.settings.colors }))}
+        activeId={activeLook({ settings, looks })}
+        onSave={aurora.saveLook}
+        onApply={aurora.applyLook}
+        onRename={aurora.renameLook}
+        onRemove={aurora.removeLook}
+      />
       <p className="text-[11px] leading-snug text-muted-foreground">Flow speed is the content&apos;s own motion. Playback speed and content FPS stay in the header.</p>
     </SettingsPopover>
   );

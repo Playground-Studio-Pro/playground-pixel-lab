@@ -7,9 +7,11 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Readout, Section, SelectField } from "@/components/workspace/fields";
 import { CONTENT_FPS, type ContentFps } from "@/domain/motion";
+import { activeLook } from "@/engines/content/looks";
 import { depthWindow } from "@/engines/depth/camera";
 import { DEPTH_LIMITS, DEPTH_PRESETS, loopFrameCount } from "@/engines/depth/config";
 import { depthTargets, pickDepthTarget } from "@/engines/depth/targets";
+import { LooksField } from "@/modules/content/looks-field";
 import { ColorField, RangeField } from "@/modules/content/value-fields";
 import { useApp } from "@/state/store";
 import { useDepth } from "./depth-store";
@@ -30,10 +32,11 @@ function CheckRow({ label, checked, onChange }: { label: string; checked: boolea
 export default function DepthInspector() {
   const mapping = useApp((s) => s.mapping)!;
   const config = useDepth((s) => s.config);
+  const looks = useDepth((s) => s.looks);
   const presetId = useDepth((s) => s.presetId);
   const targetId = useDepth((s) => s.targetId);
   const showGuides = useDepth((s) => s.showGuides);
-  const { patch, applyPreset, setTarget, setShowGuides } = useDepth.getState();
+  const { patch, applyPreset, setTarget, setShowGuides, saveLook, renameLook, applyLook, removeLook } = useDepth.getState();
 
   const targets = useMemo(() => depthTargets(mapping), [mapping]);
   const target = pickDepthTarget(targets, targetId);
@@ -55,6 +58,17 @@ export default function DepthInspector() {
           ) : (
             <p className="text-xs text-muted-foreground">Add a screen in Mapping to frame the scene.</p>
           )}
+        </Section>
+
+        <Section title="Looks">
+          <LooksField
+            looks={looks.map((l) => ({ id: l.id, name: l.name, swatches: [l.settings.palette.background, l.settings.palette.particle, l.settings.palette.accent] }))}
+            activeId={activeLook({ settings: config, looks })}
+            onSave={saveLook}
+            onApply={applyLook}
+            onRename={renameLook}
+            onRemove={removeLook}
+          />
         </Section>
 
         <Section title="Depth">

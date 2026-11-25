@@ -1,12 +1,14 @@
 "use client";
 
 import { create } from "zustand";
+import { addLook, removeLook, renameLook, type Look } from "@/engines/content/looks";
 import { DEPTH_PRESETS, loopFrameCount, normalizeDepthConfig, type DepthSceneConfig } from "@/engines/depth/config";
 import * as clock from "@/engines/motion/clock";
 
 /**
- * Depth Studio state. Module state: never saved, undone or exported, and it can't change the mapping.
- * Saving a scene waits for the `modules[id]` project section (task L2), like Aurora's settings.
+ * Depth Studio state. It can't change the mapping. `depth-saved.ts` keeps the scene and its looks in step
+ * with the open project, where they're saved and undone; the rest is editor state. This file imports nothing
+ * from the project store, because the output page uses it.
  *
  * The current frame isn't stored. It's derived from the clock on each animation frame, so playback
  * causes no React updates.
@@ -15,6 +17,7 @@ type DeepPartial<T> = { readonly [K in keyof T]?: T[K] extends object ? DeepPart
 
 interface DepthState {
   config: DepthSceneConfig;
+  looks: readonly Look<DepthSceneConfig>[];
   presetId: string;
   /** Which canvas or screen the scene is framed for. Null follows the first available target. */
   targetId: string | null;
@@ -26,6 +29,13 @@ interface DepthState {
   /** Merges a change into the config. The result is always clamped to valid ranges. */
   patch(change: DeepPartial<DepthSceneConfig>): void;
   applyPreset(id: string): void;
+  /** The scene and looks of the open project. */
+  load(config: DepthSceneConfig, looks: readonly Look<DepthSceneConfig>[]): void;
+  /** These throw a `LookError` with the reason when a name can't be used. */
+  saveLook(name: string): void;
+  renameLook(id: string, name: string): void;
+  applyLook(id: string): void;
+  removeLook(id: string): void;
   setTarget(id: string): void;
   setShowGuides(show: boolean): void;
   togglePlay(): void;
@@ -51,8 +61,16 @@ export function depthFrameAt(state: Pick<DepthState, "clock" | "config">, nowMs:
   return clock.frameAt(clock.contentTime(state.clock, nowMs), state.config.fps) % loopFrameCount(state.config);
 }
 
+/** A new config. Changing the rate or the length keeps the same frame where it still exists. */
+function withConfig(state: DepthState, config: DepthSceneConfig): Partial<DepthState> {
+  if (config.fps === state.config.fps && config.durationSeconds === state.config.durationSeconds) return { config };
+  const frame = depthFrameAt(state, now());
+  return { config, clock: { ...state.clock, baseMs: clock.frameStartMs(frame % loopFrameCount(config), config.fps), anchorMs: now() }, statsEpoch: state.statsEpoch + 1 };
+}
+
 export const useDepth = create<DepthState>((set, get) => ({
   config: DEPTH_PRESETS[0].config,
+  looks: [],
   presetId: DEPTH_PRESETS[0].id,
   targetId: null,
   clock: clock.initialClock,
@@ -60,15 +78,25 @@ export const useDepth = create<DepthState>((set, get) => ({
   statsEpoch: 0,
 
   patch(change) {
-    const state = get();
-    const frame = depthFrameAt(state, now());
-    const config = normalizeDepthConfig(merge(state.config, change));
-    // Changing the rate or the length keeps the same frame where it still exists.
-    const timing = config.fps !== state.config.fps || config.durationSeconds !== state.config.durationSeconds;
-    set({
-      config,
-      ...(timing ? { clock: { ...state.clock, baseMs: clock.frameStartMs(frame % loopFrameCount(config), config.fps), anchorMs: now() }, statsEpoch: state.statsEpoch + 1 } : {}),
+    set((s) => withConfig(s, normalizeDepthConfig(merge(s.config, change))));
+  },
+  load(config, looks) {
+    set((s) => ({ ...withConfig(s, config), looks }));
+  },
+  saveLook(name) {
+    set((s) => ({ looks: addLook(s.looks, crypto.randomUUID(), name, s.config) }));
+  },
+  renameLook(id, name) {
+    set((s) => ({ looks: renameLook(s.looks, id, name) }));
+  },
+  applyLook(id) {
+    set((s) => {
+      const look = s.looks.find((l) => l.id === id);
+      return look ? withConfig(s, look.settings) : s;
     });
+  },
+  removeLook(id) {
+    set((s) => ({ looks: removeLook(s.looks, id) }));
   },
   applyPreset(id) {
     const preset = DEPTH_PRESETS.find((p) => p.id === id);
