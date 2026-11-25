@@ -2,6 +2,18 @@
 
 Independent Output Engineering implementation. No dependency added and no shared contracts changed. `src/modules/output/video-export.ts` consumes the existing `FrameSource` at scale 1. `mp4.ts` writes fragmented ISO BMFF with an AVC video track, no audio. It never uses MediaRecorder or WebM.
 
+## Duration in AVFoundation (fixed 2026-11-24)
+
+Until this fix the init segment wrote the whole length in `mvhd`, `tkhd` and `mdhd` although every sample is in a fragment. AVFoundation adds the two, so QuickTime and Resolume Arena on macOS read **every exported MP4 as twice as long at half the frame rate** (30 fps and 10 s became 15 fps and 20 s; Arena 7.28.1). ffprobe and Chrome don't add them, so the checks below, which used only those, passed. **MP4s exported before the fix still carry the wrong header: export them again**, or remux with `ffmpeg -i old.mp4 -c copy new.mp4`, which doesn't touch the pictures.
+
+Those three are now 0 and `mvex/mehd` holds the length. `ffprobe` alone isn't enough to accept an export. On a Mac, also run:
+
+```sh
+swift prototypes/output-video/avfoundation-check.swift downloaded.mp4
+```
+
+It must print the exported duration, frame rate and frame count. CI has no AVFoundation; `tests/output-mp4-duration.test.ts` checks the boxes there. Playback of the fixed file in Arena, and anything on Windows, hasn't been checked.
+
 ## Browser verification
 
 From the output-engineering worktree:
@@ -23,7 +35,7 @@ Expect one H.264 stream, 1920×1080, 30/1 fps, 300 decoded frames, 10 seconds, n
 
 Read-only inspected Lead Architect branch `integration/calibration-live-preview` at `e2f1707`. Its `FrameSource` retains `draw` and adds optional context/subscription. No branch was combined. Calibration is unavailable in this checkout. Integration must call `prepareCalibrationSource()` first and provide a source with settings frozen for the export, plus the resolved screens/context. The current calibration source reads mutable UI state during draw; the owner must supply a snapshot adapter before production integration. Do not advertise Calibration export as delivered yet.
 
-Pass integer `frames: 300`, `fps: 30`, dimensions 1920×1080, an AbortSignal and progress callback to `exportMp4`. Frame indices are exactly 0–299; timestamps use rounded microseconds and MP4 duration uses exact FPS ticks. Sources must themselves be periodic over the selected frame count; encoding cannot make arbitrary animation seamless. The first frame is a keyframe. No mapping coordinates are computed by this pipeline. This master-image API does not export processor outputs; future output integration must use resolved mapping and the existing validation gate.
+Pass integer `frames: 300`, `fps: 30`, dimensions 1920×1080, an AbortSignal and progress callback to `exportMp4`. Frame indices are exactly 0–299; timestamps use rounded microseconds and the fragments use exact FPS ticks. Sources must themselves be periodic over the selected frame count; encoding cannot make arbitrary animation seamless. The first frame is a keyframe. No mapping coordinates are computed by this pipeline. This master-image API does not export processor outputs; future output integration must use resolved mapping and the existing validation gate.
 
 ## Limits and verification
 
