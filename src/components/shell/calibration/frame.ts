@@ -32,6 +32,11 @@ export interface CalibrationScreen {
   readonly physical?: { readonly widthUm: number; readonly heightUm: number };
   /** Accent color, already checked for contrast on a dark field (`screenAccent`). */
   readonly accent: string;
+  /**
+   * When set, cabinet labels name the screen too: `C·R3·C12` (screen C, row 3, column 12), so a cabinet can be told
+   * apart from the audience across several screens. Unset keeps the short `A1` labels.
+   */
+  readonly cabinetPrefix?: string;
 }
 
 /** Calibration mode elements a technician can switch off. Identification mode has a fixed set. */
@@ -366,9 +371,9 @@ export function rowLetters(row: number): string {
   return out;
 }
 
-/** A cabinet's label: its row letter and column number, `A1`, `B12`. */
-export function cabinetLabelText(cell: CabinetCell): string {
-  return `${rowLetters(cell.row)}${cell.column}`;
+/** A cabinet's label: its row letter and column number, `A1`, `B12`; with a screen prefix, `C·R3·C12`. */
+export function cabinetLabelText(cell: CabinetCell, prefix?: string): string {
+  return prefix ? `${prefix}·R${cell.row}·C${cell.column}` : `${rowLetters(cell.row)}${cell.column}`;
 }
 
 /** Margin inside a cabinet around its label: the seam pixel, then a share of the text size. */
@@ -543,30 +548,46 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
   const markBoxes: Box[] = [];
   c.deferred.push(() => {
     for (const cell of cells) {
-      const text = cabinetLabelText(cell);
+      const text = cabinetLabelText(cell, s.cabinetPrefix);
       const size = cabinetLabelSize(cell.box.width, cell.box.height, text);
       if (size === null) continue;
       const tone = toneOf(cell);
-      const line: Line = { size, weight: 700, parts: [{ text, fill: cal ? CAL_COLORS.muted : readableOn(tone) }] };
-      const bw = lineWidth(line);
       const b = cell.box;
-      // Centered; where a corner mark or origin square is in the way, nudged a quarter of the cabinet down,
-      // right, or both, and still inside the cabinet.
-      const cx0 = b.x + Math.floor((b.width - bw) / 2);
-      const cy0 = b.y + Math.floor((b.height - size) / 2);
       const qx = Math.floor(b.width / 4);
       const qy = Math.floor(b.height / 4);
-      for (const [dx, dy] of [[0, 0], [0, qy], [qx, 0], [qx, qy]]) {
-        const box = { x: cx0 + dx, y: cy0 + dy, width: bw, height: size };
-        if (!inside(expand(box, cabinetMargin(size) - 1), b)) continue;
-        if (markBoxes.some((mb) => hits(mb, expand(box, 1)))) continue;
-        // A tight plate: the screen's own pad would reach into the neighbouring cabinet.
-        if (reserve(box, CABINET_PLATE_PAD, tone)) {
-          emit([line], box.x, box.y, bw, "left");
-          break;
+      // With screen ids every cabinet should carry its id, so a blocked one also tries the other quarters and smaller
+      // sizes. Without them the original placement is kept exactly.
+      const prefixed = s.cabinetPrefix !== undefined;
+      const ey = Math.floor((b.height * 3) / 8);
+      const offsets = prefixed
+        ? [[0, 0], [0, qy], [0, -qy], [qx, 0], [-qx, 0], [qx, qy], [-qx, qy], [qx, -qy], [-qx, -qy], [0, -ey], [0, ey]]
+        : [[0, 0], [0, qy], [qx, 0], [qx, qy]];
+      const sizes = prefixed ? Array.from({ length: size - CAL_MIN_TEXT + 1 }, (_, i) => size - i) : [size];
+      let done = false;
+      for (const sz of sizes) {
+        const line: Line = { size: sz, weight: 700, parts: [{ text, fill: cal ? CAL_COLORS.muted : readableOn(tone) }] };
+        const bw = lineWidth(line);
+        // Centered; where a corner mark or origin square is in the way, nudged a quarter of the cabinet, and still
+        // inside the cabinet.
+        const cx0 = b.x + Math.floor((b.width - bw) / 2);
+        const cy0 = b.y + Math.floor((b.height - sz) / 2);
+        for (const [dx, dy] of offsets) {
+          const box = { x: cx0 + dx, y: cy0 + dy, width: bw, height: sz };
+          if (!inside(expand(box, cabinetMargin(sz) - 1), b)) continue;
+          if (markBoxes.some((mb) => hits(mb, expand(box, 1)))) continue;
+          // A tight plate: the screen's own pad would reach into the neighbouring cabinet.
+          if (reserve(box, CABINET_PLATE_PAD, tone)) {
+            emit([line], box.x, box.y, bw, "left");
+            done = true;
+            break;
+          }
+          // Blocked by a label or the logo, not a mark: the cabinet goes without, so labels never wander.
+          if (!prefixed && dx === 0 && dy === 0 && !markBoxes.some((mb) => hits(mb, expand(box, 1)))) {
+            done = true;
+            break;
+          }
         }
-        // Blocked by a label or the logo, not a mark: the cabinet goes without, so labels never wander.
-        if (dx === 0 && dy === 0 && !markBoxes.some((mb) => hits(mb, expand(box, 1)))) break;
+        if (done) break;
       }
     }
   });
@@ -698,6 +719,10 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
       }
       return lines;
     };
+    // With screen cabinet ids, the plate straddles the cabinet seam nearest the middle, so no cabinet is covered whole
+    // and each keeps room for its id. Without them it stays centred.
+    const seamRows = s.cabinetPrefix !== undefined && s.cabinet && s.cabinet.rows > 1 ? s.cabinet.pixelsY : 0;
+    const plateCy = seamRows ? s.rect.y + Math.round((cy - s.rect.y) / seamRows) * seamRows : cy;
     let placedPlate = false;
     // A ribbon reads as one line on black: name, resolution, size.
     if (compact && w >= 4 * h) {
@@ -705,7 +730,7 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
       const parts: Part[] = [{ text: s.name, fill: CAL_COLORS.white }];
       if (c.elements.metadata) parts.push({ text: res, fill: CAL_COLORS.white }, ...(size ? [{ text: size, fill: CAL_COLORS.white }] : []));
       const row = rowSize >= CAL_MIN_TEXT ? fitLine({ size: rowSize, weight: 600, parts }, within.width - 2 * platePad) : null;
-      placedPlate = !!row && placeCentered([row], cx, cy, within);
+      placedPlate = !!row && placeCentered([row], cx, plateCy, within);
     }
     if (!placedPlate) {
       // Every line at one size: `CAL_PLATE` of the screen, shrunk to fit before a line is shortened or dropped.
@@ -718,7 +743,7 @@ function layoutScreen(s: CalibrationScreen, c: ScreenContext): void {
           const set = fitted(lines, maxW);
           if (set.length !== n || blockHeight(set) + 2 * platePad > within.height) continue;
           const plates = layers.plates.length;
-          placedPlate = placeCentered(set, cx, cy, within);
+          placedPlate = placeCentered(set, cx, plateCy, within);
           if (placedPlate) {
             // The name line sits on white, the full width of the plate, over the black plate just reserved.
             const plate = layers.plates[plates];

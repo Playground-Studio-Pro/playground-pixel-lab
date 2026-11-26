@@ -1,6 +1,6 @@
 import type { ResolvedMapping, ResolvedScreen } from "@/engines/mapping";
 import type { Rect } from "@/domain/units";
-import type { CalibrationScreen } from "./frame";
+import { rowLetters, type CalibrationScreen } from "./frame";
 import { screenAccent } from "./tokens";
 
 /** One thing a calibration frame can be made for: the master canvas, one output, or one screen. */
@@ -19,11 +19,16 @@ export function screenLabel(index: number, total: number): string {
   return `SCR-${String(index + 1).padStart(total > 99 ? 3 : 2, "0")}`;
 }
 
+/** Screen letters by order, for cabinet ids: A, B, … Z, AA. */
+export function screenLetter(index: number): string {
+  return rowLetters(index + 1);
+}
+
 /**
  * Everything a project can show a calibration frame for. Reads rectangles from `resolveMapping`
  * as they are: no coordinate is computed here.
  */
-export function calibrationTargets(mapping: ResolvedMapping): CalibrationTarget[] {
+export function calibrationTargets(mapping: ResolvedMapping, options: { screenCabinetIds?: boolean } = {}): CalibrationTarget[] {
   const total = mapping.screens.length;
   const describe = (screen: ResolvedScreen, index: number, rect: Rect<number>): CalibrationScreen => {
     const outputIndex = mapping.outputs.findIndex((o) => o.outputId === screen.outputId);
@@ -37,6 +42,7 @@ export function calibrationTargets(mapping: ResolvedMapping): CalibrationTarget[
       cabinet: { pixelsX: screen.cabinet.pixelsX, pixelsY: screen.cabinet.pixelsY, columns: screen.columns, rows: screen.rows },
       physical: { widthUm: screen.stage.width, heightUm: screen.stage.height },
       accent: screenAccent(screen.color, index),
+      ...(options.screenCabinetIds ? { cabinetPrefix: screenLetter(index) } : {}),
     };
   };
   const indexed = mapping.screens.map((screen, index) => ({ screen, index }));
