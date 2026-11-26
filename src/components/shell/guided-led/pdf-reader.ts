@@ -4,22 +4,26 @@ import type { DrawingBox, DrawingPage, DrawingText } from "@/engines/guided-led"
  * Reads the first page of a vector PDF into what the drawing reader needs: text with positions and closed
  * axis-aligned rectangles, in PDF points, top-left origin, y down. No OCR, no network.
  *
+ * It uses pdf.js's legacy build: the modern build needs built-ins only the newest engines have (`Uint8Array.toHex`,
+ * `Map.getOrInsertComputed`, `Math.sumPrecise`), which Node 24 (CI) and older Safari lack; pdf.js itself asks for the
+ * legacy build in Node. Electron 43 (Chromium 150) has them all, so it works with either.
+ *
  * pdf.js is imported only here, and this module is imported only when a PDF is opened, so it never weighs on the
  * app's first load. Its worker code runs on the main thread (`globalThis.pdfjsWorker`), which needs no worker URL: that
  * keeps it working from a static export and inside Electron without touching either's security settings. A one-page
  * drawing is small enough for that.
  */
 
-type PdfJs = typeof import("pdfjs-dist");
+type PdfJs = typeof import("pdfjs-dist/legacy/build/pdf.mjs");
 type Matrix = [number, number, number, number, number, number];
 
 let loading: Promise<PdfJs> | null = null;
 
 async function pdfjs(): Promise<PdfJs> {
   loading ??= (async () => {
-    const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs");
+    const worker = await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs");
     (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = worker;
-    return import("pdfjs-dist");
+    return import("pdfjs-dist/legacy/build/pdf.mjs");
   })();
   return loading;
 }
