@@ -41,12 +41,12 @@ export interface ResolumeSlice {
   readonly input: ResolumeRect;
   /** Output Transformation rectangle, in output pixels. */
   readonly output: ResolumeRect;
-  /** Rotation of the input rectangle about its centre, degrees clockwise. 0 for an unrotated screen. */
-  readonly rotation: number;
-  /** Mirror of what the slice reads. */
-  readonly flip: "none" | "h" | "v" | "hv";
-  /** Corners of the rotated input rectangle in composition pixels (top-left, top-right, bottom-right, bottom-left of the unturned slice). */
-  readonly inputCorners: readonly { readonly x: number; readonly y: number }[];
+  /** Rotation of the input rectangle about its centre, degrees clockwise. Absent or 0 for an unrotated screen. */
+  readonly rotation?: number;
+  /** Mirror of what the slice reads. Absent means none. */
+  readonly flip?: "none" | "h" | "v" | "hv";
+  /** Corners of the rotated input rectangle in composition pixels (top-left, top-right, bottom-right, bottom-left of the unturned slice). Absent: the input rectangle's corners. */
+  readonly inputCorners?: readonly { readonly x: number; readonly y: number }[];
 }
 
 export interface ResolumeScreenSetup {
@@ -105,7 +105,7 @@ export function buildResolumeSetup(mapping: ResolvedMapping): ResolumeSetup {
 
 /** Whether any slice is rotated or mirrored: only then do the CSV and guide carry those columns. */
 export function hasTurnedSlices(setup: ResolumeSetup): boolean {
-  return setup.screens.some((s) => s.slices.some((x) => x.rotation !== 0 || x.flip !== "none"));
+  return setup.screens.some((s) => s.slices.some((x) => (x.rotation ?? 0) !== 0 || (x.flip ?? "none") !== "none"));
 }
 
 /** Arena's input orientation, radians clockwise, rounded to six decimals: 45° is 0.785398. */
@@ -147,7 +147,7 @@ export function buildSlicesCsv(setup: ResolumeSetup): string {
       slice.input.top,
       slice.output.left,
       slice.output.top,
-      ...(turned ? [slice.rotation, orientationRadians(slice.rotation), slice.flip] : []),
+      ...(turned ? [slice.rotation ?? 0, orientationRadians(slice.rotation ?? 0), slice.flip ?? "none"] : []),
     ]),
   );
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
@@ -192,7 +192,7 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
     setup.screens.flatMap((screen) => screen.slices.map((s) => [s.name, screen.name, s.input.left, s.input.top, s.output.left, s.output.top])),
   );
   const half = halfPixelSlices(setup);
-  const turnedRows = setup.screens.flatMap((screen) => screen.slices.filter((x) => x.rotation !== 0 || x.flip !== "none").map((x) => [x.name, screen.name, `${x.rotation}°`, orientationRadians(x.rotation), { none: "None", h: "Horizontal", v: "Vertical", hv: "Both" }[x.flip]]));
+  const turnedRows = setup.screens.flatMap((screen) => screen.slices.filter((x) => (x.rotation ?? 0) !== 0 || (x.flip ?? "none") !== "none").map((x) => [x.name, screen.name, `${x.rotation ?? 0}°`, orientationRadians(x.rotation ?? 0), { none: "None", h: "Horizontal", v: "Vertical", hv: "Both" }[x.flip ?? "none"]]));
 
   return [
     `# Resolume setup: ${project.meta.name}`,
@@ -222,6 +222,10 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
           `### Rotation and mirror`,
           `These slices read a turned or mirrored part of the composition. On **Input Selection**, turn the slice by the rotation shown (clockwise, about its centre) and set its mirror. The output stays a straight rectangle.`,
           mdTable(["Slice", "Screen", "Rotation", "Orientation (rad)", "Mirror"], turnedRows),
+          `The test preset writes the rotation as the slice's input orientation in radians, with its corners already turned, as Arena saves it. A horizontal mirror is written as Flip 1, as seen in a file Arena saved.`,
+          ...(turnedRows.some((r) => r[4] === "Vertical" || r[4] === "Both")
+            ? [`> **Warning: unverified mirror.** Flip 2 (vertical) and 3 (both) follow the order of Arena's mirror buttons but have not been verified in Arena. Check those slices on the wall before relying on them.`]
+            : []),
         ]
       : []),
     `### For reference only: top-left corners`,

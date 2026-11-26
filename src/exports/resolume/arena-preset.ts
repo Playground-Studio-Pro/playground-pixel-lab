@@ -1,4 +1,4 @@
-import type { ResolumeRect, ResolumeSetup } from "./adapter";
+import { orientationRadians, type ResolumeRect, type ResolumeSetup, type ResolumeSlice } from "./adapter";
 
 /**
  * An Arena Advanced Output preset, as Arena 7.28.1 on macOS saves one. Pure and deterministic: the same setup and
@@ -59,6 +59,23 @@ const corners = (r: ResolumeRect): Point[] => [
 /** The 4 × 4 Bezier control grid Arena keeps for an unwarped slice, row by row from the top. */
 const bezier = (r: ResolumeRect): Point[] => [0, 1, 2, 3].flatMap((j) => [0, 1, 2, 3].map((i): Point => [r.left + (r.width * i) / 3, r.top + (r.height * j) / 3]));
 
+/**
+ * Arena's `Flip` on a slice's Output params (UINT8). 0 none and 1 horizontal were seen in a file Arena 7.28.1 saved;
+ * 2 (vertical) and 3 (both) follow the UI order and are NOT verified in Arena.
+ */
+export const ARENA_FLIP = { none: 0, h: 1, v: 2, hv: 3 } as const;
+export const ARENA_FLIP_VERIFIED: readonly (keyof typeof ARENA_FLIP)[] = ["none", "h"];
+
+/**
+ * A rotated input: `orientation` in radians (positive clockwise on screen) and the four corners already turned about the
+ * slice's centre, in composition pixels, as Arena writes them. Unrotated slices write exactly what they did before.
+ */
+function inputRect(slice: ResolumeSlice): { orientation: string; points: Point[] } {
+  const turn = slice.rotation ?? 0;
+  if (turn === 0 || !slice.inputCorners) return { orientation: "0", points: corners(slice.input) };
+  return { orientation: arenaNumber(orientationRadians(turn)), points: slice.inputCorners.map((c): Point => [c.x, c.y]) };
+}
+
 export function buildArenaPreset(setup: ResolumeSetup, name: string): string {
   const lines: string[] = [];
   const line = (depth: number, text: string) => lines.push("\t".repeat(depth) + text);
@@ -89,8 +106,16 @@ export function buildArenaPreset(setup: ResolumeSetup, name: string): string {
       line(6, `<Params name="Common">`);
       line(7, `<Param name="Name" T="STRING" default="Layer" value="${xmlAttribute(slice.name)}"/>`);
       line(6, `</Params>`);
-      line(6, `<InputRect orientation="0">`);
-      points(7, corners(slice.input));
+      // Mirror goes in the slice's Output params, written only when set so unmirrored slices are unchanged.
+      const flip = slice.flip ?? "none";
+      if (flip !== "none") {
+        line(6, `<Params name="Output">`);
+        line(7, `<Param name="Flip" T="UINT8" default="0" value="${ARENA_FLIP[flip]}"/>`);
+        line(6, `</Params>`);
+      }
+      const input = inputRect(slice);
+      line(6, `<InputRect orientation="${input.orientation}">`);
+      points(7, input.points);
       line(6, `</InputRect>`);
       line(6, `<OutputRect orientation="0">`);
       points(7, output);

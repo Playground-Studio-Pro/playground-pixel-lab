@@ -185,13 +185,13 @@ describe("Resolume values for a turned screen", () => {
     const m = resolveMapping(p);
     const left = m.screens.find((s) => s.screenId === ids.left)!;
     const slice = buildResolumeSetup(m).screens.flatMap((s) => s.slices).find((s) => s.name === left.name)!;
-    expect(orientationRadians(slice.rotation)).toBe(0.785398);
+    expect(orientationRadians(slice.rotation ?? 0)).toBe(0.785398);
     const r = left.masterRect;
     const cx = r.x + r.width / 2;
     const cy = r.y + r.height / 2;
     const t = Math.PI / 4;
     const want = [[r.x, r.y], [r.x + r.width, r.y], [r.x + r.width, r.y + r.height], [r.x, r.y + r.height]].map(([x, y]) => ({ x: cx + (x - cx) * Math.cos(t) - (y - cy) * Math.sin(t), y: cy + (x - cx) * Math.sin(t) + (y - cy) * Math.cos(t) }));
-    slice.inputCorners.forEach((c, i) => {
+    slice.inputCorners!.forEach((c, i) => {
       expect(Math.abs(c.x - want[i].x)).toBeLessThan(0.01);
       expect(Math.abs(c.y - want[i].y)).toBeLessThan(0.01);
     });

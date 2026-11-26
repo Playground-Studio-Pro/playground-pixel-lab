@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic. The shape of a rotated, mirrored slice as Arena 7.28.1 (macOS) saves it: Flip in the slice's Output
+     params, InputRect orientation in radians with the four corners already turned about the centre. Values are made up
+     for a 200 × 100 slice at (100, 50) turned 45°; only the elements Pixel Lab writes are kept. -->
+<Slice uniqueId="1700000000001">
+	<Params name="Common">
+		<Param name="Name" T="STRING" default="Layer" value="Turned"/>
+	</Params>
+	<Params name="Output">
+		<Param name="Flip" T="UINT8" default="0" value="1"/>
+	</Params>
+	<InputRect orientation="0.785398">
+		<v x="164.644661" y="-6.066017"/>
+		<v x="306.066017" y="135.355339"/>
+		<v x="235.355339" y="206.066017"/>
+		<v x="93.933983" y="64.644661"/>
+	</InputRect>
+</Slice>

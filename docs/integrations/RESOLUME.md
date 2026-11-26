@@ -68,3 +68,12 @@ O11 checked the slice values. Still to confirm on the first use of the whole gui
 - [ ] The menu and field names in the guide match your Arena version.
 - [ ] Slices entered from the table sit exactly on the pixel map with Input and Output Guides loaded.
 - [ ] On the wall: all four border edges visible, diagonals meet at the corners, one checker square per cabinet.
+
+## Rotation, mirror and split screens in the test preset (schema 3, 2026-11-26)
+
+From a preset Arena 7.28.1 (macOS) saved itself (findings kept outside the repository; a synthetic copy of the shape is `tests/fixtures/arena-7.28.1-rotated-slice-shape.xml`):
+
+- **Rotation:** `InputRect orientation` is radians, positive clockwise on screen. Its four `v` are the corners already turned about the slice's centre, in composition pixels. Pixel Lab writes the orientation rounded to six decimals (45° → 0.785398) and computes the corners from the centre, size and angle.
+- **Mirror:** `Params name="Output" > Param name="Flip" T="UINT8"` on the slice. 0 none and 1 horizontal were seen; 2 (vertical) and 3 (both) are written but **not verified**, and the package README says so.
+- **Split screens:** one slice per part, input the part's region, output its place in its own output.
+- Unturned, unmirrored slices write exactly what they did before. Not verified: what Arena does if `orientation` and the corners disagree; Windows.
