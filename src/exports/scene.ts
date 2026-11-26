@@ -36,6 +36,9 @@ export interface SceneItem {
   readonly cabinetPixelsY: number;
   readonly columns: number;
   readonly rows: number;
+  /** Cabinet column and row of the screen this item starts at (a part of a split screen), so the checkerboard continues. */
+  readonly startColumn?: number;
+  readonly startRow?: number;
 }
 
 function itemNodes(item: SceneItem): SceneNode[] {
@@ -53,7 +56,7 @@ function itemNodes(item: SceneItem): SceneNode[] {
         y: y + row * item.cabinetPixelsY,
         width: item.cabinetPixelsX,
         height: item.cabinetPixelsY,
-        fill: (row + col) % 2 === 0 ? light : dark,
+        fill: (row + col + (item.startRow ?? 0) + (item.startColumn ?? 0)) % 2 === 0 ? light : dark,
       });
     }
   }
@@ -109,15 +112,46 @@ function buildScene(title: string, width: number, height: number, items: readonl
   };
 }
 
+const FLIP_WORDS = { none: "", h: ", mirrored horizontally", v: ", mirrored vertically", hv: ", mirrored both ways" } as const;
+
+/**
+ * The master canvas. A rotated region is drawn where the screen reads it: its rectangle as usual, plus the turned
+ * outline the screen actually reads and a line saying the turn and mirror. Unrotated screens draw exactly as before.
+ */
 export function masterScene(mapping: ResolvedMapping, title: string): PixelMapScene {
-  return buildScene(title, mapping.master.width, mapping.master.height, mapping.screens.map((s) => toItem(s, s.masterRect)));
+  const scene = buildScene(title, mapping.master.width, mapping.master.height, mapping.screens.map((s) => toItem(s, s.masterRect)));
+  const extra: SceneNode[] = mapping.screens.flatMap((s) => {
+    if (s.rotation === 0 && s.flip === "none") return [];
+    const c = s.masterCorners;
+    const lines: SceneNode[] = s.rotation === 0 ? [] : c.map((p, i) => ({ kind: "line" as const, x1: p.x, y1: p.y, x2: c[(i + 1) % 4].x, y2: c[(i + 1) % 4].y, stroke: SCENE_BORDER }));
+    const r = s.masterRect;
+    const size = Math.max(9, Math.floor(Math.min(r.height / 12, r.width / 24)));
+    return [...lines, { kind: "text" as const, x: r.x + Math.floor(r.width / 2), y: r.y + r.height - size * 2, text: `reads ${s.rotation ? `turned ${s.rotation}°` : "unturned"}${FLIP_WORDS[s.flip]}`, size, fill: TEXT_FILL }];
+  });
+  return extra.length ? { ...scene, nodes: [...scene.nodes, ...extra] } : scene;
 }
 
+/** One output: every screen, or every part of a split screen, that sits in it, 1:1. */
 export function outputScene(mapping: ResolvedMapping, outputId: string, title: string): PixelMapScene {
   const output = mapping.outputs.find((o) => o.outputId === outputId);
   if (!output) throw new Error("That output no longer exists.");
-  const screens = mapping.screens.filter((s) => s.outputId === outputId);
-  return buildScene(title, output.width, output.height, screens.map((s) => toItem(s, s.outputRect)));
+  const items = mapping.screens.flatMap((s) =>
+    s.parts
+      .filter((p) => p.outputId === outputId)
+      .map((p): SceneItem =>
+        p.count === 1
+          ? toItem(s, s.outputRect)
+          : {
+              ...toItem(s, p.outputRect),
+              name: `${s.name} · part ${p.index}/${p.count}`,
+              columns: p.source.width / s.cabinet.pixelsX,
+              rows: p.source.height / s.cabinet.pixelsY,
+              startColumn: p.source.x / s.cabinet.pixelsX,
+              startRow: p.source.y / s.cabinet.pixelsY,
+            },
+      ),
+  );
+  return buildScene(title, output.width, output.height, items);
 }
 
 export function screenScene(screen: ResolvedScreen): PixelMapScene {

@@ -63,7 +63,15 @@ function ScreenItem({
   const dark = darker(item.color, 0.55);
 
   return (
-    <Group x={x} y={y} name="item" id={item.id}>
+    <Group
+      x={item.rotation ? x + w / 2 : x}
+      y={item.rotation ? y + h / 2 : y}
+      offsetX={item.rotation ? w / 2 : 0}
+      offsetY={item.rotation ? h / 2 : 0}
+      rotation={item.rotation ?? 0}
+      name={item.locked ? "item locked" : "item"}
+      id={item.id}
+    >
       <KRect width={w} height={h} fill={light} />
       {cellW >= 3 && cellH >= 3 && (
         <Shape
@@ -76,7 +84,7 @@ function ScreenItem({
             const rows = Math.round(item.rect.height / item.cellHeight);
             for (let row = 0; row < rows; row++) {
               for (let col = 0; col < cols; col++) {
-                if ((row + col) % 2 === 1) c.fillRect(col * cellW, row * cellH, cellW, cellH);
+                if ((row + col + (item.cellStart?.row ?? 0) + (item.cellStart?.column ?? 0)) % 2 === 1) c.fillRect(col * cellW, row * cellH, cellW, cellH);
               }
             }
           }}
@@ -88,7 +96,7 @@ function ScreenItem({
         height={h}
         stroke={hasError ? ERROR : selected ? SIGNAL : "rgba(255,255,255,0.75)"}
         strokeWidth={selected || hasError ? 2 : 1}
-        dash={hasError ? [6, 4] : undefined}
+        dash={hasError ? [6, 4] : item.locked ? [3, 3] : undefined}
       />
       {w > 44 && h > 18 && (
         <Text
@@ -239,6 +247,8 @@ export function WorkspaceCanvas() {
         app.select({ kind: "screens", ids: [id] });
         ids = [id];
       }
+      // Parts of a split screen stay where the split puts them: selecting one doesn't start a drag.
+      if (node.hasName("locked")) return;
       gesture.current = { kind: "drag", startX: x, startY: y, ids, moved: false };
     } else {
       gesture.current = { kind: "marquee", startX: x, startY: y, additive: evt.shiftKey };
@@ -391,7 +401,7 @@ export function WorkspaceCanvas() {
             <Layer>
               {model.items.map((item) => (
                 <ScreenItem
-                  key={item.id}
+                  key={item.key ?? item.id}
                   item={item}
                   viewport={vp}
                   dx={drag && selectedIds.has(item.id) ? drag.dx : 0}

@@ -42,7 +42,8 @@ function selectedViewItems() {
   if (!project || !mapping) return { items: [], quantum: 1 };
   const model = buildViewModel(project, mapping, view, activeOutputId);
   const ids = new Set(selectedScreenIds(selection, project));
-  return { items: model.items.filter((i) => ids.has(i.id)), quantum: model.quantum };
+  // Parts of a split screen are moved by changing the split, not nudged one by one.
+  return { items: model.items.filter((i) => ids.has(i.id) && !i.locked), quantum: model.quantum };
 }
 
 export function nudgeSelection(dx: number, dy: number) {

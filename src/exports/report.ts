@@ -78,11 +78,27 @@ export function buildReport(project: Project, mapping: ResolvedMapping, issues: 
       `### ${o.name}: ${o.width} × ${o.height} px (${o.sizing})`,
       mdTable(
         ["Screen", "X", "Y", "W", "H", "Position"],
-        mapping.screens
-          .filter((s) => s.outputId === o.outputId)
-          .map((s) => [s.name, s.outputRect.x, s.outputRect.y, s.outputRect.width, s.outputRect.height, s.followsContent ? "Follows content" : "Manual"]),
+        mapping.screens.flatMap((s) =>
+          s.parts
+            .filter((p) => p.outputId === o.outputId)
+            .map((p) =>
+              p.count === 1
+                ? [s.name, s.outputRect.x, s.outputRect.y, s.outputRect.width, s.outputRect.height, s.followsContent ? "Follows content" : "Manual"]
+                : [`${s.name} · part ${p.index}/${p.count} (screen x ${p.source.x}, y ${p.source.y})`, p.outputRect.x, p.outputRect.y, p.outputRect.width, p.outputRect.height, "Split"],
+            ),
+        ),
       ),
     ]),
+    ...(mapping.screens.some((s) => s.rotation !== 0 || s.flip !== "none")
+      ? [
+          `## Rotation and mirror`,
+          `A rotated screen reads its content region turned about its centre, positive clockwise; its output stays a straight 1:1 rectangle.`,
+          mdTable(
+            ["Screen", "Rotation", "Mirror"],
+            mapping.screens.filter((s) => s.rotation !== 0 || s.flip !== "none").map((s) => [s.name, `${s.rotation}°`, { none: "None", h: "Horizontal", v: "Vertical", hv: "Both" }[s.flip]]),
+          ),
+        ]
+      : []),
     `## Cabinet profiles`,
     mdTable(
       ["Cabinet", "Size (mm)", "Pixels", "Nominal pitch (mm)"],

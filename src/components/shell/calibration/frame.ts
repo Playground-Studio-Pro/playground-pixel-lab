@@ -37,6 +37,11 @@ export interface CalibrationScreen {
    * apart from the audience across several screens. Unset keeps the short `A1` labels.
    */
   readonly cabinetPrefix?: string;
+  /**
+   * For a part of a split screen: the screen's cabinet row and column (0-based) this part starts at, so its cabinet
+   * ids and checkerboard continue the whole screen's across the cut. Unset for a whole screen.
+   */
+  readonly cabinetStart?: { readonly row: number; readonly column: number };
 }
 
 /** Calibration mode elements a technician can switch off. Identification mode has a fixed set. */
@@ -353,7 +358,9 @@ export function cabinetCells(s: CalibrationScreen): CabinetCell[] {
   for (let r = 0; r < cab.rows; r++) {
     for (let col = 0; col < cab.columns; col++) {
       const box = intersect({ x: s.rect.x + col * cab.pixelsX, y: s.rect.y + r * cab.pixelsY, width: cab.pixelsX, height: cab.pixelsY }, s.rect);
-      if (area(box) > 0) cells.push({ row: r + 1, column: col + 1, number: r * cab.columns + col + 1, box });
+      const row = r + 1 + (s.cabinetStart?.row ?? 0);
+      const column = col + 1 + (s.cabinetStart?.column ?? 0);
+      if (area(box) > 0) cells.push({ row, column, number: r * cab.columns + col + 1, box });
     }
   }
   return cells;

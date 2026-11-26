@@ -41,6 +41,12 @@ export interface ResolumeSlice {
   readonly input: ResolumeRect;
   /** Output Transformation rectangle, in output pixels. */
   readonly output: ResolumeRect;
+  /** Rotation of the input rectangle about its centre, degrees clockwise. 0 for an unrotated screen. */
+  readonly rotation: number;
+  /** Mirror of what the slice reads. */
+  readonly flip: "none" | "h" | "v" | "hv";
+  /** Corners of the rotated input rectangle in composition pixels (top-left, top-right, bottom-right, bottom-left of the unturned slice). */
+  readonly inputCorners: readonly { readonly x: number; readonly y: number }[];
 }
 
 export interface ResolumeScreenSetup {
@@ -66,7 +72,11 @@ export function halfPixelSlices(setup: ResolumeSetup): ResolumeSlice[] {
   return setup.screens.flatMap((s) => s.slices).filter((s) => !wholeCenter(s.input) || !wholeCenter(s.output));
 }
 
-/** Translates the mapping into Resolume's terms: each video output is a Screen, each LED screen a Slice. */
+/**
+ * Translates the mapping into Resolume's terms: each video output is a Screen, each LED screen a Slice. A split screen
+ * gives one slice per part, named “Centre · part 1/2”: its input is the part's region of the composition and its
+ * output the part's place in its own output, so the parts together show the whole screen.
+ */
 export function buildResolumeSetup(mapping: ResolvedMapping): ResolumeSetup {
   return {
     composition: { width: mapping.master.width, height: mapping.master.height },
@@ -76,16 +86,31 @@ export function buildResolumeSetup(mapping: ResolvedMapping): ResolumeSetup {
         name: output.name,
         width: output.width,
         height: output.height,
-        slices: mapping.screens
-          .filter((s) => s.outputId === output.outputId)
-          .map((s) => ({
-            name: s.name,
-            screenName: output.name,
-            input: resolumeRect(s.masterRect),
-            output: resolumeRect(s.outputRect),
-          })),
+        slices: mapping.screens.flatMap((s) =>
+          s.parts
+            .filter((p) => p.outputId === output.outputId)
+            .map((p) => ({
+              name: p.count === 1 ? s.name : `${s.name} · part ${p.index}/${p.count}`,
+              screenName: output.name,
+              input: resolumeRect(p.masterRect),
+              output: resolumeRect(p.outputRect),
+              rotation: s.rotation,
+              flip: s.flip,
+              inputCorners: p.masterCorners.map((c) => ({ x: c.x, y: c.y })),
+            })),
+        ),
       })),
   };
+}
+
+/** Whether any slice is rotated or mirrored: only then do the CSV and guide carry those columns. */
+export function hasTurnedSlices(setup: ResolumeSetup): boolean {
+  return setup.screens.some((s) => s.slices.some((x) => x.rotation !== 0 || x.flip !== "none"));
+}
+
+/** Arena's input orientation, radians clockwise, rounded to six decimals: 45° is 0.785398. */
+export function orientationRadians(degrees: number): number {
+  return Math.round(((degrees * Math.PI) / 180) * 1e6) / 1e6;
 }
 
 function csvCell(value: string | number): string {
@@ -97,11 +122,14 @@ function csvCell(value: string | number): string {
 
 /** The values to type first (centres), then the top-left corners for reference. No column is a bare x or y. */
 export function buildSlicesCsv(setup: ResolumeSetup): string {
+  // Rotation and mirror columns only when some slice uses them, so other projects' files are unchanged.
+  const turned = hasTurnedSlices(setup);
   const header = [
     "resolume_screen", "slice",
     "input_center_x", "input_center_y", "input_w", "input_h",
     "output_center_x", "output_center_y", "output_w", "output_h",
     "input_left", "input_top", "output_left", "output_top",
+    ...(turned ? ["input_rotation_deg", "input_orientation_rad", "flip"] : []),
   ];
   const rows = setup.screens.flatMap((screen) =>
     screen.slices.map((slice) => [
@@ -119,6 +147,7 @@ export function buildSlicesCsv(setup: ResolumeSetup): string {
       slice.input.top,
       slice.output.left,
       slice.output.top,
+      ...(turned ? [slice.rotation, orientationRadians(slice.rotation), slice.flip] : []),
     ]),
   );
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
@@ -144,6 +173,7 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
     setup.screens.flatMap((screen) => screen.slices.map((s) => [s.name, screen.name, s.input.left, s.input.top, s.output.left, s.output.top])),
   );
   const half = halfPixelSlices(setup);
+  const turnedRows = setup.screens.flatMap((screen) => screen.slices.filter((x) => x.rotation !== 0 || x.flip !== "none").map((x) => [x.name, screen.name, `${x.rotation}°`, orientationRadians(x.rotation), { none: "None", h: "Horizontal", v: "Vertical", hv: "Both" }[x.flip]]));
 
   return [
     `# Resolume setup: ${project.meta.name}`,
@@ -167,6 +197,13 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
         ]
       : []),
     ...screenSections,
+    ...(turnedRows.length
+      ? [
+          `### Rotation and mirror`,
+          `These slices read a turned or mirrored part of the composition. On **Input Selection**, turn the slice by the rotation shown (clockwise, about its centre) and set its mirror. The output stays a straight rectangle.`,
+          mdTable(["Slice", "Screen", "Rotation", "Orientation (rad)", "Mirror"], turnedRows),
+        ]
+      : []),
     `### For reference only: top-left corners`,
     `Where each slice starts, as in the pixel maps. Use these to read the guides, not to type into Arena.`,
     reference,

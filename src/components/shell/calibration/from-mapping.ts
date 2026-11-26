@@ -61,7 +61,25 @@ export function calibrationTargets(mapping: ResolvedMapping, options: { screenCa
       space: "output",
       width: output.width,
       height: output.height,
-      screens: indexed.filter(({ screen }) => screen.outputId === output.outputId).map(({ screen, index }) => describe(screen, index, screen.outputRect)),
+      // Every screen, or every part of a split screen, in this output. A part is named “Centre · part 1/2” and its
+      // cabinets keep the whole screen's rows and columns, so the cut shows from the audience.
+      screens: indexed.flatMap(({ screen, index }) =>
+        screen.parts
+          .filter((p) => p.outputId === output.outputId)
+          .map((p) => {
+            const whole = describe(screen, index, p.outputRect);
+            if (p.count === 1) return whole;
+            return {
+              ...whole,
+              name: `${screen.name} · part ${p.index}/${p.count}`,
+              canvasX: p.masterRect.x,
+              canvasY: p.masterRect.y,
+              cabinet: { pixelsX: screen.cabinet.pixelsX, pixelsY: screen.cabinet.pixelsY, columns: p.source.width / screen.cabinet.pixelsX, rows: p.source.height / screen.cabinet.pixelsY },
+              cabinetStart: { row: p.source.y / screen.cabinet.pixelsY, column: p.source.x / screen.cabinet.pixelsX },
+              physical: { widthUm: (p.source.width / screen.cabinet.pixelsX) * screen.cabinet.widthUm, heightUm: (p.source.height / screen.cabinet.pixelsY) * screen.cabinet.heightUm },
+            };
+          }),
+      ),
     })),
     ...indexed.map(({ screen, index }): CalibrationTarget => ({
       id: `screen:${screen.screenId}`,

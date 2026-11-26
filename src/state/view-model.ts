@@ -15,7 +15,17 @@ export interface ViewItem {
   readonly position: string;
   readonly cellWidth: number;
   readonly cellHeight: number;
+  /** Degrees clockwise about the item's centre, content view only. */
+  readonly rotation?: number;
+  /** A part of a split screen: shown where it sits, moved only by changing the split. */
+  readonly locked?: boolean;
+  /** Cabinet column and row the item starts at, so a part's checkerboard continues the screen's. */
+  readonly cellStart?: { readonly column: number; readonly row: number };
+  /** Distinguishes several items of one screen (its parts); the screen id otherwise. */
+  readonly key?: string;
 }
+
+const FLIP_TEXT = { none: "", h: " · mirrored horizontally", v: " · mirrored vertically", hv: " · mirrored both ways" } as const;
 
 export interface ViewFrame {
   readonly id: Id;
@@ -51,15 +61,16 @@ export function buildViewModel(project: Project, mapping: ResolvedMapping, view:
   }
 
   if (view === "content") {
-    const items = mapping.screens.map((s) => ({
+    const items = mapping.screens.map((s): ViewItem => ({
       id: s.screenId,
       name: s.name,
       color: s.color,
       rect: s.masterRect,
-      detail: `${s.spec.pixelWidth} × ${s.spec.pixelHeight} px`,
+      detail: `${s.spec.pixelWidth} × ${s.spec.pixelHeight} px${s.rotation ? ` · ${s.rotation}°` : ""}${FLIP_TEXT[s.flip]}`,
       position: `${s.masterRect.x}, ${s.masterRect.y}`,
       cellWidth: s.cabinet.pixelsX,
       cellHeight: s.cabinet.pixelsY,
+      ...(s.rotation ? { rotation: s.rotation } : {}),
     }));
     const master: ViewFrame = {
       id: "master",
@@ -76,18 +87,36 @@ export function buildViewModel(project: Project, mapping: ResolvedMapping, view:
   }
 
   const output = mapping.outputs.find((o) => o.outputId === activeOutputId) ?? mapping.outputs[0];
-  const items = mapping.screens
-    .filter((s) => s.outputId === output?.outputId)
-    .map((s) => ({
-      id: s.screenId,
-      name: s.name,
-      color: s.color,
-      rect: s.outputRect,
-      detail: `${s.spec.pixelWidth} × ${s.spec.pixelHeight} px`,
-      position: `${s.outputRect.x}, ${s.outputRect.y}`,
-      cellWidth: s.cabinet.pixelsX,
-      cellHeight: s.cabinet.pixelsY,
-    }));
+  const items = mapping.screens.flatMap((s) =>
+    s.parts
+      .filter((p) => p.outputId === output?.outputId)
+      .map((p): ViewItem =>
+        p.count === 1
+          ? {
+              id: s.screenId,
+              name: s.name,
+              color: s.color,
+              rect: s.outputRect,
+              detail: `${s.spec.pixelWidth} × ${s.spec.pixelHeight} px`,
+              position: `${s.outputRect.x}, ${s.outputRect.y}`,
+              cellWidth: s.cabinet.pixelsX,
+              cellHeight: s.cabinet.pixelsY,
+            }
+          : {
+              id: s.screenId,
+              key: `${s.screenId}#${p.index}`,
+              name: `${s.name} · part ${p.index}/${p.count}`,
+              color: s.color,
+              rect: p.outputRect,
+              detail: `${p.source.width} × ${p.source.height} px of ${s.spec.pixelWidth} × ${s.spec.pixelHeight}`,
+              position: `${p.outputRect.x}, ${p.outputRect.y}`,
+              cellWidth: s.cabinet.pixelsX,
+              cellHeight: s.cabinet.pixelsY,
+              locked: true,
+              cellStart: { column: p.source.x / s.cabinet.pixelsX, row: p.source.y / s.cabinet.pixelsY },
+            },
+      ),
+  );
   const frame: ViewFrame | null = output
     ? { id: output.outputId, kind: "output", name: `${output.name} ${output.width} × ${output.height}`, rect: { x: 0, y: 0, width: output.width, height: output.height } }
     : null;
