@@ -58,3 +58,12 @@ O11 checked the slice values. Still to confirm on the first use of the whole gui
 - [ ] The menu and field names in the guide match your Arena version.
 - [ ] Slices entered from the table sit exactly on the pixel map with Input and Output Guides loaded.
 - [ ] On the wall: all four border edges visible, diagonals meet at the corners, one checker square per cabinet.
+
+## Native preset: first evidence (2026-11-25)
+
+Arena 7.28.1 on macOS. Every value below was read from presets that Arena saved itself.
+- **A generated preset for HP Stage (8 slices, one Screen) loaded and re-saved by Arena:** all slices match to the pixel. The root is `XmlState` > `ScreenSetup`, with an `OutputDeviceVirtual` device and rects given as corners in pixels. Folder on macOS: `~/Documents/Resolume Arena/Presets/Advanced Output/`.
+- **Rotation:** `InputRect orientation` in radians (45° = 0.785385). The four vertices are written already rotated around the centre, in composition pixels, positive clockwise on screen.
+- **Input from a layer:** `Params name="Input"` > `ParamChoice name="Input Source"`. Composition is `0:1` and layer N is `3:N`.
+- **Mirror:** `Params name="Output"` > `Param name="Flip" T="UINT8"`. 0 is none and 1 is horizontal; 2 and 3 are not verified.
+- Not verified: several Screens, Windows, other Arena versions.

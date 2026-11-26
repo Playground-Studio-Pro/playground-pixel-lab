@@ -1,6 +1,21 @@
 # Session
 
-Current state only. Replace it, don't accumulate. Latest update: 2026-11-24, Alpha 0.1 Phase C. Automated work is done; the physical session is under way.
+Current state only. Replace it, don't accumulate. Latest update: 2026-11-26. Alpha 0.1 physical tests are still open, and a feature sprint is on branches, unmerged. Handoff: [HANDOFF](docs/agents/HANDOFF.md).
+
+## Now (2026-11-26)
+
+- `main` = `b433074`. Nothing from the sprint is merged; every merge needs the owner's OK for that PR.
+- **Alpha 0.1 is still open.** Still to do: the 30-minute rehearsal (it also covers Wi-Fi off and a visible check of the reopen fix), the Samsung monitor, colours at an LED processor, licensed Arena and Windows. Done: the HP monitor runs, and the HP Stage demo end to end with Arena 7.28.1 (owner, 2026-11-25).
+- **Open PRs and merge order:** 66 → 71; 57 → 67 → 75; 69; 72; 70 → 73 → 77; 74; 76 (docs, Puebla pilot); 58 (superseded by this update).
+- **Owner decisions on 2026-11-25 and 26:**
+  - Live adjust approved (D-4).
+  - Content #2 and #3 approved (Flow and Aurora out, templates).
+  - Schema v3 approved: screens split across outputs, plus rotation and mirror per screen.
+  - `pdfjs-dist` approved, for the guided LED flow.
+  - Puebla scenes and a content mask approved.
+- **In progress:**
+  - Schema v3 on `feature/guided-led` (Mapping Engineering).
+  - Puebla scenes and the mask on `feature/puebla-scenes` (Content Engineering).
 
 ## Objective
 
