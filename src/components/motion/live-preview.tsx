@@ -4,13 +4,15 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { PATTERNS } from "@/domain/motion";
 import { contentTime, frameAt, timecode } from "@/engines/motion/clock";
 import { emptyStats, previewFps, recordFrame, type PreviewStats } from "@/engines/motion/metrics";
-import { overlapMarks, previewRegions } from "@/engines/motion/regions";
+import { applyStagePoses, overlapMarks, previewRegions } from "@/engines/motion/regions";
 import { screenToWorld } from "@/engines/viewport";
 import { LiveRenderer, type LiveScene } from "@/preview/live-renderer";
 import { useMotion } from "@/state/motion-store";
 import { useAurora } from "@/modules/content/aurora-store";
 import { MODULE_SOURCES } from "@/modules/catalog";
 import { findSource } from "@/modules/registry";
+import { useProjectMaskBitmaps } from "@/modules/content/mask-bitmaps";
+import { patternSource, readMask, readScenes, sceneSource, withMask } from "@/modules/content/scene-sources";
 import { selectedScreenIds, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { buildViewModel } from "@/state/view-model";
@@ -61,9 +63,11 @@ export default function LivePreviewPanel() {
 
   const scene = useMemo<LiveScene>(() => {
     const model = buildViewModel(project, mapping, view, activeOutputId);
-    const regions = previewRegions(model.items, mapping);
+    const posed = view === "physical" ? applyStagePoses(previewRegions(model.items, mapping), readScenes(project).stagePoses) : null;
+    const regions = posed ? posed.regions : previewRegions(model.items, mapping);
     return {
       regions,
+      openings: posed?.openings ?? [],
       frames: model.frames.filter((f) => f.kind !== "canvas"),
       overlaps: overlapMarks(regions, issues, mapping, view),
       masterWidth: mapping.master.width,
@@ -74,16 +78,29 @@ export default function LivePreviewPanel() {
     };
   }, [project, mapping, issues, view, activeOutputId, selection]);
 
+  // A saved scene and the canvas masks, composed into one source. Null leaves the preview as it was.
+  const bitmaps = useProjectMaskBitmaps(project.id, project.content.canvases.map((c) => c.id));
+  const composed = useMemo(() => {
+    const options = () => ({ aurora: useAurora.getState().settings });
+    const scene = sceneSource(readScenes(project), { findSource, options });
+    const mask = readMask(project);
+    const base = scene ?? (sourceId ? findSource(sourceId) : patternSource(pattern, options));
+    if (!base) return null;
+    const masked = withMask(base, mapping, mask, bitmaps);
+    return scene || masked !== base ? masked : null;
+  }, [project, mapping, sourceId, pattern, bitmaps]);
+
   // The latest values, for the animation loop, which must not restart on every change.
   // `resync` is set when the preview becomes visible again, so time spent hidden isn't counted as late or skipped.
   const context = useMemo(() => ({ project, mapping }), [project, mapping]);
-  const live = useRef({ scene, viewport, context, dirty: true, visible: true, resync: false, lastFrame: -1 });
+  const live = useRef({ scene, viewport, context, composed, dirty: true, visible: true, resync: false, lastFrame: -1 });
   useEffect(() => {
+    live.current.composed = composed;
     live.current.scene = scene;
     live.current.viewport = viewport;
     live.current.context = context;
     live.current.dirty = true;
-  }, [scene, viewport, context, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
+  }, [scene, viewport, context, composed, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,7 +129,7 @@ export default function LivePreviewPanel() {
     if (renderer && state.viewport && (state.dirty || frame !== state.lastFrame)) {
       renderer.render(state.scene, state.viewport, {
         pattern: motion.pattern,
-        source: motion.sourceId ? findSource(motion.sourceId) : null,
+        source: state.composed ?? (motion.sourceId ? findSource(motion.sourceId) : null),
         context: state.context,
         frame,
         fps: motion.fps,
@@ -136,16 +153,16 @@ export default function LivePreviewPanel() {
       live.current.dirty = true;
       draw(performance.now());
     }
-  }, [draw, playClock, scene, viewport, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
+  }, [draw, playClock, scene, viewport, composed, size, pattern, sourceId, fps, showGuides, showOverlaps, aurora]);
 
   // A source can change without a new input (settings, a logo that just loaded): redraw when it says so.
   useEffect(() => {
-    const source = sourceId ? findSource(sourceId) : null;
+    const source = composed ?? (sourceId ? findSource(sourceId) : null);
     return source?.subscribe?.(() => {
       live.current.dirty = true;
       if (!useMotion.getState().clock.playing) draw(performance.now());
     });
-  }, [sourceId, draw]);
+  }, [sourceId, composed, draw]);
 
   // Animation loop: only while playing and visible.
   useEffect(() => {

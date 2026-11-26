@@ -1,0 +1,212 @@
+{
+  "format": "playground-pixel-lab/project",
+  "project": {
+    "schemaVersion": 2,
+    "id": "puebla-pilot",
+    "meta": {
+      "name": "CNIR Puebla · piloto D01",
+      "client": "",
+      "venue": "Puebla",
+      "notes": "Anteplano rectangular. 168 px/cabinet provisional. Salida virtual. Siluetas y movimiento en demo HTML.",
+      "createdAt": "2026-11-26T03:00:00Z",
+      "updatedAt": "2026-11-26T03:00:00Z",
+      "revision": 0
+    },
+    "cabinets": [
+      {
+        "id": "p29",
+        "name": "500 mm · 168 px provisional",
+        "widthUm": 500000,
+        "heightUm": 500000,
+        "pixelsX": 168,
+        "pixelsY": 168,
+        "nominalPitchUm": 2900,
+        "source": "custom"
+      }
+    ],
+    "physical": {
+      "screens": [
+        {
+          "id": "L",
+          "name": "Izquierda",
+          "cabinetId": "p29",
+          "columns": 22,
+          "rows": 13,
+          "groupId": null,
+          "color": "#128883",
+          "stageX": 0,
+          "stageY": 0
+        },
+        {
+          "id": "CL",
+          "name": "Central izquierda",
+          "cabinetId": "p29",
+          "columns": 29,
+          "rows": 13,
+          "groupId": null,
+          "color": "#128883",
+          "stageX": 11000000,
+          "stageY": 0
+        },
+        {
+          "id": "CH",
+          "name": "Dintel",
+          "cabinetId": "p29",
+          "columns": 4,
+          "rows": 5,
+          "groupId": null,
+          "color": "#128883",
+          "stageX": 25500000,
+          "stageY": 0
+        },
+        {
+          "id": "D01",
+          "name": "D01 · puerta LED",
+          "cabinetId": "p29",
+          "columns": 4,
+          "rows": 8,
+          "groupId": null,
+          "color": "#8145BA",
+          "stageX": 25500000,
+          "stageY": 2500000
+        },
+        {
+          "id": "CR",
+          "name": "Central derecha",
+          "cabinetId": "p29",
+          "columns": 29,
+          "rows": 13,
+          "groupId": null,
+          "color": "#128883",
+          "stageX": 27500000,
+          "stageY": 0
+        },
+        {
+          "id": "R",
+          "name": "Derecha",
+          "cabinetId": "p29",
+          "columns": 22,
+          "rows": 13,
+          "groupId": null,
+          "color": "#128883",
+          "stageX": 42000000,
+          "stageY": 0
+        }
+      ],
+      "groups": []
+    },
+    "content": {
+      "master": {
+        "mode": "auto"
+      },
+      "canvases": [
+        {
+          "id": "pan",
+          "name": "Panorama",
+          "originX": 0,
+          "originY": 0
+        }
+      ],
+      "regions": [
+        {
+          "screenId": "L",
+          "canvasId": "pan",
+          "x": 0,
+          "y": 0,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "CL",
+          "canvasId": "pan",
+          "x": 3696,
+          "y": 0,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "CH",
+          "canvasId": "pan",
+          "x": 8568,
+          "y": 0,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "D01",
+          "canvasId": "pan",
+          "x": 8568,
+          "y": 840,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "CR",
+          "canvasId": "pan",
+          "x": 9240,
+          "y": 0,
+          "allowOverlap": false
+        },
+        {
+          "screenId": "R",
+          "canvasId": "pan",
+          "x": 14112,
+          "y": 0,
+          "allowOverlap": false
+        }
+      ]
+    },
+    "output": {
+      "outputs": [
+        {
+          "id": "virtual",
+          "name": "Referencia virtual · patch pendiente",
+          "sizing": {
+            "mode": "auto"
+          }
+        }
+      ],
+      "slices": [
+        {
+          "screenId": "L",
+          "outputId": "virtual",
+          "followsContent": true,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "screenId": "CL",
+          "outputId": "virtual",
+          "followsContent": true,
+          "x": 3696,
+          "y": 0
+        },
+        {
+          "screenId": "CH",
+          "outputId": "virtual",
+          "followsContent": true,
+          "x": 8568,
+          "y": 0
+        },
+        {
+          "screenId": "D01",
+          "outputId": "virtual",
+          "followsContent": true,
+          "x": 8568,
+          "y": 840
+        },
+        {
+          "screenId": "CR",
+          "outputId": "virtual",
+          "followsContent": true,
+          "x": 9240,
+          "y": 0
+        },
+        {
+          "screenId": "R",
+          "outputId": "virtual",
+          "followsContent": true,
+          "x": 14112,
+          "y": 0
+        }
+      ]
+    },
+    "modules": {}
+  }
+}

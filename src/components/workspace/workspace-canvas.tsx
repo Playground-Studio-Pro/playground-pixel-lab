@@ -13,6 +13,9 @@ import { moveInCurrentView } from "@/state/actions";
 import { selectedScreenIds, useApp } from "@/state/store";
 import { useUi } from "@/state/ui-store";
 import { buildViewModel, type ViewItem } from "@/state/view-model";
+import { SCENES_MODULE_ID, SCENES_VERSION, setStagePose } from "@/engines/content/scenes";
+import { writeModuleData } from "@/modules/module-data";
+import { readScenes } from "@/modules/content/scene-sources";
 import { useCanvasViewport } from "./use-canvas-viewport";
 
 const SIGNAL = "#3EC1E3";
@@ -44,7 +47,9 @@ function ScreenItem({
   selected,
   hasError,
   fontFamily,
+  open = false,
 }: {
+  open?: boolean;
   item: ViewItem;
   viewport: Viewport;
   dx: number;
@@ -61,6 +66,19 @@ function ScreenItem({
   const cellH = item.cellHeight * viewport.scale;
   const light = darker(item.color, 0.8);
   const dark = darker(item.color, 0.55);
+
+  if (open) {
+    // A stage pose moved this screen out of its place: the gap is free, the signal is unchanged.
+    return (
+      <Group x={x} y={y} name="item" id={item.id}>
+        <KRect width={w} height={h} fill="rgba(62,193,227,0.06)" stroke={selected ? SIGNAL : "rgba(62,193,227,0.8)"} strokeWidth={selected ? 2 : 1} dash={[6, 4]} />
+        {w > 44 && h > 18 && (
+          <Text listening={false} x={6} y={5} width={w - 12} height={h - 8} ellipsis wrap="none" text={item.name} fontFamily={fontFamily} fontStyle="600" fontSize={12} fill={SIGNAL} />
+        )}
+        {w > 80 && h > 36 && <Text listening={false} x={6} y={21} width={w - 12} ellipsis wrap="none" text="Open: signal live" fontFamily={fontFamily} fontSize={11} fill="rgba(255,255,255,0.85)" />}
+      </Group>
+    );
+  }
 
   return (
     <Group x={x} y={y} name="item" id={item.id}>
@@ -129,6 +147,10 @@ export function WorkspaceCanvas() {
   const snapGrid = useApp((s) => s.snapGrid);
   const gridStep = useApp((s) => s.gridStep);
   const openDialog = useUi((s) => s.openDialog);
+  // Stage poses: a door can be shown open on the Physical view. Its signal and slice don't change.
+  const scenes = useMemo(() => readScenes(project), [project]);
+  const poses = scenes.stagePoses;
+  const posed = project.physical.screens.filter((s) => s.id in poses);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const cursorRef = useRef<HTMLSpanElement>(null);
@@ -399,6 +421,7 @@ export function WorkspaceCanvas() {
                   selected={selectedIds.has(item.id)}
                   hasError={errorIds.has(item.id)}
                   fontFamily={fontFamily}
+                  open={view === "physical" && poses[item.id] === "open"}
                 />
               ))}
             </Layer>
@@ -436,6 +459,21 @@ export function WorkspaceCanvas() {
           </Stage>
         )}
 
+        {view === "physical" && posed.length > 0 && (
+          <div className="absolute top-2 right-2 flex gap-1.5" data-testid="stage-poses">
+            {posed.map((s) => (
+              <Button
+                key={s.id}
+                size="sm"
+                variant={poses[s.id] === "open" ? "default" : "secondary"}
+                aria-pressed={poses[s.id] === "open"}
+                onClick={() => writeModuleData(SCENES_MODULE_ID, SCENES_VERSION, setStagePose(scenes, s.id, poses[s.id] === "open" ? "closed" : "open"))}
+              >
+                {s.name}: {poses[s.id] === "open" ? "open" : "closed"}
+              </Button>
+            ))}
+          </div>
+        )}
         {project.physical.screens.length === 0 && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
             <p className="text-muted-foreground">Add a screen to start mapping.</p>

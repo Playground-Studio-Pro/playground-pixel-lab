@@ -126,3 +126,29 @@ export function overlapMarks(
   }
   return marks;
 }
+
+/** A screen moved off its stage place by a pose: its signal is still live, but nothing is drawn in its place. */
+export interface StageOpening {
+  readonly screenId: Id;
+  readonly name: string;
+  /** The stage rectangle it leaves free, in the view's world units. */
+  readonly rect: R;
+}
+
+/**
+ * Applies stage poses to the Physical view. An open screen leaves its stage rectangle: it isn't drawn
+ * there and is shown as an opening instead. Its master rectangle, slice and output stay exactly as they
+ * are, since a pose is about where the panel sits, never about the signal.
+ */
+export function applyStagePoses(
+  regions: readonly PreviewRegion[],
+  poses: Readonly<Record<string, "closed" | "open">>,
+): { regions: PreviewRegion[]; openings: StageOpening[] } {
+  const kept: PreviewRegion[] = [];
+  const openings: StageOpening[] = [];
+  for (const r of regions) {
+    if (poses[r.screenId] === "open") openings.push({ screenId: r.screenId, name: r.name, rect: r.dest });
+    else kept.push(r);
+  }
+  return { regions: kept, openings };
+}

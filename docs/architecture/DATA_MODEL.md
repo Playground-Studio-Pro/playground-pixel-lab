@@ -37,6 +37,10 @@ Project
 
 **Module data.** Each module owns the format of its `data` and its own `version`. The project schema checks only the envelope; the module parses the rest, through `src/modules/module-data.ts`. Schema 1 projects upgrade on read with an empty `modules`.
 
+Module data in use, none of which changes the mapping or any mapping export:
+- `modules["scenes"]` v1: `{ active, scenes: [{ id, name, base, overrides: [{ screenId, sourceId }] }], stagePoses: { [screenId]: "closed" | "open" } }`. Source ids are the Live preview's: a pattern id or `source:<id>`. Parsed by `src/engines/content/scenes.ts`.
+- `modules["mask"]` v1: `{ canvases: { [canvasId]: { enabled, polygons: [[x, y, …]] } } }`, polygons in canvas pixels. A pixel is inside when its centre is inside any polygon (even-odd per polygon). A PNG mask stays in this browser's IndexedDB (`playground-pixel-lab-masks`) and is never saved in the project. Parsed by `src/engines/content/mask.ts`.
+
 ## Derived values
 
 Computed by `resolveMapping`, never stored.

@@ -1,7 +1,7 @@
 import type { ContentFps, MotionScreen, PatternId } from "@/domain/motion";
 import type { Rect } from "@/domain/units";
 import { renderPattern, type PatternOptions } from "@/engines/motion/patterns";
-import type { OverlapKind, OverlapMark, PreviewRegion } from "@/engines/motion/regions";
+import type { OverlapKind, OverlapMark, PreviewRegion, StageOpening } from "@/engines/motion/regions";
 import type { Viewport } from "@/engines/viewport";
 import type { FrameContext, FrameSource } from "./contract";
 import { drawPattern } from "./draw-pattern";
@@ -24,6 +24,8 @@ export interface LiveScene {
   readonly screens: readonly MotionScreen[];
   readonly unit: "px" | "mm";
   readonly selectedIds: ReadonlySet<string>;
+  /** Screens a stage pose moved out of their place: drawn as an outline, with their signal still live. */
+  readonly openings?: readonly StageOpening[];
 }
 
 export interface LiveFrame {
@@ -133,6 +135,15 @@ export class LiveRenderer {
       ctx.fillText(f.name, toX(f.rect.x), toY(f.rect.y) - 10);
     }
 
+    for (const o of scene.openings ?? []) {
+      ctx.save();
+      ctx.strokeStyle = SIGNAL;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(Math.round(toX(o.rect.x)) + 0.5, Math.round(toY(o.rect.y)) + 0.5, Math.round(o.rect.width * vp.scale), Math.round(o.rect.height * vp.scale));
+      ctx.restore();
+    }
+
     // Outlines first, labels last, laid out together so no label covers another.
     // Screen names are placed first, so they win over overlap labels.
     const key = [scene, vp.scale, vp.offsetX, vp.offsetY, this.cssWidth, this.cssHeight, frame.guides, frame.overlaps, this.fontFamily];
@@ -141,6 +152,12 @@ export class LiveRenderer {
     const guideLabels: Chip[] | null = cached ? null : [];
     if (frame.overlaps) this.drawOverlaps(scene.overlaps, toX, toY, vp.scale, overlapLabels);
     if (frame.guides) this.drawGuides(scene, toX, toY, vp.scale, guideLabels);
+    if (guideLabels) {
+      for (const o of scene.openings ?? []) {
+        const chip = this.fit(`${o.name}: open, signal live`, { x: toX(o.rect.x), y: toY(o.rect.y), width: o.rect.width * vp.scale, height: o.rect.height * vp.scale }, "top", SIGNAL, "#0C0C14");
+        if (chip) guideLabels.push(chip);
+      }
+    }
     if (!cached) {
       const labels = [...guideLabels!, ...overlapLabels!];
       const boxes = placeLabels(labels, { x: 0, y: 0, width: this.cssWidth, height: this.cssHeight });
