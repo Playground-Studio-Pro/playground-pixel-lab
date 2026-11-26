@@ -13,6 +13,9 @@ import { useDepth } from "@/modules/depth-studio/depth-store";
 import type { FrameInput, FrameSource } from "@/preview/contract";
 import { useApp } from "@/state/store";
 import { useMotion } from "@/state/motion-store";
+import { useAurora } from "@/modules/content/aurora-store";
+import { useProjectMaskBitmaps } from "@/modules/content/mask-bitmaps";
+import { frozenSceneSource, hasActiveMask, readMask, readScenes, withMask } from "@/modules/content/scene-sources";
 import { CalibrationSourceControls } from "./calibration-controls";
 import { useCalibrationSource } from "./calibration-store";
 import { OutputControls } from "./output-controls";
@@ -23,6 +26,8 @@ import { exportMp4 } from "./video-export";
 
 const CALIBRATION = "calibration-test-card";
 const DEPTH = "depth-scene";
+/** The project's active scene, from Content: its base and per-screen sources, composed. */
+const SCENE = "active-scene";
 const sourceItems = MODULE_SOURCES.map((s) => ({ value: s.id, label: s.name }));
 const fpsItems = CONTENT_FPS.map((f) => ({ value: String(f), label: `${f} fps` }));
 const SECONDS = [5, 10, 15, 20, 30, 60] as const;
@@ -63,6 +68,21 @@ export default function OutputStudioPanel() {
   const calibrationLogo = useCalibrationSource((s) => s.logoByMode[s.mode]);
   const depthConfig = useDepth((s) => s.config);
 
+  const scenes = project ? readScenes(project) : null;
+  const sceneName = scenes?.scenes.find((s) => s.id === scenes.active)?.name ?? null;
+  const mask = project ? readMask(project) : null;
+  const bitmaps = useProjectMaskBitmaps(project?.id, project?.content.canvases.map((c) => c.id) ?? []);
+  const maskAvailable = Boolean(mapping && mask && hasActiveMask(mapping, mask, bitmaps));
+  const [applyMask, setApplyMask] = useState(false);
+  const items = sceneName ? [...sourceItems, { value: SCENE, label: `Scene: ${sceneName}` }] : sourceItems;
+
+  // What the export draws: the chosen source or scene, with the mask only when asked for.
+  const exportSource = (m: Omit<FrameInput, "frame" | "fps">): Promise<FrameSource> =>
+    (sourceId === SCENE && scenes
+      ? frozenSceneSource(scenes, (id) => frozenSource(id, m), { aurora: useAurora.getState().settings }).then((s) => s ?? frozenSource(CALIBRATION, m))
+      : frozenSource(sourceId, m)
+    ).then((s) => (applyMask && maskAvailable && mapping && mask ? withMask(s, mapping, mask, bitmaps) : s));
+
   const targets = useMemo(() => (mapping ? videoTargets(mapping) : []), [mapping]);
   const exportable = targets.filter((t) => !t.problem);
   const blocked = targets.filter((t) => t.problem);
@@ -93,7 +113,7 @@ export default function OutputStudioPanel() {
     const canvas = canvasRef.current;
     if (!canvas || !target || !master) return;
     let live = true;
-    frozenSource(sourceId, master)
+    exportSource(master)
       .then((source) => {
         if (!live) return;
         canvas.width = target.width;
@@ -106,7 +126,8 @@ export default function OutputStudioPanel() {
     return () => {
       live = false;
     };
-  }, [sourceId, target, master, fps, calibrationMode, calibrationLogo, depthConfig]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- exportSource reads the values listed here.
+  }, [sourceId, target, master, fps, calibrationMode, calibrationLogo, depthConfig, applyMask, maskAvailable, mask, bitmaps, scenes?.active, sceneName]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -129,7 +150,7 @@ export default function OutputStudioPanel() {
     setStatus({ kind: "exporting", done: 0, total: frames });
     try {
       assertExportable(issues);
-      const source = targetSource(await frozenSource(sourceId, master), target, master);
+      const source = targetSource(await exportSource(master), target, master);
       let shown = 0;
       const blob = await exportMp4({
         source,
@@ -147,7 +168,7 @@ export default function OutputStudioPanel() {
           }
         },
       });
-      const filename = `${slugify(project.meta.name)}-${slugify(sourceId === DEPTH ? "depth" : sourceId === PIXEL_GRID_SOURCE_ID ? "pixel-grid" : "calibration")}-${slugify(target.label)}-${target.width}x${target.height}-${fps}fps-${seconds}s.mp4`;
+      const filename = `${slugify(project.meta.name)}-${slugify(sourceId === SCENE ? `scene-${sceneName ?? ""}` : sourceId === DEPTH ? "depth" : sourceId === PIXEL_GRID_SOURCE_ID ? "pixel-grid" : "calibration")}${applyMask && maskAvailable ? "-masked" : ""}-${slugify(target.label)}-${target.width}x${target.height}-${fps}fps-${seconds}s.mp4`;
       download(blob, filename);
       setStatus({ kind: "done", filename, bytes: blob.size, frames, width: target.width, height: target.height, fps });
     } catch (error) {
@@ -174,7 +195,13 @@ export default function OutputStudioPanel() {
       </main>
       <ScrollArea className="min-h-0 border-l border-border bg-panel">
         <Section title="Export MP4">
-          <SelectField label="Content" value={sourceId} items={sourceItems} onChange={setSourceId} disabled={exporting} />
+          <SelectField label="Content" value={sourceId} items={items} onChange={setSourceId} disabled={exporting} />
+          {maskAvailable && (
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={applyMask} onChange={(e) => setApplyMask(e.target.checked)} disabled={exporting} data-testid="export-mask" />
+              Apply content mask: black outside the shape
+            </label>
+          )}
           {sourceId === CALIBRATION && (
             <div className="flex flex-wrap gap-2">
               <CalibrationSourceControls />

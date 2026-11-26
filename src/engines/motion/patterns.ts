@@ -286,9 +286,64 @@ function contentFlow(input: PatternInput): PatternFrame {
   return { width: W, height: H, background: MOTION_COLORS.deep, primitives };
 }
 
+/** Diagonal bands. `angle` is the direction the bands travel, in degrees; `period` is four bands, in master pixels, 0 for automatic. */
+export interface DiagonalSettings {
+  readonly angle: number;
+  readonly period: number;
+}
+
+export const DIAGONAL_DEFAULTS: DiagonalSettings = { angle: 45, period: 0 };
+/** Seconds for the bands to travel one period. */
+export const DIAGONAL_TRAVEL_S = 4;
+const DIAGONAL_COLORS = [MOTION_COLORS.blue, MOTION_COLORS.magenta, MOTION_COLORS.violet, MOTION_COLORS.cyan] as const;
+
+function diagonalGeometry(input: PatternInput, settings: DiagonalSettings) {
+  const period = settings.period > 0 ? settings.period : Math.max(64, Math.round(Math.min(input.width, input.height) / 2));
+  const a = (settings.angle * Math.PI) / 180;
+  const dx = Math.cos(a);
+  const dy = Math.sin(a);
+  const shift = mod((seconds(input) / DIAGONAL_TRAVEL_S) * period, period);
+  return { period, band: period / DIAGONAL_COLORS.length, dx, dy, shift };
+}
+
+/** Which of the four bands covers master point (x, y). Exported so continuity across screens can be tested. */
+export function diagonalBandAt(x: number, y: number, input: PatternInput, settings: DiagonalSettings = DIAGONAL_DEFAULTS): number {
+  const g = diagonalGeometry(input, settings);
+  return mod(Math.floor((x * g.dx + y * g.dy - g.shift) / g.band), DIAGONAL_COLORS.length);
+}
+
+export function diagonalColorAt(x: number, y: number, input: PatternInput, settings: DiagonalSettings = DIAGONAL_DEFAULTS): string {
+  return DIAGONAL_COLORS[diagonalBandAt(x, y, input, settings)];
+}
+
+/** Hard-edged bands over the whole master, as one linear gradient: content defined once, continuous across every screen. */
+function diagonal(input: PatternInput, settings: DiagonalSettings = DIAGONAL_DEFAULTS): PatternFrame {
+  const { width: W, height: H } = input;
+  const g = diagonalGeometry(input, settings);
+  const corners = [0, W * g.dx, H * g.dy, W * g.dx + H * g.dy];
+  const lo = Math.min(...corners);
+  const hi = Math.max(...corners);
+  // Start on a period boundary, so band k from the start has colour k mod 4, as `diagonalBandAt` says.
+  const start = g.shift + (Math.floor((lo - g.shift) / g.period) - 1) * g.period;
+  const count = Math.ceil((hi - start) / g.band) + DIAGONAL_COLORS.length;
+  const length = count * g.band;
+  const stops: Stop[] = [];
+  for (let k = 0; k < count; k++) {
+    const color = DIAGONAL_COLORS[k % DIAGONAL_COLORS.length];
+    stops.push([k / count, color], [(k + 1) / count, color]);
+  }
+  return {
+    width: W,
+    height: H,
+    background: MOTION_COLORS.ink,
+    primitives: [{ kind: "linear", x: 0, y: 0, w: W, h: H, from: [start * g.dx, start * g.dy], to: [(start + length) * g.dx, (start + length) * g.dy], stops }],
+  };
+}
+
 /** Settings for patterns that have them. Missing settings use each pattern's defaults. */
 export interface PatternOptions {
   readonly aurora?: AuroraSettings;
+  readonly diagonal?: DiagonalSettings;
 }
 
 export function renderPattern(id: PatternId, input: PatternInput, options: PatternOptions = {}): PatternFrame {
@@ -307,5 +362,7 @@ export function renderPattern(id: PatternId, input: PatternInput, options: Patte
       return contentFlow(input);
     case "aurora":
       return auroraGradient(input, options.aurora);
+    case "diagonal":
+      return diagonal(input, options.diagonal);
   }
 }
