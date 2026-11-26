@@ -92,3 +92,111 @@ describe("a screen larger than one output", () => {
     expect(new Set(four.unitOf).size).toBe(4);
   });
 });
+
+describe("split screens built into the project (schema 3)", () => {
+  const build = async (answer: { mode: "equal" | "fill" | "custom"; at?: number } = { mode: "equal" }) => {
+    const { buildGuidedProject } = await import("@/engines/guided-led");
+    const ops = await import("@/engines/project-ops");
+    const { testContext } = await import("./helpers");
+    const screens = plenary();
+    const centre = screens[2];
+    const parts = { [centre.key]: partsForAnswer(centre, "columns", OUT, answer) as ScreenPart[] };
+    const n = minimumOutputs(outputItems(screens, parts), OUT)!;
+    const ctx = testContext();
+    return buildGuidedProject(ops.createProject({ name: "Plenary P2.6" }, ctx), screens, { ...OUT, count: n, parts }, ctx);
+  };
+
+  it.each([{ mode: "equal" as const }, { mode: "fill" as const }])("P2.6 plenary at 3840×2160, %o: ready, every part inside an output, no overlap, parts exactly the screen", async (answer) => {
+    const b = await build(answer);
+    expect(b.blocking).toEqual([]);
+    expect(b.issues.filter((i) => i.severity === "error")).toEqual([]);
+    for (const s of b.mapping.screens) {
+      // Pixel union: every screen pixel in exactly one part.
+      const cover = new Uint8Array(s.spec.pixelWidth * s.spec.pixelHeight);
+      for (const p of s.parts) for (let y = p.source.y; y < p.source.y + p.source.height; y++) for (let x = p.source.x; x < p.source.x + p.source.width; x++) cover[y * s.spec.pixelWidth + x]++;
+      expect(cover.every((v) => v === 1)).toBe(true);
+    }
+    const centre = b.mapping.screens.find((s) => s.name === "Centre")!;
+    expect(centre.parts.map((p) => p.source.width)).toEqual(answer.mode === "equal" ? [2688, 2688] : [3840, 1536]);
+    expect(new Set(centre.parts.map((p) => p.outputId)).size).toBe(2);
+    for (const o of b.mapping.outputs) {
+      const rects = b.mapping.screens.flatMap((s) => s.parts.filter((p) => p.outputId === o.outputId).map((p) => p.outputRect));
+      for (const r of rects) expect(r.x + r.width <= o.width && r.y + r.height <= o.height).toBe(true);
+      rects.forEach((a, i) => rects.slice(i + 1).forEach((c) => expect(overlaps(a, c)).toBe(false)));
+    }
+  });
+
+  it("the Resolume CSV gives one row per part, and the parts' inputs tile the screen's region", async () => {
+    const { buildResolumeSetup, buildSlicesCsv } = await import("@/exports/resolume/adapter");
+    const b = await build();
+    const setup = buildResolumeSetup(b.mapping);
+    const rows = buildSlicesCsv(setup).trim().split("\r\n").slice(1);
+    expect(rows).toHaveLength(6);
+    const centreRows = rows.filter((r) => r.includes("Centre"));
+    expect(centreRows.map((r) => r.split(",")[1])).toEqual(["Centre · part 1/2", "Centre · part 2/2"]);
+    const slices = setup.screens.flatMap((s) => s.slices).filter((s) => s.name.startsWith("Centre"));
+    const centre = b.mapping.screens.find((s) => s.name === "Centre")!;
+    expect(slices.map((s) => [s.input.left, s.input.width])).toEqual([[centre.masterRect.x, 2688], [centre.masterRect.x + 2688, 2688]]);
+    expect(slices.every((s) => s.input.width === s.output.width && s.input.height === s.output.height)).toBe(true);
+    // No rotation or mirror: no extra columns.
+    expect(buildSlicesCsv(setup).split("\r\n")[0]).not.toContain("rotation");
+  });
+
+  it("test cards: the cut is visible, cabinet ids continue across it", async () => {
+    const { guidedCards } = await import("@/components/shell/guided-led/cards");
+    const { cabinetCells, cabinetLabelText } = await import("@/components/shell/calibration/frame");
+    const b = await build();
+    const cards = guidedCards(b.mapping, { only: null }).filter((c) => c.kind === "output");
+    const centreParts = cards.flatMap((c) => c.target.screens.filter((s) => s.name.startsWith("Centre")).map((s) => ({ s, frame: c.frame })));
+    expect(centreParts.map((p) => p.s.name).sort()).toEqual(["Centre · part 1/2", "Centre · part 2/2"]);
+    const ids = centreParts.flatMap(({ s, frame }) => cabinetCells(s).map((cell) => {
+      const text = cabinetLabelText(cell, s.cabinetPrefix);
+      expect(frame.nodes.some((n) => n.kind === "text" && n.text === text)).toBe(true);
+      return text;
+    }));
+    const columns = new Set(ids.map((t) => Number(t.split("·C")[1])));
+    expect([...columns].sort((a, c) => a - c)).toEqual(Array.from({ length: 28 }, (_, i) => i + 1));
+    expect(ids).toContain("C·R1·C14");
+    expect(ids).toContain("C·R1·C15");
+    expect(new Set(ids).size).toBe(28 * 7);
+  });
+
+  it("rotation and mirror from the flow reach the project; the canvas gives a turned screen room", async () => {
+    const { buildGuidedProject } = await import("@/engines/guided-led");
+    const ops = await import("@/engines/project-ops");
+    const { testContext } = await import("./helpers");
+    const screens = plenary(P391);
+    const ctx = testContext();
+    const b = buildGuidedProject(ops.createProject({ name: "Turned" }, ctx), screens, { width: 3840, height: 2160, count: 4, turns: { [screens[0].key]: { rotation: 45, flip: "h" } } }, ctx);
+    const left = b.mapping.screens[0];
+    expect([left.rotation, left.flip]).toEqual([45, "h"]);
+    expect(b.issues.filter((i) => i.code === "REGION_OVERLAP" || i.code === "REGION_NEGATIVE")).toEqual([]);
+  });
+});
+
+describe("Resolume values for a turned screen", () => {
+  it("45° writes orientation 0.785398 and corners turned about the centre to within 0.01 px; mirror is written", async () => {
+    const { buildResolumeSetup, buildSlicesCsv, orientationRadians } = await import("@/exports/resolume/adapter");
+    const ops = await import("@/engines/project-ops");
+    const { resolveMapping } = await import("@/engines/mapping");
+    const { threeScreenProject } = await import("./helpers");
+    const { project, ids } = threeScreenProject();
+    const p = ops.setRegionFlip(ops.setRegionRotation(project, ids.left, 45), ids.left, "h");
+    const m = resolveMapping(p);
+    const left = m.screens.find((s) => s.screenId === ids.left)!;
+    const slice = buildResolumeSetup(m).screens.flatMap((s) => s.slices).find((s) => s.name === left.name)!;
+    expect(orientationRadians(slice.rotation)).toBe(0.785398);
+    const r = left.masterRect;
+    const cx = r.x + r.width / 2;
+    const cy = r.y + r.height / 2;
+    const t = Math.PI / 4;
+    const want = [[r.x, r.y], [r.x + r.width, r.y], [r.x + r.width, r.y + r.height], [r.x, r.y + r.height]].map(([x, y]) => ({ x: cx + (x - cx) * Math.cos(t) - (y - cy) * Math.sin(t), y: cy + (x - cx) * Math.sin(t) + (y - cy) * Math.cos(t) }));
+    slice.inputCorners.forEach((c, i) => {
+      expect(Math.abs(c.x - want[i].x)).toBeLessThan(0.01);
+      expect(Math.abs(c.y - want[i].y)).toBeLessThan(0.01);
+    });
+    const csv = buildSlicesCsv(buildResolumeSetup(m));
+    expect(csv.split("\r\n")[0]).toContain("input_rotation_deg,input_orientation_rad,flip");
+    expect(csv).toContain(",45,0.785398,h");
+  });
+});

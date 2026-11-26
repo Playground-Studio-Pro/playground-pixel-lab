@@ -33,6 +33,10 @@ export interface GuidedRecord {
   readonly cuts?: Readonly<Record<string, CutAnswer>>;
   /** Processor units the operator confirmed, when the processor states a load. */
   readonly units?: number | null;
+  /** The operator said some screens are rotated or mirrored. */
+  readonly turnsAsked?: boolean;
+  /** Rotation (degrees, clockwise) and mirror per screen key. */
+  readonly turns?: Readonly<Record<string, { readonly rotation: number; readonly flip: "none" | "h" | "v" | "hv" }>>;
 }
 
 export const EMPTY_GUIDED_RECORD: GuidedRecord = {
@@ -50,6 +54,8 @@ export const EMPTY_GUIDED_RECORD: GuidedRecord = {
   fit: {},
   cuts: {},
   units: null,
+  turnsAsked: false,
+  turns: {},
 };
 
 const finite = z.number().finite();
@@ -74,6 +80,8 @@ const recordSchema = z.object({
   fit: z.record(key, z.enum(["split", "more", "bigger", "change"])).optional(),
   cuts: z.record(key, z.object({ mode: z.enum(["equal", "fill", "custom"]), at: int.min(1).max(10000).optional() })).optional(),
   units: int.min(1).max(64).nullable().optional(),
+  turnsAsked: z.boolean().optional(),
+  turns: z.record(key, z.object({ rotation: z.number().finite().min(-360).max(360), flip: z.enum(["none", "h", "v", "hv"]) })).optional(),
 });
 
 /** Reads saved answers; null when they can't be read, so the flow starts fresh. */

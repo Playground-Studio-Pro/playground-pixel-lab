@@ -225,7 +225,7 @@ describe("pixel map", () => {
     expect(guidedOutputsNeeded(screens, { width: 1920, height: 1080 })).toBeNull();
     const { b } = build({ width: 1920, height: 1080 }, 5);
     expect(b.ready).toBe(false);
-    expect(b.blocking[0]).toBe("Larger than a 1920×1080 output: Centre (3584×896 px). Choose a larger output. Nothing is scaled.");
+    expect(b.blocking[0]).toBe("Larger than a 1920×1080 output: Centre (3584×896 px). Split it, or choose a larger output. Nothing is scaled.");
   });
 
   it("same input, same project", () => {
