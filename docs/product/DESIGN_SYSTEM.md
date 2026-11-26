@@ -144,3 +144,15 @@ Found in the audit, recorded for [Phase 1](ROADMAP.md#phase-1-mapping-studio). O
 | 9 | The status bar hint truncates. The top bar is fixed: the save status has a fixed width, and below 1440 px the align buttons fold into one menu. It fits from 1200 px up with no overlap | `workspace-canvas.tsx` |
 | 10 | The cursor readout keeps the previous view's unit until the pointer moves | `workspace-canvas.tsx` |
 | 11 | Microinteractions are component defaults rather than designed | Throughout |
+
+## Guided LED setup
+
+From a constructivo to test cards, for a new LED project. Opened from the start screen (**LED from a drawing**) or the project menu (**New LED project from a drawing**, **Guided LED setup**). It replaces the workspace until **Back to Mapping**, like Fast map, with the same header, step tabs, 360 px side panel and stage-coloured preview.
+
+- **Steps:** Drawing, Screens, Questions, Review, Export. A step tab is enabled once what it needs exists.
+- **Every value says where it came from:** a badge per value, Read (signal green), Typed (neutral), Guessed (warn, with a **Yes** to accept), Missing (destructive). The reason is under the field (“Read “6000”, taken as millimetres”). Colour is never the only carrier: the badge has a word.
+- **The drawing** is shown with the screens as an overlay: blue found, amber unsure or asked about, green selected. Draw mode adds a screen by dragging; **Add without drawing** does the same from the keyboard.
+- **Questions** come one per missing value, phrased about the screens (“How big is the gap between Wing left and Centre?”), and the screens they are about are highlighted on the drawing. Rounding offers Round down (n), Round up (n), Keep as a warning, per size or for all.
+- **Processors** show their catalog values with “Not checked against the manufacturer's PDF” and the source line.
+- **Export** lists every file with its pixel size, offers one ZIP, and previews the selected card reduced, saying the PNG's real size.
+- **Storage:** the panel says plainly that the drawing and render stay on this computer, not in the project file.

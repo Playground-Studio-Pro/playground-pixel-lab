@@ -290,3 +290,7 @@ The output page imports nothing from the editor: no `state/store`, no module reg
 | Fast map chunk, on first use | n/a | 12.3 KB gzip (36.9 KB raw), engine included |
 
 Parsing and arranging the 8-screen HP Stage list, and 60-screen seeded lists, run on every keystroke with no visible delay on this machine. That is not measured with timings yet.
+
+## Guided LED flow (Product Design, 2026-11-26)
+
+Adds `pdfjs-dist` 6.5.438, loaded only when a PDF drawing is opened (`pdf-reader.ts` is imported dynamically from the guided flow, which itself loads on first use). Its worker runs on the main thread from a lazily imported module, so no worker URL or Electron change is needed. Measured sizes are in DECISIONS (2026-11-26).
