@@ -1,7 +1,7 @@
 {
   "format": "playground-pixel-lab/project",
   "project": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "id": "show-1",
     "meta": {
       "name": "Festival Main Stage",

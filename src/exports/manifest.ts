@@ -71,8 +71,23 @@ export function buildManifest(project: Project, mapping: ResolvedMapping, issues
         stageXMm: formatMm(s.stage.x),
         stageYMm: formatMm(s.stage.y),
       },
-      content: { canvasId: s.canvasId, canvasRect: rect(s.canvasRect), masterRect: rect(s.masterRect), sharesContent: s.allowOverlap },
-      output: { outputId: s.outputId, rect: rect(s.outputRect), followsContent: s.followsContent },
+      content: {
+        canvasId: s.canvasId,
+        canvasRect: rect(s.canvasRect),
+        masterRect: rect(s.masterRect),
+        sharesContent: s.allowOverlap,
+        // Written only when set, so files for unrotated, unmirrored screens are unchanged.
+        ...(s.rotation !== 0 ? { rotationDegrees: s.rotation, masterCorners: s.masterCorners.map((p) => ({ x: p.x, y: p.y })) } : {}),
+        ...(s.flip !== "none" ? { flip: s.flip } : {}),
+      },
+      output: {
+        outputId: s.outputId,
+        rect: rect(s.outputRect),
+        followsContent: s.followsContent,
+        ...(s.parts.length > 1
+          ? { parts: s.parts.map((p) => ({ index: p.index, outputId: p.outputId, rect: rect(p.outputRect), source: { x: p.source.x, y: p.source.y, width: p.source.width, height: p.source.height }, masterRect: rect(p.masterRect) })) }
+          : {}),
+      },
     })),
     validation: issues.map((i) => ({ severity: i.severity, code: i.code, message: i.message })),
   };

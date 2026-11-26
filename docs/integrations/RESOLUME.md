@@ -1,6 +1,6 @@
 # Resolume Integration
 
-Researched 2026-11-07. First checked in Resolume Arena on 2026-11-24 (O11, below): the slice values and the MP4 cut match there, within the limits listed. Nothing else here has been tested, and nothing on Windows.
+Researched 2026-11-07. First checked in Resolume Arena on 2026-11-24 (O11, below): the slice values and the MP4 cut match there, within the limits listed. On 2026-11-25 a generated Advanced Output preset with one Screen loaded in Arena (below). Nothing else here has been tested, and nothing on Windows.
 
 ## O11: checked in Arena 7.28.1 (2026-11-24)
 
@@ -24,6 +24,16 @@ Reported by the Lead Architect from the owner's session: trial version, macOS 26
 
 `manifest.json` (version 1) and `mapping-report.md` keep top-left corners, which they state: they're Pixel Lab's coordinates for other tools, not values to type.
 
+## Generated preset loaded in Arena 7.28.1 (2026-11-25)
+
+The owner loaded a generated Advanced Output preset for HP Stage (one virtual Screen at 1920 × 1080, eight slices, two of them on the same pixels) in Arena 7.28.1 on macOS. Arena accepted it, and saved it back with **all eight slices unchanged, to the pixel**. The only differences were the preset's internal name, which Arena took from the file name, and XML whitespace (`/>` without a space, an empty last line).
+
+The package's writer (`src/exports/resolume/arena-preset.ts`) now writes that saved form. For HP Stage it gives Arena's saved file byte for byte, apart from the ids. The owner's files stay outside the repo; `tests/fixtures/arena-7.28.1-advanced-output-shape.xml` keeps Arena's structure with synthetic values.
+
+What a preset holds, as Arena saved it: per Screen, a name, two guides, the slices and an `OutputDeviceVirtual`. Per slice, a name, `InputRect` and `OutputRect` as four corners (top left, top right, bottom right, bottom left; top-left corners, not the centres typed in the fields), a 4 × 4 `BezierWarper` grid over the output rectangle at thirds, and a `Homography` whose `src` and `dst` are the output corners.
+
+**Not covered:** several Screens (the writer makes one per output, and the README marks them as not verified), several setups, other versions, Windows, Avenue, a real display chosen as device. Corners are always whole pixels in Pixel Lab; the grid's thirds are written to 10 significant digits, as in the tested file. **Where presets live**, seen on the owner's Mac with Arena 7.28.1 and not documented by Resolume: `~/Documents/Resolume Arena/Presets/Advanced Output/` (it existed, empty, before the test). The file was copied there and loaded from the preset menu at the top left of Output > Advanced Output; Arena listed it without a restart, and re-saved it in the same folder when it was used. Arena's live settings are a separate file, `~/Documents/Resolume Arena/Preferences/AdvancedOutput.xml` (root `ScreenSetup`): never write there. On Windows the folder is probably `Documents\Resolume Arena\Presets\Advanced Output`, unverified. The README says all of this, and to restart Arena if the preset isn't listed.
+
 ## What is known
 
 | Finding | Source | Confidence |
@@ -38,7 +48,7 @@ Reported by the Lead Architect from the owner's session: trial version, macOS 26
 
 ## Decision
 
-No preset file is generated. The package contains slice tables with the centres to type (top-left corners apart, for reference), a CSV, pixel map guides, a JSON manifest and a setup guide.
+The package contains slice tables with the centres to type (top-left corners apart, for reference), a CSV, pixel map guides, a JSON manifest, a setup guide and, since 2026-11-25, **a test Arena preset** (`<project>_arena-preset_TEST.xml`). The README tells the operator to save their current setup first, then compare every slice with the tables and guides; the manual steps stay. Native support (`nativePresetSupport`) stays off until the conditions below are all met: steps 1 and 3 are done for one Screen on macOS only.
 
 ## Before enabling native presets
 
@@ -58,3 +68,12 @@ O11 checked the slice values. Still to confirm on the first use of the whole gui
 - [ ] The menu and field names in the guide match your Arena version.
 - [ ] Slices entered from the table sit exactly on the pixel map with Input and Output Guides loaded.
 - [ ] On the wall: all four border edges visible, diagonals meet at the corners, one checker square per cabinet.
+
+## Rotation, mirror and split screens in the test preset (schema 3, 2026-11-26)
+
+From a preset Arena 7.28.1 (macOS) saved itself (findings kept outside the repository; a synthetic copy of the shape is `tests/fixtures/arena-7.28.1-rotated-slice-shape.xml`):
+
+- **Rotation:** `InputRect orientation` is radians, positive clockwise on screen. Its four `v` are the corners already turned about the slice's centre, in composition pixels. Pixel Lab writes the orientation rounded to six decimals (45° → 0.785398) and computes the corners from the centre, size and angle.
+- **Mirror:** `Params name="Output" > Param name="Flip" T="UINT8"` on the slice. 0 none and 1 horizontal were seen; 2 (vertical) and 3 (both) are written but **not verified**, and the package README says so.
+- **Split screens:** one slice per part, input the part's region, output its place in its own output.
+- Unturned, unmirrored slices write exactly what they did before. Not verified: what Arena does if `orientation` and the corners disagree; Windows.

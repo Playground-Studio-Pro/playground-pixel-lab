@@ -5,11 +5,11 @@ import { mdCell, mdTable } from "../report";
 /**
  * Resolume adapter.
  *
- * Native preset generation is deliberately off. Advanced Output presets are XML
- * files, but Resolume doesn't publish the format, and no generated file has been
- * tested in Arena. A writer can be plugged in here once a preset saved by Arena
- * has been analysed and generated files have been loaded and verified.
- * See docs/integrations/RESOLUME.md.
+ * Native preset support stays off. Advanced Output presets are XML files whose
+ * format Resolume doesn't publish. One generated preset (one Screen) was loaded
+ * and saved back by Arena 7.28.1 on macOS, so the package ships one marked as a
+ * test (`arena-preset.ts`), next to the manual steps. Several setups, several
+ * Screens and Windows are still untested. See docs/integrations/RESOLUME.md.
  */
 export type NativePresetSupport =
   | { readonly status: "unsupported"; readonly reason: string }
@@ -17,7 +17,7 @@ export type NativePresetSupport =
 
 export const nativePresetSupport: NativePresetSupport = {
   status: "unsupported",
-  reason: "Resolume does not publish the Advanced Output preset format, and generated files have not been tested in Arena.",
+  reason: "Resolume does not publish the Advanced Output preset format. One generated preset with one Screen loaded in Arena 7.28.1 on macOS; several setups, several Screens and Windows haven't been tested.",
 };
 
 /** The Arena version these values were typed into and checked with. See docs/integrations/RESOLUME.md. */
@@ -41,6 +41,12 @@ export interface ResolumeSlice {
   readonly input: ResolumeRect;
   /** Output Transformation rectangle, in output pixels. */
   readonly output: ResolumeRect;
+  /** Rotation of the input rectangle about its centre, degrees clockwise. Absent or 0 for an unrotated screen. */
+  readonly rotation?: number;
+  /** Mirror of what the slice reads. Absent means none. */
+  readonly flip?: "none" | "h" | "v" | "hv";
+  /** Corners of the rotated input rectangle in composition pixels (top-left, top-right, bottom-right, bottom-left of the unturned slice). Absent: the input rectangle's corners. */
+  readonly inputCorners?: readonly { readonly x: number; readonly y: number }[];
 }
 
 export interface ResolumeScreenSetup {
@@ -66,7 +72,11 @@ export function halfPixelSlices(setup: ResolumeSetup): ResolumeSlice[] {
   return setup.screens.flatMap((s) => s.slices).filter((s) => !wholeCenter(s.input) || !wholeCenter(s.output));
 }
 
-/** Translates the mapping into Resolume's terms: each video output is a Screen, each LED screen a Slice. */
+/**
+ * Translates the mapping into Resolume's terms: each video output is a Screen, each LED screen a Slice. A split screen
+ * gives one slice per part, named “Centre · part 1/2”: its input is the part's region of the composition and its
+ * output the part's place in its own output, so the parts together show the whole screen.
+ */
 export function buildResolumeSetup(mapping: ResolvedMapping): ResolumeSetup {
   return {
     composition: { width: mapping.master.width, height: mapping.master.height },
@@ -76,16 +86,31 @@ export function buildResolumeSetup(mapping: ResolvedMapping): ResolumeSetup {
         name: output.name,
         width: output.width,
         height: output.height,
-        slices: mapping.screens
-          .filter((s) => s.outputId === output.outputId)
-          .map((s) => ({
-            name: s.name,
-            screenName: output.name,
-            input: resolumeRect(s.masterRect),
-            output: resolumeRect(s.outputRect),
-          })),
+        slices: mapping.screens.flatMap((s) =>
+          s.parts
+            .filter((p) => p.outputId === output.outputId)
+            .map((p) => ({
+              name: p.count === 1 ? s.name : `${s.name} · part ${p.index}/${p.count}`,
+              screenName: output.name,
+              input: resolumeRect(p.masterRect),
+              output: resolumeRect(p.outputRect),
+              rotation: s.rotation,
+              flip: s.flip,
+              inputCorners: p.masterCorners.map((c) => ({ x: c.x, y: c.y })),
+            })),
+        ),
       })),
   };
+}
+
+/** Whether any slice is rotated or mirrored: only then do the CSV and guide carry those columns. */
+export function hasTurnedSlices(setup: ResolumeSetup): boolean {
+  return setup.screens.some((s) => s.slices.some((x) => (x.rotation ?? 0) !== 0 || (x.flip ?? "none") !== "none"));
+}
+
+/** Arena's input orientation, radians clockwise, rounded to six decimals: 45° is 0.785398. */
+export function orientationRadians(degrees: number): number {
+  return Math.round(((degrees * Math.PI) / 180) * 1e6) / 1e6;
 }
 
 function csvCell(value: string | number): string {
@@ -97,11 +122,14 @@ function csvCell(value: string | number): string {
 
 /** The values to type first (centres), then the top-left corners for reference. No column is a bare x or y. */
 export function buildSlicesCsv(setup: ResolumeSetup): string {
+  // Rotation and mirror columns only when some slice uses them, so other projects' files are unchanged.
+  const turned = hasTurnedSlices(setup);
   const header = [
     "resolume_screen", "slice",
     "input_center_x", "input_center_y", "input_w", "input_h",
     "output_center_x", "output_center_y", "output_w", "output_h",
     "input_left", "input_top", "output_left", "output_top",
+    ...(turned ? ["input_rotation_deg", "input_orientation_rad", "flip"] : []),
   ];
   const rows = setup.screens.flatMap((screen) =>
     screen.slices.map((slice) => [
@@ -119,6 +147,7 @@ export function buildSlicesCsv(setup: ResolumeSetup): string {
       slice.input.top,
       slice.output.left,
       slice.output.top,
+      ...(turned ? [slice.rotation ?? 0, orientationRadians(slice.rotation ?? 0), slice.flip ?? "none"] : []),
     ]),
   );
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n") + "\r\n";
@@ -126,6 +155,25 @@ export function buildSlicesCsv(setup: ResolumeSetup): string {
 
 export interface GuideFiles {
   readonly masterPng: string;
+  /** The test preset, when the package has one. */
+  readonly arenaPreset?: string;
+}
+
+/** How to try the test preset, and what it was tested with. */
+function arenaPresetSection(setup: ResolumeSetup, file: string): string[] {
+  const several = setup.screens.length > 1;
+  return [
+    `## Arena preset (test)`,
+    `\`${file}\` holds every Screen and slice above, as an Advanced Output preset. **It's a test.** One preset in this form, with one Screen and eight slices, loaded in **Arena ${TESTED_ARENA}** on macOS: Arena saved it back with every slice unchanged. Other versions, Windows and several setups haven't been tried.`,
+    ...(several ? [`> **Not verified: ${setup.screens.length} Screens.** This preset has one Screen per output. Only presets with one Screen have been loaded in Arena. Check every Screen and slice.`] : []),
+    [
+      `1. **First save your current Advanced Output setup** from the preset menu at the top left of Advanced Output, so you can go back to it.`,
+      `2. Copy the file into Arena's Advanced Output presets folder. On macOS, with Arena ${TESTED_ARENA}, it's \`~/Documents/Resolume Arena/Presets/Advanced Output/\`. On Windows it's probably \`Documents\\Resolume Arena\\Presets\\Advanced Output\`, **not verified**. Then choose it from that preset menu; if it isn't listed, restart Arena. Arena saves the preset back into the same folder when you use it. Never copy it over \`Preferences/AdvancedOutput.xml\`: that file holds Arena's live settings. Pixel Lab never writes into Resolume's folders.`,
+      `3. Each Screen's device is a virtual one, so loading the preset never opens a monitor. Choose the real display as each Screen's device, then continue with step 7 of the setup below.`,
+      `4. Compare every slice with the tables above and the pixel map guides, as in “Check the mapping”. If anything differs, use the manual setup below and delete the preset.`,
+    ].join("\n"),
+    `Corners are written as whole pixels, as in the tables. The only other numbers are the 4 × 4 warp grid Arena keeps for each slice, at thirds of its size, written to 10 significant digits as in the tested file. Nothing is warped.`,
+  ];
 }
 
 /** The manual setup guide, written with this project's exact values. */
@@ -144,15 +192,17 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
     setup.screens.flatMap((screen) => screen.slices.map((s) => [s.name, screen.name, s.input.left, s.input.top, s.output.left, s.output.top])),
   );
   const half = halfPixelSlices(setup);
+  const turnedRows = setup.screens.flatMap((screen) => screen.slices.filter((x) => (x.rotation ?? 0) !== 0 || (x.flip ?? "none") !== "none").map((x) => [x.name, screen.name, `${x.rotation ?? 0}°`, orientationRadians(x.rotation ?? 0), { none: "None", h: "Horizontal", v: "Vertical", hv: "Both" }[x.flip ?? "none"]]));
 
   return [
     `# Resolume setup: ${project.meta.name}`,
     `Composition **${width} × ${height} px**, ${setup.screens.length} ${setup.screens.length === 1 ? "screen" : "screens"}, ${sliceCount} ${sliceCount === 1 ? "slice" : "slices"}.`,
-    `This package has no Resolume preset file. Resolume doesn't publish that format, so you enter the values below by hand and check them against the pixel map. Output Transformation requires Arena. The slice values were checked by hand with **Arena ${TESTED_ARENA}** (trial, macOS); other versions and Windows haven't been. Menu and field names can differ between versions.`,
+    `${files.arenaPreset ? `This package has a **test** Arena preset (see “Arena preset (test)” below), and the values to enter by hand. Resolume doesn't publish the preset format, so check every slice against the pixel map either way.` : `This package has no Resolume preset file. Resolume doesn't publish that format, so you enter the values below by hand and check them against the pixel map.`} Output Transformation requires Arena. The slice values were checked by hand with **Arena ${TESTED_ARENA}** (trial, macOS); other versions and Windows haven't been. Menu and field names can differ between versions.`,
     `## Files`,
     mdTable(["File", "Use"], [
       [`manifest.json`, "Every coordinate in machine-readable form. Its x and y are top-left corners: don't type them into Resolume"],
       [`slices.csv`, "The slice tables below, for a spreadsheet"],
+      ...(files.arenaPreset ? [[files.arenaPreset, "Test Arena preset with these slices. See “Arena preset (test)”"]] : []),
       [files.masterPng, "Test content for the composition, and the Input Selection guide"],
       [`pixelmaps/outputs/`, "Output Transformation guides, one per Resolume screen"],
       [`pixelmaps/screens/`, "One reference image per LED screen"],
@@ -167,9 +217,21 @@ export function buildResolumeGuide(project: Project, setup: ResolumeSetup, files
         ]
       : []),
     ...screenSections,
+    ...(turnedRows.length
+      ? [
+          `### Rotation and mirror`,
+          `These slices read a turned or mirrored part of the composition. On **Input Selection**, turn the slice by the rotation shown (clockwise, about its centre) and set its mirror. The output stays a straight rectangle.`,
+          mdTable(["Slice", "Screen", "Rotation", "Orientation (rad)", "Mirror"], turnedRows),
+          `The test preset writes the rotation as the slice's input orientation in radians, with its corners already turned, as Arena saves it. A horizontal mirror is written as Flip 1, as seen in a file Arena saved.`,
+          ...(turnedRows.some((r) => r[4] === "Vertical" || r[4] === "Both")
+            ? [`> **Warning: unverified mirror.** Flip 2 (vertical) and 3 (both) follow the order of Arena's mirror buttons but have not been verified in Arena. Check those slices on the wall before relying on them.`]
+            : []),
+        ]
+      : []),
     `### For reference only: top-left corners`,
     `Where each slice starts, as in the pixel maps. Use these to read the guides, not to type into Arena.`,
     reference,
+    ...(files.arenaPreset ? arenaPresetSection(setup, files.arenaPreset) : []),
     `## Setup`,
     [
       `1. Set the composition size to exactly **${width} × ${height}**.`,

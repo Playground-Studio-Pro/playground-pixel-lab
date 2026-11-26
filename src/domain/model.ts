@@ -2,8 +2,11 @@ import type { PixelSpace, Px, Um } from "./units";
 
 export type Id = string;
 
-/** 2 adds `modules`. Older files are upgraded on read by `persistence/schema.ts`. */
-export const SCHEMA_VERSION = 2 as const;
+/**
+ * 2 adds `modules`. 3 adds optional `rotation` and `flip` on content regions and optional `parts` on output slices.
+ * Older files are upgraded on read by `persistence/schema.ts`.
+ */
+export const SCHEMA_VERSION = 3 as const;
 
 /** A reusable LED cabinet definition. Copied into a project when used, so editing the library never alters a saved show. */
 export interface CabinetProfile {
@@ -68,7 +71,16 @@ export interface ContentRegion {
   readonly y: Px;
   /** Marks overlap with another marked region as intentional: both screens show the same pixels. */
   readonly allowOverlap: boolean;
+  /**
+   * Rotation of the region about its centre, in degrees, positive clockwise on screen. Absent means 0. The screen reads
+   * the rotated rectangle of content; its output stays a straight 1:1 rectangle.
+   */
+  readonly rotation?: number;
+  /** Mirror of the content the screen reads. Absent means "none". */
+  readonly flip?: ContentFlip;
 }
+
+export type ContentFlip = "none" | "h" | "v" | "hv";
 
 /** CONTENT LAYOUT: how screens read from the master canvas, in pixels. */
 export interface ContentLayout {
@@ -84,6 +96,16 @@ export interface VideoOutput {
   readonly sizing: CanvasSizing;
 }
 
+/** One part of a screen split across outputs: a region of the screen, on whole cabinets, placed 1:1 in an output. */
+export interface OutputSlicePart {
+  readonly outputId: Id;
+  /** Part top-left, in output space. */
+  readonly x: Px;
+  readonly y: Px;
+  /** The part's region in the screen's own pixels, on whole cabinets. */
+  readonly source: { readonly x: Px; readonly y: Px; readonly width: Px; readonly height: Px };
+}
+
 /** Where a screen's pixels are placed in a video output. */
 export interface OutputSlice {
   readonly screenId: Id;
@@ -93,6 +115,11 @@ export interface OutputSlice {
   /** Slice top-left, in output space. */
   readonly x: Px;
   readonly y: Px;
+  /**
+   * When present, the screen is split: these parts replace `outputId`, `x`, `y` and `followsContent`, which then repeat
+   * the first part. Together the parts' sources are exactly the screen.
+   */
+  readonly parts?: readonly OutputSlicePart[];
 }
 
 /** OUTPUT MAPPING: how pixels leave the media server toward the LED processors. */

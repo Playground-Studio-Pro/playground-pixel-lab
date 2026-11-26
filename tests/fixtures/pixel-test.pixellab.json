@@ -1,7 +1,7 @@
 {
   "format": "playground-pixel-lab/project",
   "project": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "id": "pixel-1",
     "meta": {
       "name": "Pixel test",

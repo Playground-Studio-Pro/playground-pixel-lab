@@ -208,10 +208,53 @@ function ScreenPanel({ id }: { id: Id }) {
             </p>
           )}
           <CheckRow label="Can share pixels with other marked screens" checked={resolved.allowOverlap} onChange={(value) => tryEdit((p) => ops.setRegionShared(p, id, value))} />
+          <div className="grid grid-cols-2 gap-2">
+            <CommitField
+              label="Rotation"
+              suffix="°"
+              value={String(resolved.rotation)}
+              onCommit={(t) => {
+                const deg = Number(t.trim().replace(",", "."));
+                if (!t.trim() || !Number.isFinite(deg)) throw new Error("Rotation is a number of degrees, such as 45 or -90.");
+                edit((p) => ops.setRegionRotation(p, id, deg));
+              }}
+            />
+            <SelectField
+              label="Mirror"
+              value={resolved.flip}
+              items={[
+                { value: "none", label: "None" },
+                { value: "h", label: "Horizontal" },
+                { value: "v", label: "Vertical" },
+                { value: "hv", label: "Both" },
+              ]}
+              onChange={(value) => tryEdit((p) => ops.setRegionFlip(p, id, value as "none" | "h" | "v" | "hv"))}
+            />
+          </div>
+          {(resolved.rotation !== 0 || resolved.flip !== "none") && (
+            <p className="text-xs leading-snug text-muted-foreground" data-testid="rotation-note">
+              The screen reads its content region turned {resolved.rotation}° clockwise about its centre{resolved.flip !== "none" ? ", mirrored" : ""}. Its output stays a straight 1:1 rectangle.
+            </p>
+          )}
         </Section>
       )}
 
-      {resolved && (
+      {resolved && resolved.parts.length > 1 && (
+        <Section title="Output position">
+          <p className="text-xs leading-snug text-muted-foreground">Split across outputs on whole cabinets. Each part is placed 1:1; together they are the whole screen.</p>
+          <ul className="flex flex-col gap-1 text-xs tabular-nums" data-testid="split-parts">
+            {resolved.parts.map((part) => (
+              <li key={part.index} className="flex justify-between gap-2">
+                <span>Part {part.index}/{part.count}: x {part.source.x}, {part.source.width}×{part.source.height}</span>
+                <span className="text-muted-foreground">{project.output.outputs.find((o) => o.id === part.outputId)?.name} @ {part.outputRect.x}, {part.outputRect.y}</span>
+              </li>
+            ))}
+          </ul>
+          <Button variant="outline" size="sm" className="rounded" onClick={() => tryEdit((p) => ops.removeSliceParts(p, id))}>Join into one slice</Button>
+        </Section>
+      )}
+
+      {resolved && resolved.parts.length === 1 && (
         <Section title="Output position">
           <SelectField
             label="Output"

@@ -192,7 +192,8 @@ describe("Resolume values to type: centres (O11, Arena 7.28.1)", () => {
   const odd = (patch: { width?: number; height?: number }) => {
     const { project, mapping } = pixelTest();
     const grow = (r: { x: number; y: number; width: number; height: number }) => ({ ...r, width: px(r.width + (patch.width ?? 0)), height: px(r.height + (patch.height ?? 0)) });
-    const screens = mapping.screens.map((s) => (s.name === "Wall B" ? { ...s, masterRect: grow(s.masterRect), outputRect: grow(s.outputRect) } : s));
+    // The adapter reads each screen's parts (schema 3); an unsplit screen's single part is the whole screen.
+    const screens = mapping.screens.map((s) => (s.name === "Wall B" ? { ...s, masterRect: grow(s.masterRect), outputRect: grow(s.outputRect), parts: s.parts.map((p) => ({ ...p, masterRect: grow(p.masterRect), outputRect: grow(p.outputRect) })) } : s));
     return { project, setup: buildResolumeSetup({ ...mapping, screens } as typeof mapping) };
   };
 

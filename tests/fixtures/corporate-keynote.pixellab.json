@@ -1,7 +1,7 @@
 {
   "format": "playground-pixel-lab/project",
   "project": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "id": "keynote-1",
     "meta": {
       "name": "Corporate Keynote",

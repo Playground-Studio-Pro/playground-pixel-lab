@@ -92,3 +92,5 @@ A new `src/state/preferences.ts`:
 - **Fast map, in review (2026-11-25):** steps 1–3 of the approved prototype. Engine PR #70, interface PR stacked on it. The two-minute goal is not measured yet.
 - **Not started:** D1, D2, D3.
 - **Files outside this lane's list:** `public/brand/playground-studio-outline-white.png` (new) and `tests/design-calibration.test.ts` (new). For Fast map: `src/engines/fast-map/**` (new), new functions in `src/engines/project-ops.ts`, and three lines in `src/components/workspace/app.tsx`, with the Lead Architect's leave.
+
+- **Guided LED flow (2026-11-26, branch `feature/guided-led`, draft PR):** constructivo → screens → questions → review → PNG test cards and pixel maps. Engine in `src/engines/guided-led/`, interface in `src/components/shell/guided-led/`. Adds `pdfjs-dist` (owner OK needed before merge). Edits outside the lane: `calibration/frame.ts` and `from-mapping.ts` (opt-in screen cabinet ids), `calibration-view.tsx` (exports the font hook), `app.tsx`, `top-bar.tsx`. Not run in Electron; no OCR.

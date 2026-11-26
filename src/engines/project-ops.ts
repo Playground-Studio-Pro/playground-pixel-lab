@@ -2,6 +2,7 @@ import type {
   CabinetProfile,
   CanvasSizing,
   ContentCanvas,
+  ContentFlip,
   ContentRegion,
   Id,
   LedScreen,
@@ -14,6 +15,7 @@ import { SCHEMA_VERSION } from "@/domain/model";
 import { px, um, type Px, type Um } from "@/domain/units";
 import { bottom, right } from "./geometry";
 import { resolveMapping } from "./mapping";
+import { normalizeDegrees } from "./rotation";
 import { computeScreenSpec } from "./physical";
 
 /** Pure project edits. Ids and time are injected, so every operation is deterministic and testable. */
@@ -238,13 +240,17 @@ export function updateScreen(project: Project, id: Id, patch: Partial<Pick<LedSc
   if (patch.cabinetId !== undefined && !project.cabinets.some((c) => c.id === patch.cabinetId)) {
     throw new DomainError("Choose a cabinet profile in this project.");
   }
-  return {
+  const before = project.physical.screens.find((s) => s.id === id);
+  const resized = !!before && ((patch.columns !== undefined && patch.columns !== before.columns) || (patch.rows !== undefined && patch.rows !== before.rows) || (patch.cabinetId !== undefined && patch.cabinetId !== before.cabinetId));
+  const next = {
     ...project,
     physical: {
       ...project.physical,
       screens: project.physical.screens.map((s) => (s.id === id ? { ...s, ...patch } : s)),
     },
   };
+  // Parts are cut on the old cabinet grid: a new size can't keep them, so the screen goes back to one output slice.
+  return resized ? removeSliceParts(next, id) : next;
 }
 
 function uniqueCopyName(project: Project, base: string): string {
@@ -518,7 +524,7 @@ export function updateOutput(project: Project, id: Id, patch: Partial<Pick<Video
 
 export function removeOutput(project: Project, id: Id): Project {
   if (project.output.outputs.length <= 1) throw new DomainError("A project needs at least one output.");
-  if (project.output.slices.some((s) => s.outputId === id)) {
+  if (project.output.slices.some((s) => s.outputId === id || s.parts?.some((p) => p.outputId === id))) {
     throw new DomainError("Move this output's screens to another output before removing it.");
   }
   return { ...project, output: { ...project.output, outputs: project.output.outputs.filter((o) => o.id !== id) } };
@@ -537,7 +543,11 @@ export function setSlicePositions(project: Project, positions: readonly { id: Id
       ...project.output,
       slices: project.output.slices.map((s) => {
         const p = byId.get(s.screenId);
-        return p ? { ...s, x: p.x, y: p.y, followsContent: false } : s;
+        if (!p) return s;
+        // A split screen moves all its parts by the same amount, so their layout in the outputs is kept.
+        const parts = s.parts?.map((q) => ({ ...q, x: px(q.x + p.x - s.x), y: px(q.y + p.y - s.y) }));
+        if (parts?.some((q) => q.x < 0 || q.y < 0)) throw new DomainError("That would put a part of the screen at a negative output position.");
+        return { ...s, x: p.x, y: p.y, followsContent: false, ...(parts ? { parts } : {}) };
       }),
     },
   };
@@ -545,6 +555,7 @@ export function setSlicePositions(project: Project, positions: readonly { id: Id
 
 /** Turning follow off keeps the slice where it currently is, so it doesn't jump. */
 export function setSliceFollowsContent(project: Project, screenId: Id, follows: boolean): Project {
+  if (follows) requireUnsplit(project, screenId);
   const resolved = resolveMapping(project).screens.find((s) => s.screenId === screenId);
   return {
     ...project,
@@ -561,6 +572,7 @@ export function setSliceFollowsContent(project: Project, screenId: Id, follows: 
 
 export function assignOutput(project: Project, screenId: Id, outputId: Id): Project {
   if (!project.output.outputs.some((o) => o.id === outputId)) throw new DomainError("Choose an output that exists.");
+  requireUnsplit(project, screenId);
   return {
     ...project,
     output: { ...project.output, slices: project.output.slices.map((s) => (s.screenId === screenId ? { ...s, outputId } : s)) },
@@ -688,6 +700,8 @@ export function applyScreenPlan(project: Project, plan: ScreenPlan, ctx: OpConte
 
 function resolvedPair(project: Project, a: Id, b: Id) {
   if (a === b) throw new DomainError("Choose two different screens.");
+  requireUnsplit(project, a);
+  requireUnsplit(project, b);
   const mapping = resolveMapping(project);
   const first = mapping.screens.find((s) => s.screenId === a);
   const second = mapping.screens.find((s) => s.screenId === b);
@@ -742,6 +756,119 @@ export function sameContent(project: Project, fromId: Id, toId: Id): Project {
     output: {
       ...project.output,
       slices: project.output.slices.map((s) => (s.screenId === toId ? { ...s, followsContent: false, x: to.outputRect.x, y: to.outputRect.y } : s)),
+    },
+  };
+}
+
+// ─── Split screens, rotation and mirror (schema 3) ─────────────────────────
+
+function requireUnsplit(project: Project, screenId: Id): void {
+  const slice = project.output.slices.find((s) => s.screenId === screenId);
+  if (slice?.parts?.length) {
+    const name = project.physical.screens.find((s) => s.id === screenId)?.name ?? "This screen";
+    throw new DomainError(`“${name}” is split across outputs. Change its parts, or join it back into one slice first.`);
+  }
+}
+
+export interface PartInput {
+  readonly outputId: Id;
+  readonly x: Px;
+  readonly y: Px;
+  readonly source: { readonly x: Px; readonly y: Px; readonly width: Px; readonly height: Px };
+}
+
+/**
+ * Splits a screen across outputs. The parts must lie on whole cabinets, not overlap, and together be the screen: the
+ * same rule `validateProject` checks, enforced here so a bad split is never stored. The slice's own output and position
+ * repeat the first part.
+ */
+export function setSliceParts(project: Project, screenId: Id, parts: readonly PartInput[]): Project {
+  const screen = project.physical.screens.find((s) => s.id === screenId);
+  const slice = project.output.slices.find((s) => s.screenId === screenId);
+  if (!screen || !slice) throw new DomainError("That screen no longer exists.");
+  const cabinet = project.cabinets.find((c) => c.id === screen.cabinetId);
+  if (!cabinet) throw new DomainError(`“${screen.name}” has no cabinet profile.`);
+  if (parts.length < 2) throw new DomainError("A split needs at least two parts.");
+  if (parts.length > 64) throw new DomainError("A screen can be split into 64 parts at most.");
+  const w = screen.columns * cabinet.pixelsX;
+  const h = screen.rows * cabinet.pixelsY;
+  let area = 0;
+  for (const [i, p] of parts.entries()) {
+    if (!project.output.outputs.some((o) => o.id === p.outputId)) throw new DomainError(`Part ${i + 1} points to an output that doesn't exist.`);
+    requireNonNegative(p.x, "Output X");
+    requireNonNegative(p.y, "Output Y");
+    const r = p.source;
+    if (![r.x, r.y, r.width, r.height].every(Number.isSafeInteger) || r.x < 0 || r.y < 0 || r.width < 1 || r.height < 1) throw new DomainError(`Part ${i + 1} needs a whole-pixel region.`);
+    if (r.x + r.width > w || r.y + r.height > h) throw new DomainError(`Part ${i + 1} goes outside “${screen.name}” (${w}×${h} px).`);
+    if (r.x % cabinet.pixelsX || r.width % cabinet.pixelsX || r.y % cabinet.pixelsY || r.height % cabinet.pixelsY) throw new DomainError(`Part ${i + 1} cuts through a cabinet: parts follow whole ${cabinet.pixelsX}×${cabinet.pixelsY} px cabinets.`);
+    area += r.width * r.height;
+    for (const q of parts.slice(0, i)) {
+      const o = q.source;
+      if (r.x < o.x + o.width && o.x < r.x + r.width && r.y < o.y + o.height && o.y < r.y + r.height) throw new DomainError(`Part ${i + 1} overlaps another part of “${screen.name}”.`);
+    }
+  }
+  if (area !== w * h) throw new DomainError(`The parts hold ${area} of the ${w * h} pixels of “${screen.name}”: together they must be the whole screen.`);
+  const first = parts[0];
+  return {
+    ...project,
+    output: {
+      ...project.output,
+      slices: project.output.slices.map((s) =>
+        s.screenId === screenId ? { ...s, outputId: first.outputId, x: first.x, y: first.y, followsContent: false, parts: parts.map((p) => ({ outputId: p.outputId, x: p.x, y: p.y, source: { ...p.source } })) } : s,
+      ),
+    },
+  };
+}
+
+/** Joins a split screen back into one slice, where its first part was. No-op for an unsplit screen. */
+export function removeSliceParts(project: Project, screenId: Id): Project {
+  const slice = project.output.slices.find((s) => s.screenId === screenId);
+  if (!slice?.parts) return project;
+  return {
+    ...project,
+    output: {
+      ...project.output,
+      slices: project.output.slices.map((s) => {
+        if (s.screenId !== screenId) return s;
+        const { parts: _parts, ...rest } = s;
+        void _parts;
+        return rest;
+      }),
+    },
+  };
+}
+
+/** Turns a screen's content region about its centre. 0 removes the field, so unrotated files stay as before. */
+export function setRegionRotation(project: Project, screenId: Id, degrees: number): Project {
+  if (!Number.isFinite(degrees) || degrees < -360 || degrees > 360) throw new DomainError("Rotation is a number of degrees from -360 to 360.");
+  const turn = normalizeDegrees(degrees);
+  return {
+    ...project,
+    content: {
+      ...project.content,
+      regions: project.content.regions.map((r) => {
+        if (r.screenId !== screenId) return r;
+        const { rotation: _r, ...rest } = r;
+        void _r;
+        return turn === 0 ? rest : { ...rest, rotation: turn };
+      }),
+    },
+  };
+}
+
+/** Mirrors the content a screen reads. "none" removes the field. */
+export function setRegionFlip(project: Project, screenId: Id, flip: ContentFlip): Project {
+  if (!["none", "h", "v", "hv"].includes(flip)) throw new DomainError("Mirror is none, horizontal, vertical or both.");
+  return {
+    ...project,
+    content: {
+      ...project.content,
+      regions: project.content.regions.map((r) => {
+        if (r.screenId !== screenId) return r;
+        const { flip: _f, ...rest } = r;
+        void _f;
+        return flip === "none" ? rest : { ...rest, flip };
+      }),
     },
   };
 }

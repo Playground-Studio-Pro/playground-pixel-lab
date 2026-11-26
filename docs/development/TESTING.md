@@ -97,3 +97,22 @@ Run against a production build (`npm run build && npm start`) when canvas, state
 - **Mutation check, 2026-11-25:** 13 deliberate bugs, 12 caught. The miss: dropping the packer's fallback orders. They only improve how tightly screens pack, and no test asks for that yet.
 
 Performance measurement is covered in [PERFORMANCE](PERFORMANCE.md).
+
+## Guided LED flow (Product Design)
+
+`tests/design-guided-led.test.ts`, with the plenary constructivo in `tests/fixtures/plenary/` (made by `scripts/fixtures/make-plenary-drawing.py`: five screens 3.5, 6, 14, 6 and 3.5 m wide, 3.5 m high, gaps 1, 1.5, 1.5 and 1 m, at 1:100).
+
+- **Dimension labels:** `3.5`, `3,50 m`, `6000`, `350 cm`… to integer µm, with the unit reported as assumed when the label has none; non-dimensions refused.
+- **Vector PDF:** pdf.js (in Node, the same reader the app uses) reads the five screens, their widths, heights and the four gaps, all marked "read", with no unused label.
+- **PNG, manual path:** screens drawn on the image and values typed give the same layout as the PDF.
+- **Questions:** a missing gap or a guessed height becomes a question naming the screens; an answer or a yes clears it.
+- **Whole cabinets:** Generic 500×500 P3.91 gives 7/12/28/12/7 × 7, 896/1536/3584/1536/896 × 896 px, 8448 px in all. 3.6 m asks; down, up and keep each give what they say, keep with a warning.
+- **Pixel map:** two 3840 × 2160 outputs, no overlap, nothing outside; master side by side; stage with the drawing's gaps; pinned outputs; a 1920 × 1080 output refuses the 3584 px centre; deterministic; saved answers round-trip through the project file at the same `SCHEMA_VERSION`.
+- **Test cards:** one per output at its exact size, one per screen; every one of the 462 cabinets carries `C·R3·C12`-style id inside its own cabinet, on output and screen cards; each screen card names its screen and has the TOP mark; testing one screen keeps the output size and draws only that screen.
+- **Unchanged:** existing calibration frames were compared node for node against the previous `frame.ts` (38 frames, three example projects, both modes) before committing; the existing export hash tests still pass.
+
+Browser (1280 px, in-app Chromium): the whole flow from the start of a new LED project with the PDF to the ZIP, PNG headers checked at 4096 × 2160; the image path with drawn screens, typed values and a 3.6 m rounding choice; reopening restores answers and the drawing. Not run in Electron.
+
+**Screens larger than one output** (`tests/design-guided-led-split.test.ts`): the P2.6 plenary (Yestech MG6S, 192 px) at 3840 × 2160 reports only the centre ("5376 px wide; one output is 3840 px"); cuts on whole cabinets give 14 + 14 (equal), 20 + 8 (as many as fit) or a chosen column, refusing a part wider than an output; the parts cover every pixel column of the screen exactly once; with the centre in halves, 4 outputs hold everything with no overlap and nothing outside; VX1000 at 6.5 M px (unchecked) needs 3 by total and 4 with each output on one unit. P3.91 raises no question. Browser: the same case at 1280 px through to the split review. Saving a split screen is not built: it needs a project model change (see PR #77).
+
+**Schema 3** (`tests/design-schema-v3.test.ts`, more in `tests/design-guided-led-split.test.ts`): a schema 2 file (`tests/fixtures/festival-main-stage.schema-2.pixellab.json`) loads with only the version changed and maps identically; parts, rotation and flip round-trip; bad splits (through a cabinet, overlapping, not covering) are refused; a resize joins a split; polygon overlap clears what a bounding box would hit; the P2.6 plenary split into 3840 × 2160 outputs (equal halves and as many as fit) is ready with every screen pixel in exactly one part, every part inside an output and no overlaps; the Resolume CSV has one row per part; test cards carry all 28 × 7 centre cabinet ids, continuing across the cut (C·R1·C14 | C·R1·C15); a 45° screen gives orientation 0.785398 and corners within 0.01 px of a rotation about the centre; mirror is written. Export hash tests unchanged.

@@ -53,7 +53,7 @@ function useLogo(): HTMLImageElement | null {
 }
 
 /** The calibration face, once the browser has it. Canvas text drawn earlier would use a fallback. */
-function useCalibrationFont(): string {
+export function useCalibrationFont(): string {
   const [family, setFamily] = useState(FALLBACK_FONT);
   useEffect(() => {
     const declared = getComputedStyle(document.documentElement).getPropertyValue("--font-cal-mono").trim();

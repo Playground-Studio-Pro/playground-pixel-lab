@@ -14,11 +14,18 @@ import dynamic from "next/dynamic";
 import { CanvasArea } from "./canvas-area";
 import { StudioBar } from "./studio-bar";
 import { useFastMapOpen } from "@/components/shell/fast-map/open-store";
+import { useGuidedLedOpen } from "@/components/shell/guided-led/open-store";
 import { isTypingTarget } from "@/components/shell/fast-map/keys";
 import { MAPPING_SCOPE, runWorkspaceAction, workspaceAction } from "./workspace-keys";
 
 // Fast map loads on first use, like the studios.
 const FastMap = dynamic(() => import("@/components/shell/fast-map/fast-map"), {
+  ssr: false,
+  loading: () => <main className="h-full bg-stage" aria-busy="true" />,
+});
+
+// The guided LED flow, and pdf.js with it, loads on first use.
+const GuidedLed = dynamic(() => import("@/components/shell/guided-led/guided-led"), {
   ssr: false,
   loading: () => <main className="h-full bg-stage" aria-busy="true" />,
 });
@@ -37,7 +44,8 @@ function useShortcuts() {
       const action = workspaceAction(e, {
         studio: ui.studio,
         hasProject: !!useApp.getState().project,
-        fastMapOpen: useFastMapOpen.getState().open,
+        // Fast map and the guided flow have their own keys.
+        fastMapOpen: useFastMapOpen.getState().open || useGuidedLedOpen.getState().open,
         // Typing in a field keeps the browser's own text undo.
         typing: isTypingTarget(target),
         dialogOpen: !!ui.dialog || !!ui.confirm || !!document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]'),
@@ -59,6 +67,7 @@ export function App() {
   const init = useApp((s) => s.init);
   const studio = useUi((s) => s.studio);
   const fastMap = useFastMapOpen((s) => s.open);
+  const guided = useGuidedLedOpen((s) => s.open);
 
   useEffect(() => {
     void init();
@@ -93,7 +102,9 @@ export function App() {
 
   return (
     <TooltipProvider delay={400}>
-      {fastMap ? (
+      {guided ? (
+        <GuidedLed />
+      ) : fastMap ? (
         <FastMap />
       ) : hasProject ? (
         <div className="grid h-full grid-cols-[256px_minmax(0,1fr)_288px] grid-rows-[auto_auto_minmax(0,1fr)]">

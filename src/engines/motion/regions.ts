@@ -100,7 +100,9 @@ export function overlapMarks(
     let size: R | null = null;
     if (issue.code === "SLICE_OVERLAP") {
       // Output pixels: only drawn on the output view, where the world is that output.
-      size = intersection(a.outputRect, b.outputRect);
+      // Split screens: the first pair of their parts that meet in the same output.
+      size = null;
+      for (const p of a.parts) for (const q of b.parts) if (!size && p.outputId === q.outputId) size = intersection(p.outputRect, q.outputRect);
       if (view === "output" && size && shown.has(idA) && shown.has(idB)) rects = [size];
     } else if (issue.code === "PHYSICAL_OVERLAP") {
       size = intersection(a.stage, b.stage);

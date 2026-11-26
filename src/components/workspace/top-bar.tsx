@@ -19,6 +19,7 @@ import {
   Redo2,
   Undo2,
 } from "lucide-react";
+import { useGuidedLedOpen } from "@/components/shell/guided-led/open-store";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -116,8 +117,11 @@ export function TopBar() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-48">
           <DropdownMenuItem onClick={() => openDialog("new-project")}>New project</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => useGuidedLedOpen.getState().show(true)}>New LED project from a drawing</DropdownMenuItem>
           <DropdownMenuItem onClick={() => openDialog("open-project")}>Open project</DropdownMenuItem>
           <DropdownMenuItem onClick={() => app.duplicateCurrentProject().catch(reportError)}>Duplicate project</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => useGuidedLedOpen.getState().show()}>Guided LED setup</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => fileRef.current?.click()}>Import project file</DropdownMenuItem>
           <DropdownMenuItem onClick={() => exportProjectFile()}>Export project file</DropdownMenuItem>

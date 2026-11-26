@@ -38,8 +38,12 @@ export function h264Problem(width: number, height: number): string | null {
   return null;
 }
 
+/** Said when a target holds a rotated or mirrored screen: this exporter copies straight rectangles only. */
+export const TURNED_PROBLEM = "Holds a rotated or mirrored screen. This export copies straight, unmirrored regions only, so it would be wrong; use Resolume for this output.";
+
 export function videoTargets(mapping: ResolvedMapping): VideoTarget[] {
-  const target = (t: Omit<VideoTarget, "problem">): VideoTarget => ({ ...t, problem: h264Problem(t.width, t.height) });
+  const turned = (ids: readonly string[]) => mapping.screens.some((s) => ids.includes(s.screenId) && (s.rotation !== 0 || s.flip !== "none"));
+  const target = (t: Omit<VideoTarget, "problem">, screenIds: readonly string[] = []): VideoTarget => ({ ...t, problem: h264Problem(t.width, t.height) ?? (turned(screenIds) ? TURNED_PROBLEM : null) });
   const rect = (r: VideoRegion["from"]) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
   return [
     target({ id: "master", kind: "master", label: "Master canvas", width: mapping.master.width, height: mapping.master.height, regions: null }),
@@ -50,8 +54,8 @@ export function videoTargets(mapping: ResolvedMapping): VideoTarget[] {
         label: `OUT ${i + 1} · ${o.name}`,
         width: o.width,
         height: o.height,
-        regions: mapping.screens.filter((s) => s.outputId === o.outputId).map((s) => ({ from: rect(s.masterRect), to: { x: s.outputRect.x, y: s.outputRect.y } })),
-      }),
+        regions: mapping.screens.flatMap((s) => s.parts.filter((p) => p.outputId === o.outputId).map((p) => ({ from: rect(p.masterRect), to: { x: p.outputRect.x, y: p.outputRect.y } }))),
+      }, o.screenIds),
     ),
     ...mapping.screens.map((s) =>
       target({
@@ -61,7 +65,7 @@ export function videoTargets(mapping: ResolvedMapping): VideoTarget[] {
         width: s.masterRect.width,
         height: s.masterRect.height,
         regions: [{ from: rect(s.masterRect), to: { x: 0, y: 0 } }],
-      }),
+      }, [s.screenId]),
     ),
   ];
 }

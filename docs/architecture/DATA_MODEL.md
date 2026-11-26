@@ -28,14 +28,17 @@ Project
 ├── content    CONTENT LAYOUT
 │   ├── master    { mode: auto } or { mode: fixed, width, height }
 │   ├── canvases[] id, name, originX, originY
-│   └── regions[]  screenId, canvasId, x, y, allowOverlap
+│   └── regions[]  screenId, canvasId, x, y, allowOverlap, rotation?, flip?   (rotation, flip: schema 3)
 ├── output     OUTPUT MAPPING
 │   ├── outputs[] id, name, sizing (as master)
-│   └── slices[]  screenId, outputId, followsContent, x, y
+│   └── slices[]  screenId, outputId, followsContent, x, y, parts?   (parts: schema 3)
+│                   parts[] outputId, x, y, source { x, y, width, height } in the screen's pixels
 └── modules    { [moduleId]: { version, data } }   saved module data, from schema 2
 ```
 
 **Module data.** Each module owns the format of its `data` and its own `version`. The project schema checks only the envelope; the module parses the rest, through `src/modules/module-data.ts`. Schema 1 projects upgrade on read with an empty `modules`.
+
+**Split screens, rotation and mirror (schema 3).** A slice with `parts` is split across outputs: each part is a region of the screen on whole cabinets, placed 1:1 in its own output, and together the parts are exactly the screen. The slice's own `outputId`, `x` and `y` then repeat the first part. A region's `rotation` (degrees, clockwise on screen, about its centre) and `flip` (`none`, `h`, `v`, `hv`) say how the screen reads its content; its output stays a straight 1:1 rectangle. All three are optional and written only when set, so schema 2 files upgrade by changing only `schemaVersion`.
 
 ## Derived values
 
@@ -48,6 +51,8 @@ Computed by `resolveMapping`, never stored.
 | Region size | Always the screen's pixels, so 1:1 |
 | Master position | Canvas origin + region position |
 | Output position | Master position if `followsContent`, otherwise the slice's x and y |
+| Parts | `parts[]` on every resolved screen: the slice's parts, or one part that is the whole screen; `outputRect` is the first part's |
+| Rotated region | `masterCorners`: the region's corners turned about its centre; an unrotated region's are its rectangle's |
 | Automatic master or output size | From (0, 0) to the furthest edge |
 | Canvas bounds | Tight bounding box of its regions |
 
@@ -57,7 +62,8 @@ Checked by [`engines/project-ops.ts`](../../src/engines/project-ops.ts) on edits
 
 - Every screen has one region and one slice. Deleting a screen removes both, and any group left empty.
 - A project keeps at least one canvas and one output.
-- Regions may overlap only if both have `allowOverlap`. Slices on one output may never overlap.
+- Regions may overlap only if both have `allowOverlap`; a rotated region is compared by its real polygon. Slices and parts on one output may never overlap.
+- A split screen's parts lie on whole cabinets, don't overlap, and together are the screen. Resizing the screen or changing its cabinet joins it back into one slice.
 - A cabinet in use, or a canvas or output with screens, can't be removed.
 - Nominal pitch is reference only, and never determines resolution.
 - A project holds its own copy of each cabinet, so editing the library can't change a saved show.
