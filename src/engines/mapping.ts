@@ -1,7 +1,24 @@
-import type { CabinetProfile, CanvasSizing, Id, Project } from "@/domain/model";
+import type { CabinetProfile, CanvasSizing, ContentFlip, Id, Project } from "@/domain/model";
 import { px, type PixelRect, type Px, type StageRect } from "@/domain/units";
 import { bottom, boundingBox, right } from "./geometry";
 import { computeScreenSpec, stageRect, type ScreenSpec } from "./physical";
+import { cornersBounds, normalizeDegrees, rotatedCorners, type Corners } from "./rotation";
+
+/** One part of a screen in an output. An unsplit screen has exactly one part: the whole screen. */
+export interface ResolvedPart {
+  /** 1-based, and how many parts the screen has. */
+  readonly index: number;
+  readonly count: number;
+  readonly outputId: Id;
+  /** Where the part sits in its output, 1:1. */
+  readonly outputRect: PixelRect<"output">;
+  /** The part's region in the screen's own pixels. */
+  readonly source: { readonly x: Px; readonly y: Px; readonly width: Px; readonly height: Px };
+  /** The part's region on the master canvas, before rotation. */
+  readonly masterRect: PixelRect<"master">;
+  /** Its corners on the master canvas, turned with the screen about the screen's centre. */
+  readonly masterCorners: Corners;
+}
 
 export interface ResolvedScreen {
   readonly screenId: Id;
@@ -17,9 +34,17 @@ export interface ResolvedScreen {
   readonly canvasRect: PixelRect<"canvas">;
   readonly masterRect: PixelRect<"master">;
   readonly allowOverlap: boolean;
+  /** The first part's output and rectangle: the whole screen when it isn't split. */
   readonly outputId: Id;
   readonly outputRect: PixelRect<"output">;
   readonly followsContent: boolean;
+  /** Every part in order. One part, the whole screen, when the screen isn't split. */
+  readonly parts: readonly ResolvedPart[];
+  /** Rotation of the content region about its centre, degrees in (-180, 180], positive clockwise. 0 when not set. */
+  readonly rotation: number;
+  readonly flip: ContentFlip;
+  /** Corners of the content region on the master canvas after rotation; `masterRect`'s corners when not rotated. */
+  readonly masterCorners: Corners;
 }
 
 export interface UnresolvedScreen {
@@ -102,6 +127,25 @@ export function resolveMapping(project: Project): ResolvedMapping {
     const spec = computeScreenSpec(screen, cabinet);
     const masterX = canvas.originX + region.x;
     const masterY = canvas.originY + region.y;
+    const masterRect = pixelRect("master", masterX, masterY, spec.pixelWidth, spec.pixelHeight);
+    const rotation = normalizeDegrees(region.rotation ?? 0);
+    const centre = { x: masterX + spec.pixelWidth / 2, y: masterY + spec.pixelHeight / 2 };
+    const sourceParts = slice.parts?.length
+      ? slice.parts
+      : [{ outputId: slice.outputId, x: slice.followsContent ? masterX : slice.x, y: slice.followsContent ? masterY : slice.y, source: { x: px(0), y: px(0), width: spec.pixelWidth, height: spec.pixelHeight } }];
+    if (sourceParts.some((p) => !outputs.has(p.outputId))) { fail("missing-output"); continue; }
+    const parts: ResolvedPart[] = sourceParts.map((p, i) => {
+      const partMaster = pixelRect("master", masterX + p.source.x, masterY + p.source.y, p.source.width, p.source.height);
+      return {
+        index: i + 1,
+        count: sourceParts.length,
+        outputId: p.outputId,
+        outputRect: pixelRect("output", p.x, p.y, p.source.width, p.source.height),
+        source: p.source,
+        masterRect: partMaster,
+        masterCorners: rotatedCorners(partMaster, rotation, centre),
+      };
+    });
 
     screens.push({
       screenId: screen.id,
@@ -115,21 +159,20 @@ export function resolveMapping(project: Project): ResolvedMapping {
       stage: stageRect(screen, spec),
       canvasId: canvas.id,
       canvasRect: pixelRect("canvas", region.x, region.y, spec.pixelWidth, spec.pixelHeight),
-      masterRect: pixelRect("master", masterX, masterY, spec.pixelWidth, spec.pixelHeight),
+      masterRect,
       allowOverlap: region.allowOverlap,
-      outputId: slice.outputId,
-      outputRect: pixelRect(
-        "output",
-        slice.followsContent ? masterX : slice.x,
-        slice.followsContent ? masterY : slice.y,
-        spec.pixelWidth,
-        spec.pixelHeight,
-      ),
-      followsContent: slice.followsContent,
+      outputId: parts[0].outputId,
+      outputRect: parts[0].outputRect,
+      followsContent: !slice.parts?.length && slice.followsContent,
+      parts,
+      rotation,
+      flip: region.flip ?? "none",
+      masterCorners: rotatedCorners(masterRect, rotation),
     });
   }
 
-  const masterRects = screens.map((s) => s.masterRect);
+  // A rotated region counts by the whole pixels its corners reach; an unrotated one by its rectangle, as before.
+  const masterRects = screens.map((s) => (s.rotation === 0 ? s.masterRect : cornersBounds(s.masterCorners)));
   const masterSize = resolveSize(project.content.master, masterRects);
   const tight = boundingBox(masterRects);
 
@@ -143,7 +186,7 @@ export function resolveMapping(project: Project): ResolvedMapping {
     },
     canvases: project.content.canvases.map((canvas) => {
       const members = screens.filter((s) => s.canvasId === canvas.id);
-      const box = boundingBox(members.map((s) => s.masterRect));
+      const box = boundingBox(members.map((s) => (s.rotation === 0 ? s.masterRect : cornersBounds(s.masterCorners))));
       return {
         canvasId: canvas.id,
         name: canvas.name,
@@ -154,11 +197,11 @@ export function resolveMapping(project: Project): ResolvedMapping {
       };
     }),
     outputs: project.output.outputs.map((output) => {
-      const members = screens.filter((s) => s.outputId === output.id);
+      const members = screens.filter((s) => s.parts.some((p) => p.outputId === output.id));
       return {
         outputId: output.id,
         name: output.name,
-        ...resolveSize(output.sizing, members.map((s) => s.outputRect)),
+        ...resolveSize(output.sizing, members.flatMap((s) => s.parts.filter((p) => p.outputId === output.id).map((p) => p.outputRect))),
         sizing: output.sizing.mode,
         screenIds: members.map((s) => s.screenId),
       };

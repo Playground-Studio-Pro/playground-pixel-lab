@@ -1,7 +1,8 @@
 import type { Id, Project } from "@/domain/model";
 import { formatMm } from "@/domain/units";
 import { fitsInside, intersection } from "./geometry";
-import type { ResolvedMapping, UnresolvedScreen } from "./mapping";
+import type { ResolvedMapping, ResolvedPart, ResolvedScreen, UnresolvedScreen } from "./mapping";
+import { cornersBounds, polygonsOverlap } from "./rotation";
 import { pitchDeviation } from "./physical";
 
 export type Severity = "error" | "warning" | "info";
@@ -24,6 +25,7 @@ export type IssueCode =
   | "SLICE_NEGATIVE"
   | "SLICE_OVERLAP"
   | "SLICE_OUTSIDE_OUTPUT"
+  | "SLICE_PARTS_INVALID"
   | "OUTPUT_INVALID"
   | "OUTPUT_TOO_LARGE"
   | "OUTPUT_EMPTY";
@@ -99,38 +101,69 @@ export function validateProject(project: Project, mapping: ResolvedMapping): Val
   }
 
   const screens = mapping.screens;
+  /** How a part is named in messages: the screen alone when it isn't split, as before. */
+  const label = (s: ResolvedScreen, p: ResolvedPart) => (p.count > 1 ? `“${s.name}” part ${p.index}/${p.count}` : `“${s.name}”`);
+  /** The whole pixels a region covers on the master: its rectangle, or what its rotated corners reach. */
+  const reach = (s: ResolvedScreen) => (s.rotation === 0 ? s.masterRect : cornersBounds(s.masterCorners));
   for (let i = 0; i < screens.length; i++) {
     const a = screens[i];
+    const ra = reach(a);
 
-    if (a.masterRect.x < 0 || a.masterRect.y < 0 || a.canvasRect.x < 0 || a.canvasRect.y < 0) {
-      add("error", "REGION_NEGATIVE", `“${a.name}” has a negative content position (${a.masterRect.x}, ${a.masterRect.y}). Coordinates must start at 0.`, [a.screenId]);
+    if (ra.x < 0 || ra.y < 0 || a.canvasRect.x < 0 || a.canvasRect.y < 0) {
+      add("error", "REGION_NEGATIVE", `“${a.name}” has a negative content position (${ra.x}, ${ra.y}). Coordinates must start at 0.`, [a.screenId]);
     }
-    if (a.outputRect.x < 0 || a.outputRect.y < 0) {
-      add("error", "SLICE_NEGATIVE", `“${a.name}” has a negative output position (${a.outputRect.x}, ${a.outputRect.y}). Coordinates must start at 0.`, [a.screenId]);
+    for (const p of a.parts) {
+      if (p.outputRect.x < 0 || p.outputRect.y < 0) {
+        add("error", "SLICE_NEGATIVE", `${label(a, p)} has a negative output position (${p.outputRect.x}, ${p.outputRect.y}). Coordinates must start at 0.`, [a.screenId]);
+      }
     }
-    if (mapping.master.sizing === "fixed" && !fitsInside(a.masterRect, mapping.master.width, mapping.master.height)) {
+    if (mapping.master.sizing === "fixed" && !fitsInside(ra, mapping.master.width, mapping.master.height)) {
       add("error", "REGION_OUTSIDE_MASTER", `“${a.name}” extends outside the ${mapping.master.width}×${mapping.master.height} master canvas.`, [a.screenId]);
     }
-    const output = mapping.outputs.find((o) => o.outputId === a.outputId);
-    if (output && output.sizing === "fixed" && !fitsInside(a.outputRect, output.width, output.height)) {
-      add("error", "SLICE_OUTSIDE_OUTPUT", `“${a.name}” extends outside “${output.name}” (${output.width}×${output.height}).`, [a.screenId]);
+    for (const p of a.parts) {
+      const output = mapping.outputs.find((o) => o.outputId === p.outputId);
+      if (output && output.sizing === "fixed" && !fitsInside(p.outputRect, output.width, output.height)) {
+        add("error", "SLICE_OUTSIDE_OUTPUT", `${label(a, p)} extends outside “${output.name}” (${output.width}×${output.height}).`, [a.screenId]);
+      }
+    }
+    if (a.parts.length > 1) {
+      const problem = partsProblem(a);
+      if (problem) add("error", "SLICE_PARTS_INVALID", `The parts of “${a.name}” ${problem}`, [a.screenId]);
+      for (let m = 0; m < a.parts.length; m++) {
+        for (let n = m + 1; n < a.parts.length; n++) {
+          const [p, q] = [a.parts[m], a.parts[n]];
+          const slice = p.outputId === q.outputId && intersection(p.outputRect, q.outputRect);
+          if (slice) add("error", "SLICE_OVERLAP", `Output slices of ${label(a, p)} and ${label(a, q)} overlap by ${slice.width}×${slice.height} px at (${slice.x}, ${slice.y}). A processor can only read each output pixel once.`, [a.screenId]);
+        }
+      }
     }
 
     for (let j = i + 1; j < screens.length; j++) {
       const b = screens[j];
-      const content = intersection(a.masterRect, b.masterRect);
-      if (content) {
-        const where = `${content.width}×${content.height} px at (${content.x}, ${content.y})`;
+      if (a.rotation === 0 && b.rotation === 0) {
+        const content = intersection(a.masterRect, b.masterRect);
+        if (content) {
+          const where = `${content.width}×${content.height} px at (${content.x}, ${content.y})`;
+          if (a.allowOverlap && b.allowOverlap) {
+            add("info", "REGION_SHARED", `“${a.name}” and “${b.name}” intentionally share content: ${where}.`, [a.screenId, b.screenId]);
+          } else {
+            add("error", "REGION_OVERLAP", `Content of “${a.name}” and “${b.name}” overlaps by ${where}. Move one, or mark both as sharing content.`, [a.screenId, b.screenId]);
+          }
+        }
+      } else if (polygonsOverlap(a.masterCorners, b.masterCorners)) {
         if (a.allowOverlap && b.allowOverlap) {
-          add("info", "REGION_SHARED", `“${a.name}” and “${b.name}” intentionally share content: ${where}.`, [a.screenId, b.screenId]);
+          add("info", "REGION_SHARED", `“${a.name}” and “${b.name}” intentionally share content (rotated regions).`, [a.screenId, b.screenId]);
         } else {
-          add("error", "REGION_OVERLAP", `Content of “${a.name}” and “${b.name}” overlaps by ${where}. Move one, or mark both as sharing content.`, [a.screenId, b.screenId]);
+          add("error", "REGION_OVERLAP", `Content of “${a.name}” and “${b.name}” overlaps (rotated regions). Move one, or mark both as sharing content.`, [a.screenId, b.screenId]);
         }
       }
-      if (a.outputId === b.outputId) {
-        const slice = intersection(a.outputRect, b.outputRect);
-        if (slice) {
-          add("error", "SLICE_OVERLAP", `Output slices of “${a.name}” and “${b.name}” overlap by ${slice.width}×${slice.height} px at (${slice.x}, ${slice.y}). A processor can only read each output pixel once.`, [a.screenId, b.screenId]);
+      for (const p of a.parts) {
+        for (const q of b.parts) {
+          if (p.outputId !== q.outputId) continue;
+          const slice = intersection(p.outputRect, q.outputRect);
+          if (slice) {
+            add("error", "SLICE_OVERLAP", `Output slices of ${label(a, p)} and ${label(b, q)} overlap by ${slice.width}×${slice.height} px at (${slice.x}, ${slice.y}). A processor can only read each output pixel once.`, [a.screenId, b.screenId]);
+          }
         }
       }
       if (intersection(a.stage, b.stage)) {
@@ -163,6 +196,29 @@ export function validateProject(project: Project, mapping: ResolvedMapping): Val
   }
 
   return issues.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+}
+
+/**
+ * Why a split screen's parts are wrong, or null: each must lie inside the screen on whole cabinets, none may overlap
+ * another, and together they must be exactly the screen.
+ */
+export function partsProblem(s: ResolvedScreen): string | null {
+  const cx = s.cabinet.pixelsX;
+  const cy = s.cabinet.pixelsY;
+  let area = 0;
+  for (const p of s.parts) {
+    const r = p.source;
+    if (r.x + r.width > s.spec.pixelWidth || r.y + r.height > s.spec.pixelHeight) return `go outside the screen: part ${p.index} ends at (${r.x + r.width}, ${r.y + r.height}) in a ${s.spec.pixelWidth}×${s.spec.pixelHeight} screen.`;
+    if (r.x % cx || r.width % cx || r.y % cy || r.height % cy) return `must follow whole cabinets (${cx}×${cy} px): part ${p.index} cuts through a cabinet.`;
+    area += r.width * r.height;
+  }
+  for (let m = 0; m < s.parts.length; m++) {
+    for (let n = m + 1; n < s.parts.length; n++) {
+      if (intersection(s.parts[m].source, s.parts[n].source)) return `overlap: parts ${s.parts[m].index} and ${s.parts[n].index} take the same pixels of the screen.`;
+    }
+  }
+  if (area !== s.spec.pixelWidth * s.spec.pixelHeight) return `don't cover the whole screen: they hold ${area} of its ${s.spec.pixelWidth * s.spec.pixelHeight} pixels.`;
+  return null;
 }
 
 export function hasErrors(issues: readonly ValidationIssue[]): boolean {

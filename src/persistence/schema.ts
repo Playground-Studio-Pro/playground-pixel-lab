@@ -65,6 +65,8 @@ const project = z.object({
         x: int.nonnegative(),
         y: int.nonnegative(),
         allowOverlap: z.boolean(),
+        rotation: z.number().finite().min(-360).max(360).optional(),
+        flip: z.enum(["none", "h", "v", "hv"]).optional(),
       }),
     ),
   }),
@@ -77,6 +79,18 @@ const project = z.object({
         followsContent: z.boolean(),
         x: int.nonnegative(),
         y: int.nonnegative(),
+        parts: z
+          .array(
+            z.object({
+              outputId: z.string(),
+              x: int.nonnegative(),
+              y: int.nonnegative(),
+              source: z.object({ x: int.nonnegative(), y: int.nonnegative(), width: positiveInt, height: positiveInt }),
+            }),
+          )
+          .min(1)
+          .max(64)
+          .optional(),
       }),
     ),
   }),
@@ -96,6 +110,9 @@ function migrate(raw: unknown): unknown {
   let doc = raw;
   // 1 → 2: projects gain a `modules` section, empty for files written before modules could save data.
   if (version === 1 && typeof doc === "object" && doc !== null) doc = { ...doc, schemaVersion: 2, modules: {} };
+  // 2 → 3: rotation, flip and split parts are optional and absent in older files, which map exactly as before.
+  const now = (doc as { schemaVersion?: unknown } | null)?.schemaVersion;
+  if (now === 2 && typeof doc === "object" && doc !== null) doc = { ...doc, schemaVersion: 3 };
   return doc;
 }
 
