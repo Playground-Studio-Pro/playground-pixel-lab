@@ -5,6 +5,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The pr
 ## [Unreleased]
 
 ### Added
+- Resolume package: a test Arena Advanced Output preset (`<project>_arena-preset_TEST.xml`) with every Screen and slice, in the form Arena 7.28.1 saved back after loading one (one Screen, macOS). Each Screen's device is virtual, so loading it opens no monitor. The README says to save the current setup first and compare every slice; several Screens are marked as not verified, and the manual steps stay.
 - Desktop output keeps the display awake while held after a reconnect (paused frame on the monitor, waiting for Resume), not only while live, so the LED wall can't go black from display sleep. It is still released while the display is gone.
 - Update output (desktop): the control window can send a new session to an open output, and the output window swaps to it without being closed or recreated. Refused while the output waits for its display or is held after a reconnect, so playback never restarts before Resume.
 - Desktop output test mode (for O6): the output page sees `pixelLabOutput.testMode` as true only in an unpackaged `--smoke-test` run, so hidden-test-only helpers stay off in packaged builds and normal runs. Main sets it when it creates the window; the page can't change it.
