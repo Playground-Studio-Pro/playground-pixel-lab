@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { DrawingProposal, ProposedGap, ProposedScreen } from "./drawing";
 import type { Rounding } from "./plan";
+import type { CutAnswer } from "./split";
 
 /**
  * What the guided flow saves in the project, under `modules["guided-led"]`: the screens as confirmed on the drawing and
@@ -24,7 +25,14 @@ export interface GuidedRecord {
   readonly outputChoice: string | null;
   readonly outputSize: { readonly width: number; readonly height: number } | null;
   readonly outputCount: number | null;
+  /** Output index per screen key, or per part key (`<screen>#<n>`) for split screens. */
   readonly assignment: Readonly<Record<string, number>>;
+  /** The answer to “doesn't fit an output”, per screen key. */
+  readonly fit?: Readonly<Record<string, "split" | "more" | "bigger" | "change">>;
+  /** Where to cut, per screen key, once chosen. */
+  readonly cuts?: Readonly<Record<string, CutAnswer>>;
+  /** Processor units the operator confirmed, when the processor states a load. */
+  readonly units?: number | null;
 }
 
 export const EMPTY_GUIDED_RECORD: GuidedRecord = {
@@ -39,6 +47,9 @@ export const EMPTY_GUIDED_RECORD: GuidedRecord = {
   outputSize: null,
   outputCount: null,
   assignment: {},
+  fit: {},
+  cuts: {},
+  units: null,
 };
 
 const finite = z.number().finite();
@@ -59,7 +70,10 @@ const recordSchema = z.object({
   outputChoice: z.string().max(100).nullable(),
   outputSize: z.object({ width: int.min(1).max(16384), height: int.min(1).max(16384) }).nullable(),
   outputCount: int.min(1).max(16).nullable(),
-  assignment: z.record(key, int.min(0).max(15)),
+  assignment: z.record(z.string().min(1).max(80), int.min(0).max(15)),
+  fit: z.record(key, z.enum(["split", "more", "bigger", "change"])).optional(),
+  cuts: z.record(key, z.object({ mode: z.enum(["equal", "fill", "custom"]), at: int.min(1).max(10000).optional() })).optional(),
+  units: int.min(1).max(64).nullable().optional(),
 });
 
 /** Reads saved answers; null when they can't be read, so the flow starts fresh. */

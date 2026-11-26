@@ -10,13 +10,24 @@ import { SelectField } from "@/components/workspace/fields";
 import type { CabinetProfile, Id } from "@/domain/model";
 import { mmToUm, px, um } from "@/domain/units";
 import {
+  assignUnits,
   buildGuidedProject,
   drawnScreen,
+  fitIssues,
+  minimumOutputs,
+  minimumUnits,
+  outputItems,
+  partsForAnswer,
+  planOutputs,
+  type CutAnswer,
+  type FitIssue,
+  type OutputItem,
+  type OutputPlan,
+  type ScreenPart,
   EMPTY_GUIDED_RECORD,
   formatUm,
   GUIDED_MODULE_ID,
   GUIDED_MODULE_VERSION,
-  guidedOutputsNeeded,
   layoutFromProposal,
   MAX_OUTPUTS,
   OUTPUT_CHOICES,
@@ -101,6 +112,11 @@ function previewContext(prefix: string): ops.OpContext {
 }
 
 const CUSTOM_ID = "guided-custom";
+/**
+ * A split screen can't be saved until the project model can store screen parts (proposed in PR #77, waiting for the
+ * owner). The engine and the cut questions are built and tested; the option stays visible and unavailable until then.
+ */
+const SPLIT_AVAILABLE = false;
 
 function recordOf(s: Session): GuidedRecord {
   return {
@@ -115,6 +131,9 @@ function recordOf(s: Session): GuidedRecord {
     outputSize: s.outputSize,
     outputCount: s.outputCount,
     assignment: s.assignment,
+    fit: s.fit,
+    cuts: s.cuts,
+    units: s.units,
   };
 }
 
@@ -280,19 +299,35 @@ export default function GuidedLed() {
   const choice = session.outputChoice ? outputChoice(session.outputChoice) : undefined;
   const outSize = choice?.size ?? session.outputSize;
   const sized: readonly ScreenSizing[] | null = sizing?.ok ? sizing.screens : null;
-  const needed = sized && outSize ? guidedOutputsNeeded(sized, outSize) : null;
-  const count = session.outputCount ?? needed ?? 1;
+  // Screens larger than one output: each is a question; a split applies only once a cut is chosen.
+  const issues: FitIssue[] = sized && outSize ? fitIssues(sized, outSize) : [];
+  const parts: Record<string, ScreenPart[]> = {};
+  const cutErrors: Record<string, string> = {};
+  for (const f of issues) {
+    const cut = session.cuts?.[f.key];
+    if (session.fit?.[f.key] !== "split" || f.axis === "both" || !cut || !sized || !outSize) continue;
+    const r = partsForAnswer(sized.find((s) => s.key === f.key)!, f.axis, outSize, cut);
+    if (typeof r === "string") cutErrors[f.key] = r;
+    else parts[f.key] = r;
+  }
+  const unresolved = issues.filter((f) => !parts[f.key]);
+  const items: OutputItem[] = sized ? outputItems(sized, parts) : [];
+  const minimum = outSize && sized && unresolved.length === 0 ? minimumOutputs(items, outSize) : null;
+  const count = session.outputCount;
+  const outPlan: OutputPlan | null = outSize && count && unresolved.length === 0 ? planOutputs(items, outSize, count, session.assignment) : null;
+  const split = Object.keys(parts).length > 0;
+  const needsUnits = !!choice?.loadPx;
   const preview: GuidedBuild | null = useMemo(() => {
-    if (!sized || !outSize) return null;
+    if (!sized || !outSize || !count || split) return null;
     const base = ops.createProject({ name: "Preview" }, previewContext("preview-project"));
     try {
       return buildGuidedProject(base, sized, { ...outSize, count, assignment: session.assignment }, previewContext("preview-screen"));
     } catch {
       return null;
     }
-  }, [sized, outSize, count, session.assignment]);
+  }, [sized, outSize, count, session.assignment, split]);
 
-  const questionsDone = layout.ok && !!sized && !!outSize;
+  const questionsDone = layout.ok && !!sized && !!outSize && unresolved.length === 0 && !!outPlan && outPlan.unplaced.length === 0 && (!needsUnits || !!session.units);
   const built = !!project && project.physical.screens.length > 0 && !!readModuleData(project, GUIDED_MODULE_ID, parseGuidedRecord);
   const enabled = (i: number) => i === 0 || (i === 1 && !!session.page) || (i === 2 && session.screens.length > 0) || (i === 3 && questionsDone) || (i === 4 && built);
 
@@ -422,8 +457,8 @@ export default function GuidedLed() {
           {session.busy && <Note tone="info" live>{session.busy}</Note>}
           {session.step === 0 && <DrawingPanel fresh={fresh || !project} onChoose={() => fileInput.current?.click()} onRender={() => renderInput.current?.click()} />}
           {session.step === 1 && <ScreensPanel onNext={() => go(2)} />}
-          {session.step === 2 && <QuestionsPanel layout={layout} sizing={sizing} needed={needed} count={count} onNext={() => go(3)} />}
-          {session.step === 3 && <ReviewPanel preview={preview} sized={sized} count={count} onDone={() => go(4)} />}
+          {session.step === 2 && <QuestionsPanel layout={layout} sizing={sizing} split={{ issues, parts, cutErrors, items, minimum, outPlan }} done={questionsDone} onNext={() => go(3)} />}
+          {session.step === 3 && (split ? <SplitReview items={items} plan={outPlan} parts={parts} /> : <ReviewPanel preview={preview} sized={sized} count={count ?? 1} onDone={() => go(4)} />)}
           {session.step === 4 && project && mapping && <ExportPanel />}
         </aside>
         <main className="min-h-0 overflow-y-auto bg-stage p-4" aria-label="Preview">
@@ -439,6 +474,10 @@ export default function GuidedLed() {
                 drawing={session.drawMode && session.step === 1}
                 onSelect={(key) => session.set({ selected: key })}
                 onDraw={(box) => addScreen(box)}
+                cuts={Object.values(parts).map((ps) => {
+                  const total = ps.reduce((n, p) => n + p.span, 0);
+                  return { key: ps[0].screenKey, axis: ps[0].axis, fractions: ps.slice(1).map((p) => p.from / total) };
+                })}
               />
               {session.showRender && session.renderUrl && (
                 // eslint-disable-next-line @next/next/no-img-element -- a local object URL
@@ -447,7 +486,8 @@ export default function GuidedLed() {
             </div>
           )}
           {session.step === 0 && <Intro />}
-          {session.step === 3 && preview && <ReviewPreview build={preview} />}
+          {session.step === 3 && !split && preview && <ReviewPreview build={preview} />}
+          {session.step === 3 && split && outPlan && outSize && <PlanPreview items={items} plan={outPlan} size={outSize} />}
           {session.step === 4 && mapping && <ExportPreview />}
         </main>
       </div>
@@ -595,7 +635,38 @@ function ScreensPanel({ onNext }: { onNext(): void }) {
   );
 }
 
-function QuestionsPanel({ layout, sizing, needed, count, onNext }: { layout: ReturnType<typeof layoutFromProposal>; sizing: ReturnType<typeof sizeScreens> | null; needed: number | null; count: number; onNext(): void }) {
+interface SplitState {
+  issues: readonly FitIssue[];
+  parts: Readonly<Record<string, readonly ScreenPart[]>>;
+  cutErrors: Readonly<Record<string, string>>;
+  items: readonly OutputItem[];
+  minimum: number | null;
+  outPlan: OutputPlan | null;
+}
+
+function Proposed() {
+  return <span className="rounded bg-signal/15 px-1.5 py-px text-[10px] font-semibold tracking-wide text-signal uppercase">Proposed</span>;
+}
+
+/** One choice of a question: what it does and what follows from it. Nothing is chosen until clicked. */
+function Choice({ selected, proposed, title, consequence, onPick, disabled }: { selected: boolean; proposed?: boolean; title: string; consequence: string; onPick(): void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      aria-disabled={disabled}
+      disabled={disabled}
+      onClick={onPick}
+      className={cn("flex flex-col gap-0.5 rounded border px-2 py-1.5 text-left text-xs focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60", selected ? "border-signal bg-signal/10" : "border-border enabled:hover:bg-accent")}
+    >
+      <span className="flex items-center gap-1.5 font-medium">{title} {proposed && !selected && <Proposed />}</span>
+      <span className="text-muted-foreground">{consequence}</span>
+    </button>
+  );
+}
+
+function QuestionsPanel({ layout, sizing, split, done, onNext }: { layout: ReturnType<typeof layoutFromProposal>; sizing: ReturnType<typeof sizeScreens> | null; split: SplitState; done: boolean; onNext(): void }) {
   const session = useSession();
   const options = useCabinetOptions();
   const items = [...options.map((o) => ({ value: o.cabinet.id, label: o.cabinet.name, group: o.group })), { value: CUSTOM_ID, label: "Custom cabinet…", group: "Other" }];
@@ -726,7 +797,7 @@ function QuestionsPanel({ layout, sizing, needed, count, onNext }: { layout: Ret
       {sizing?.ok && (
         <section className="flex flex-col gap-2 border-t border-border pt-3" aria-label="Output">
           <span className="text-xs font-semibold">Which processor?</span>
-          <SelectField ariaLabel="Processor or output size" value={session.outputChoice ?? ""} items={OUTPUT_CHOICES.map((c) => ({ value: c.id, label: c.label, group: c.kind === "generic" ? "Generic outputs" : "Processors (catalog)" }))} onChange={(v) => session.set({ outputChoice: v, outputCount: null, assignment: {} })} />
+          <SelectField ariaLabel="Processor or output size" value={session.outputChoice ?? ""} items={OUTPUT_CHOICES.map((c) => ({ value: c.id, label: c.label, group: c.kind === "generic" ? "Generic outputs" : "Processors (catalog)" }))} onChange={(v) => session.set({ outputChoice: v, outputCount: null, units: null, assignment: {} })} />
           {choice && (
             <Note tone={choice.checked ? "info" : "warn"}>
               {choice.size ? `${choice.size.width} × ${choice.size.height} px per output. ` : "The catalog states no single input size for it: pick an output size below. "}
@@ -737,19 +808,218 @@ function QuestionsPanel({ layout, sizing, needed, count, onNext }: { layout: Ret
             </Note>
           )}
           {choice && !choice.size && (
-            <SelectField ariaLabel="Output size" value={session.outputSize ? `${session.outputSize.width}x${session.outputSize.height}` : ""} items={[{ value: "1920x1080", label: "1920 × 1080" }, { value: "3840x2160", label: "3840 × 2160" }]} onChange={(v) => { const [w, h] = v.split("x").map(Number); session.set({ outputSize: { width: w, height: h }, outputCount: null }); }} />
-          )}
-          {needed === null && (choice?.size || session.outputSize) && <Note tone="bad">A screen is larger than one output of this size. Choose a larger output: nothing is scaled.</Note>}
-          {needed !== null && (
-            <label className="flex items-center justify-between gap-3 text-xs">
-              <span className="text-muted-foreground">Outputs (everything fits in {needed})</span>
-              <Input type="number" min={1} max={MAX_OUTPUTS} value={count} onChange={(e) => { const v = Number(e.target.value); if (Number.isInteger(v) && v >= 1 && v <= MAX_OUTPUTS) session.set({ outputCount: v, assignment: {} }); }} className="h-7 w-20 rounded px-2 text-[13px] tabular-nums md:text-[13px]" />
-            </label>
+            <SelectField ariaLabel="Output size" value={session.outputSize ? `${session.outputSize.width}x${session.outputSize.height}` : ""} items={[{ value: "1920x1080", label: "1920 × 1080" }, { value: "3840x2160", label: "3840 × 2160" }]} onChange={(v) => { const [w, h] = v.split("x").map(Number); session.set({ outputSize: { width: w, height: h }, outputCount: null, units: null, assignment: {} }); }} />
           )}
         </section>
       )}
-      <Button className="rounded" onClick={onNext} disabled={!(sizing?.ok && needed !== null)}>Next: review</Button>
+      {sizing?.ok && (choice?.size || session.outputSize) && <FitQuestions sized={sizing.screens} split={split} />}
+      {sizing?.ok && split.minimum !== null && <OutputQuestions split={split} />}
+      <Button className="rounded" onClick={onNext} disabled={!done}>Next: review</Button>
     </>
+  );
+}
+
+function FitQuestions({ sized, split }: { sized: readonly ScreenSizing[]; split: SplitState }) {
+  const session = useSession();
+  const choice = session.outputChoice ? outputChoice(session.outputChoice) : undefined;
+  const size = choice?.size ?? session.outputSize!;
+  if (split.issues.length === 0) return null;
+  const setFit = (key: string, v: "split" | "more" | "bigger" | "change") => session.set({ fit: { ...session.fit, [key]: v }, outputCount: null, units: null, assignment: {} });
+  const setCut = (key: string, cut: CutAnswer) => session.set({ cuts: { ...session.cuts, [key]: cut }, outputCount: null, units: null, assignment: {} });
+  return (
+    <section className="flex flex-col gap-3 border-t border-border pt-3" aria-label="Screens larger than one output">
+      {split.issues.map((f) => {
+        const s = sized.find((x) => x.key === f.key)!;
+        const fit = session.fit?.[f.key];
+        const canSplit = f.axis !== "both";
+        const columns = f.axis === "columns";
+        const total = columns ? s.columns : s.rows;
+        const cab = columns ? s.cabinet.pixelsX : s.cabinet.pixelsY;
+        const outPx = columns ? size.width : size.height;
+        const perOutput = Math.floor(outPx / cab);
+        const cut = session.cuts?.[f.key];
+        const equal = Math.ceil(total / Math.max(1, perOutput));
+        const parts = split.parts[f.key];
+        const biggerFits = OUTPUT_CHOICES.some((c) => c.size && c.size.width >= f.widthPx && c.size.height >= f.heightPx);
+        return (
+          <div key={f.key} className="flex flex-col gap-2 rounded border border-warn/50 p-2">
+            <span className="text-xs font-semibold">{f.text} What should happen?</span>
+            <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={`${s.name} doesn't fit`}>
+              {canSplit && (
+                <Choice
+                  selected={SPLIT_AVAILABLE && fit === "split"}
+                  disabled={!SPLIT_AVAILABLE}
+                  title={`Split it into parts on whole cabinet ${f.axis}`}
+                  consequence={`${SPLIT_AVAILABLE ? "" : "Needs a format change, not available yet. "}Each part would go to its own output, at most ${perOutput} cabinets (${perOutput * cab} px) per part, content continuous, nothing scaled.`}
+                  onPick={() => setFit(f.key, "split")}
+                />
+              )}
+              <Choice selected={fit === "more"} title="Add outputs or processors" consequence={`Doesn't fix this screen on its own: each output still has to hold all of ${s.name} (${f.widthPx} × ${f.heightPx} px). It helps the other screens fit, and will help ${s.name} once splitting is available.`} onPick={() => setFit(f.key, "more")} />
+              <Choice selected={fit === "bigger"} proposed={biggerFits} title="Use a bigger output" consequence={`Choose an output at least ${f.widthPx} × ${f.heightPx} px in the processor question above${biggerFits ? "" : "; none in the list is that large, so it means a processor whose input is"}. Nothing is scaled.`} onPick={() => setFit(f.key, "bigger")} />
+              <Choice selected={fit === "change"} title="Change the cabinet or the processor" consequence="Go back to the cabinet or processor question above. The screen's pixel size changes with the cabinet." onPick={() => setFit(f.key, "change")} />
+            </div>
+            {fit === "bigger" && <Note tone="info">Pick a larger output size in the processor question above. This question goes away once {s.name} fits.</Note>}
+            {fit === "change" && <Note tone="info">Change the cabinet or the processor above. This question goes away once {s.name} fits.</Note>}
+            {fit === "more" && <Note tone="warn">{s.name} still needs an output of at least {f.widthPx} × {f.heightPx} px. Add outputs in the next question once every screen fits.</Note>}
+            {SPLIT_AVAILABLE && fit === "split" && canSplit && (
+              <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={`Where to cut ${s.name}`}>
+                <span className="text-xs font-semibold">Where to cut?</span>
+                <Choice selected={cut?.mode === "equal"} proposed title={`Equal parts (${equal})`} consequence={`As even as whole cabinets allow: ${spansText(total, perOutput, "equal")}.`} onPick={() => setCut(f.key, { mode: "equal" })} />
+                <Choice selected={cut?.mode === "fill"} title="As many cabinets as fit" consequence={`Fill each output, the rest last: ${spansText(total, perOutput, "fill")}.`} onPick={() => setCut(f.key, { mode: "fill" })} />
+                <Choice selected={cut?.mode === "custom"} title="A column I choose" consequence="Move the cut cabinet by cabinet; the cut shows on the drawing." onPick={() => setCut(f.key, { mode: "custom", at: Math.min(Math.ceil(total / 2), perOutput) })} />
+                {cut?.mode === "custom" && (
+                  <label className="flex flex-col gap-1 text-xs">
+                    <span className="text-muted-foreground">Cut after cabinet {cut.at} of {total} ({columns ? "from the left" : "from the top"})</span>
+                    <input type="range" min={1} max={total - 1} step={1} value={cut.at ?? 1} onChange={(e) => setCut(f.key, { mode: "custom", at: Number(e.target.value) })} aria-label={`Cut ${s.name} after cabinet`} />
+                  </label>
+                )}
+                {split.cutErrors[f.key] && <Note tone="bad">{split.cutErrors[f.key]}</Note>}
+                {parts && <Note tone="ok">{parts.map((p) => `Part ${p.index}/${p.count}: ${p.span} cabinets, ${p.source.width} × ${p.source.height} px`).join(" · ")}</Note>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function spansText(total: number, perOutput: number, mode: "equal" | "fill"): string {
+  if (perOutput < 1) return "a cabinet is larger than one output";
+  const spans: number[] = [];
+  if (mode === "fill") for (let left = total; left > 0; left -= perOutput) spans.push(Math.min(perOutput, left));
+  else {
+    const n = Math.ceil(total / perOutput);
+    for (let i = 0; i < n; i++) spans.push(Math.floor(total / n) + (i < total % n ? 1 : 0));
+  }
+  return spans.join(" + ") + " cabinets";
+}
+
+function OutputQuestions({ split }: { split: SplitState }) {
+  const session = useSession();
+  const choice = session.outputChoice ? outputChoice(session.outputChoice) : undefined;
+  const minimum = split.minimum!;
+  const count = session.outputCount;
+  const [draft, setDraft] = useState<string>("");
+  const plan = split.outPlan;
+  const unitsProposed = choice?.loadPx && plan ? minimumUnits(plan.used, choice.loadPx) : null;
+  const units = session.units ?? null;
+  const unitPlan = choice?.loadPx && plan && units ? assignUnits(plan.used, units, choice.loadPx) : null;
+  const total = plan ? plan.used.reduce((a, b) => a + b, 0) : 0;
+  return (
+    <section className="flex flex-col gap-2 border-t border-border pt-3" aria-label="Outputs and processors">
+      <span className="text-xs font-semibold">How many outputs?</span>
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        {count === null && <Proposed />}
+        <span>{minimum} {minimum === 1 ? "output holds" : "outputs hold"} everything, 1:1.</span>
+        <Button size="xs" variant={count === minimum ? "default" : "outline"} className="rounded" onClick={() => session.set({ outputCount: minimum, units: null, assignment: {} })}>Use {minimum}</Button>
+        <Input aria-label="Other number of outputs" type="number" min={minimum} max={MAX_OUTPUTS} placeholder="Other" value={draft} onChange={(e) => setDraft(e.target.value)} className="h-6 w-16 rounded px-1.5 text-xs md:text-xs" />
+        <Button size="xs" variant="outline" className="rounded" disabled={!/^\d+$/.test(draft) || Number(draft) < 1 || Number(draft) > MAX_OUTPUTS} onClick={() => session.set({ outputCount: Number(draft), units: null, assignment: {} })}>Use</Button>
+      </div>
+      {count !== null && plan && (
+        <>
+          <span className="text-xs text-muted-foreground">Which screen or part goes to which output. Change any before confirming.</span>
+          <ul className="flex flex-col gap-1 text-xs" aria-label="Output of each screen or part">
+            {split.items.map((it) => {
+              const at = plan.placements.get(it.key);
+              return (
+                <li key={it.key} className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate">{it.label} <span className="text-muted-foreground">{it.width}×{it.height}</span></span>
+                  <select
+                    aria-label={`Output for ${it.label}`}
+                    value={session.assignment[it.key] ?? "auto"}
+                    onChange={(e) => session.set({ assignment: e.target.value === "auto" ? Object.fromEntries(Object.entries(session.assignment).filter(([k]) => k !== it.key)) : { ...session.assignment, [it.key]: Number(e.target.value) } })}
+                    className="h-6 rounded border border-border bg-background px-1 text-xs"
+                  >
+                    <option value="auto">{at ? `Proposed: OUT ${at.bin + 1}` : "No room"}</option>
+                    {Array.from({ length: count }, (_, o) => <option key={o} value={o}>OUT {o + 1}</option>)}
+                  </select>
+                </li>
+              );
+            })}
+          </ul>
+          {plan.unplaced.length > 0 && <Note tone="bad">No room for {plan.unplaced.map((k) => split.items.find((i) => i.key === k)?.label).join(", ")} with these outputs. Add outputs or send it elsewhere. Nothing is scaled.</Note>}
+        </>
+      )}
+      {count !== null && plan && choice?.loadPx && unitsProposed !== null && (
+        <>
+          <span className="text-xs font-semibold">How many {choice.label} units?</span>
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {units === null && <Proposed />}
+            <span>
+              {total.toLocaleString("en")} px in all; {choice.loadPx.toLocaleString("en")} px per unit (catalog, not checked). At least {Math.ceil(total / choice.loadPx)} by total; {unitsProposed} with each output kept on one unit.
+            </span>
+            <Button size="xs" variant={units === unitsProposed ? "default" : "outline"} className="rounded" onClick={() => session.set({ units: unitsProposed })}>Use {unitsProposed}</Button>
+            {[unitsProposed + 1, unitsProposed + 2].map((n) => <Button key={n} size="xs" variant={units === n ? "default" : "outline"} className="rounded" onClick={() => session.set({ units: n })}>{n}</Button>)}
+          </div>
+          {unitPlan && (
+            <ul className="flex flex-col gap-0.5 text-xs" aria-label="Outputs per unit">
+              {unitPlan.load.map((load, u) => (
+                <li key={u} className={cn(unitPlan.over.includes(u) && "text-destructive")}>
+                  Unit {u + 1}: {plan.used.flatMap((_, o) => (unitPlan.unitOf[o] === u ? [`OUT ${o + 1}`] : [])).join(", ") || "nothing"}, {load.toLocaleString("en")} px{unitPlan.over.includes(u) ? " (over the stated load)" : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function SplitReview({ items, plan, parts }: { items: readonly OutputItem[]; plan: OutputPlan | null; parts: Readonly<Record<string, readonly ScreenPart[]>> }) {
+  const session = useSession();
+  const choice = session.outputChoice ? outputChoice(session.outputChoice) : undefined;
+  if (!plan) return <Note tone="warn">Answer the questions first.</Note>;
+  const unitPlan = choice?.loadPx && session.units ? assignUnits(plan.used, session.units, choice.loadPx) : null;
+  return (
+    <>
+      <h2 className="text-sm font-semibold">Review</h2>
+      <table className="w-full text-xs tabular-nums">
+        <thead className="text-left text-muted-foreground"><tr><th className="font-normal">Screen or part</th><th className="font-normal">Source</th><th className="font-normal">Output</th></tr></thead>
+        <tbody>
+          {items.map((it) => {
+            const at = plan.placements.get(it.key)!;
+            const part = Object.values(parts).flat().find((p) => p.key === it.key);
+            return (
+              <tr key={it.key} className="border-t border-border align-top">
+                <td className="py-1 pr-1">{it.label}<div className="text-muted-foreground">{it.width}×{it.height} px</div></td>
+                <td className="py-1 pr-1">{part ? `x ${part.source.x}, cabinets ${part.from + 1}–${part.from + part.span}` : "whole screen"}</td>
+                <td className="py-1">OUT {at.bin + 1}{unitPlan ? ` · unit ${unitPlan.unitOf[at.bin] + 1}` : ""}<div className="text-muted-foreground">at {at.x}, {at.y}</div></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <Note tone="warn">A screen split over several outputs can&apos;t be saved in the project yet: the project model keeps one output position per screen. The change is proposed to the Lead Architect and the owner. Until it is decided, Confirm is off; everything above is a preview.</Note>
+      <Button className="rounded" disabled>Confirm</Button>
+    </>
+  );
+}
+
+function PlanPreview({ items, plan, size }: { items: readonly OutputItem[]; plan: OutputPlan; size: { width: number; height: number } }) {
+  const count = Math.max(0, ...[...plan.placements.values()].map((p) => p.bin + 1), useSession.getState().outputCount ?? 0);
+  return (
+    <section className="flex flex-col gap-3" aria-label="Processor pixel map">
+      {Array.from({ length: count }, (_, bin) => (
+        <div key={bin}>
+          <h3 className="mb-1 flex justify-between text-xs text-muted-foreground"><span>Output {bin + 1}</span><span>{size.width} × {size.height} px</span></h3>
+          <svg viewBox={`0 0 ${size.width} ${size.height}`} className="w-full rounded bg-black" role="img" aria-label={`Output ${bin + 1}: ${items.filter((it) => plan.placements.get(it.key)?.bin === bin).map((it) => it.label).join(", ") || "empty"}`}>
+            {items.map((it, i) => {
+              const at = plan.placements.get(it.key);
+              if (!at || at.bin !== bin) return null;
+              const hue = (i * 67) % 360;
+              return (
+                <g key={it.key}>
+                  <rect x={at.x} y={at.y} width={it.width} height={it.height} fill={`hsl(${hue} 55% 40%)`} stroke="#fff" strokeWidth={size.width / 600} />
+                  <text x={at.x + it.width / 2} y={at.y + it.height / 2} fontSize={size.height / 14} fill="#fff" textAnchor="middle" dominantBaseline="middle">{it.label}</text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      ))}
+    </section>
   );
 }
 

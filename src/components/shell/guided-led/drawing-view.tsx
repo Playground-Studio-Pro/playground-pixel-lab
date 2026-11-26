@@ -18,6 +18,7 @@ export function DrawingView({
   drawing,
   onSelect,
   onDraw,
+  cuts = [],
 }: {
   src: string;
   width: number;
@@ -29,6 +30,8 @@ export function DrawingView({
   drawing: boolean;
   onSelect(key: string): void;
   onDraw(box: DrawingBox): void;
+  /** Where a split screen is cut, as fractions of its width (columns) or height (rows). */
+  cuts?: readonly { key: string; axis: "columns" | "rows"; fractions: readonly number[] }[];
 }) {
   const svg = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -81,6 +84,17 @@ export function DrawingView({
                 {i + 1}
               </text>
             </g>
+          );
+        })}
+        {cuts.flatMap((c) => {
+          const r = screens.find((s) => s.key === c.key)?.rect;
+          if (!r) return [];
+          return c.fractions.map((f) =>
+            c.axis === "columns" ? (
+              <line key={`${c.key}-${f}`} x1={r.x + r.width * f} x2={r.x + r.width * f} y1={r.y - stroke * 6} y2={r.y + r.height + stroke * 6} stroke="#e5484d" strokeWidth={stroke * 3} strokeDasharray={`${stroke * 5} ${stroke * 3}`} />
+            ) : (
+              <line key={`${c.key}-${f}`} y1={r.y + r.height * f} y2={r.y + r.height * f} x1={r.x - stroke * 6} x2={r.x + r.width + stroke * 6} stroke="#e5484d" strokeWidth={stroke * 3} strokeDasharray={`${stroke * 5} ${stroke * 3}`} />
+            ),
           );
         })}
         {box && <rect x={box.x} y={box.y} width={box.width} height={box.height} fill="#3ddc97" fillOpacity={0.15} stroke="#3ddc97" strokeWidth={stroke * 2} strokeDasharray={`${stroke * 6} ${stroke * 4}`} />}

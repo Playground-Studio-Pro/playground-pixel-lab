@@ -156,3 +156,4 @@ From a constructivo to test cards, for a new LED project. Opened from the start 
 - **Processors** show their catalog values with “Not checked against the manufacturer's PDF” and the source line.
 - **Export** lists every file with its pixel size, offers one ZIP, and previews the selected card reduced, saying the PNG's real size.
 - **Storage:** the panel says plainly that the drawing and render stay on this computer, not in the project file.
+- **Decisions in the flow:** a screen larger than one output, where to cut it, how many outputs and processor units, and each part's output are questions asked only when they apply. Each option says what follows from it; a suggested option carries a **Proposed** badge and applies only when clicked. The cut is drawn on the drawing as a red dashed line. Until the project model can store screen parts, "Split" is shown as "Needs a format change, not available yet" and can't be chosen.
