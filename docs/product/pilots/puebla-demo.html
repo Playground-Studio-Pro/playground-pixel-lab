@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Puebla · Pixel Lab</title><style>
+*{box-sizing:border-box}body{background:#11191c;color:#ecf4ef;font:17px system-ui;margin:auto;max-width:1200px;padding:5vw}h1{font-size:clamp(32px,5vw,72px);margin:.2em 0}label{display:inline-grid;gap:8px;margin:12px 16px 12px 0}button,input,select{font:inherit;padding:8px}button{cursor:pointer}section{border-top:1px solid #526168;padding:14px 0}svg{width:100%;background:#18292a;margin:16px 0}polygon{fill:#204b4b;stroke:#57edd8;stroke-width:3}.playing polygon{stroke-dasharray:10 90;animation:run 8s linear infinite}@keyframes run{to{stroke-dashoffset:-100}}small{color:#b5c7c5}
+</style><main><small>PIXEL LAB / PILOTO</small><h1>CNIR Puebla</h1>
+<section><h2>1 · Archivos del show</h2><p>El trazado de Puebla está precargado. Los archivos seleccionados sirven como referencias locales para esta sesión.</p>
+<label>Render<input type="file"></label>
+<label>Constructivo<input type="file"></label>
+<label>Pixel map de diseño<input type="file"></label></section>
+<section><h2>2 · Equipo</h2><p>Cabinet 50 × 50 cm · Pitch declarado 2.9 · Frente 106 × 13 celdas de referencia</p>
+<label>Píxeles por lado del cabinet<input id="pixels" type="number" value="168" min="2" max="4096" step="2"></label>
+<label>Procesador y salidas<input placeholder="Pendiente de confirmar"></label><p id="dimensions"></p></section>
+<section><h2>3 · Revisar propuesta</h2><p>Trazado manual del constructivo v05. Simulación de las áreas visibles.</p>
+<label>Acceso central<select id="access"><option value="visible">Incluir en el contenido</option><option value="masked">Enmascarar</option></select></label>
+<svg id="stage" viewBox="137 430 1653 230" role="img" aria-label="Tres superficies dentadas y acceso central"><defs><mask id="coverage"><rect x="140" y="440" width="1650" height="220" fill="white"/><rect id="door" x="933" y="522" width="62" height="122" fill="white"/></mask></defs><g mask="url(#coverage)"><polygon pathLength="100" fill="#13b7ad" stroke="#096661" stroke-width="2" points="199.0,449.0 218.6,467.0 238.2,449.0 257.8,467.0 277.3,449.0 296.9,467.0 316.5,449.0 336.1,467.0 355.7,449.0 375.2,467.0 394.8,449.0 414.4,467.0 434.0,449.0 453.0,468.0 396.0,525.0 471.0,600.0 433.0,640.0 413.6,623.0 394.2,640.0 374.8,623.0 355.4,640.0 336.0,623.0 316.6,640.0 297.2,623.0 277.8,640.0 258.4,623.0 239.0,640.0 161.0,564.0 179.0,545.0 160.0,525.0 179.0,506.0 160.0,487.0"/>
+<polygon pathLength="100" fill="#13b7ad" stroke="#096661" stroke-width="2" points="571.0,450.0 590.6,468.0 610.3,450.0 629.9,468.0 649.5,450.0 669.2,468.0 688.8,450.0 708.4,468.0 728.1,450.0 747.7,468.0 767.3,450.0 786.9,468.0 806.6,450.0 826.2,468.0 845.8,450.0 865.5,468.0 885.1,450.0 904.7,468.0 924.4,450.0 944.0,468.0 963.6,450.0 983.3,468.0 1002.9,450.0 1022.5,468.0 1042.2,450.0 1061.8,468.0 1081.4,450.0 1101.1,468.0 1120.7,450.0 1140.3,468.0 1159.9,450.0 1179.6,468.0 1199.2,450.0 1218.8,468.0 1238.5,450.0 1258.1,468.0 1277.7,450.0 1297.4,468.0 1317.0,450.0 1433.0,566.0 1357.0,642.0 1337.3,624.0 1317.7,642.0 1298.0,624.0 1278.4,642.0 1258.7,624.0 1239.1,642.0 1219.4,624.0 1199.7,642.0 1180.1,624.0 1160.4,642.0 1140.8,624.0 1121.1,642.0 1101.4,624.0 1081.8,642.0 1062.1,624.0 1042.5,642.0 1022.8,624.0 1003.2,642.0 983.5,624.0 963.8,642.0 944.2,624.0 924.5,642.0 904.9,624.0 885.2,642.0 865.6,624.0 845.9,642.0 826.2,624.0 806.6,642.0 786.9,624.0 767.3,642.0 747.6,624.0 727.9,642.0 708.3,624.0 688.6,642.0 669.0,624.0 649.3,642.0 629.7,624.0 610.0,642.0 494.0,527.0"/>
+<polygon pathLength="100" fill="#13b7ad" stroke="#096661" stroke-width="2" points="1494.0,450.0 1513.4,468.0 1532.8,450.0 1552.2,468.0 1571.6,450.0 1591.0,468.0 1610.4,450.0 1629.8,468.0 1649.2,450.0 1668.6,468.0 1688.0,450.0 1767.0,527.0 1748.0,546.0 1767.0,566.0 1748.0,585.0 1767.0,605.0 1730.0,642.0 1710.5,624.0 1691.0,642.0 1671.5,624.0 1652.0,642.0 1632.5,624.0 1613.0,642.0 1593.5,624.0 1574.0,642.0 1554.5,624.0 1535.0,642.0 1515.5,624.0 1496.0,642.0 1476.0,623.0 1533.0,566.0 1455.0,489.0"/></g></svg>
+<button id="approve">Aprobar para la demo</button></section>
+<section><h2>4 · Contenido</h2><button id="play" disabled>Animar contorno</button> <small>Loop de 8 s · Vista previa</small></section></main>
+<script>
+const get = id => document.getElementById(id);
+function update() {
+  const size = get('pixels').valueAsNumber;
+  const valid = get('pixels').checkValidity() && Number.isInteger(size);
+  get('dimensions').textContent = valid ? 'Máster propuesto '+106*size+' × '+13*size+' px · Vista de trabajo 1:2 '+53*size+' × '+13*size/2+' px' : 'Revisa la resolución del cabinet.';
+  get('door').setAttribute('fill',get('access').value==='masked'?'black':'white');
+  get('approve').disabled=!valid;
+  get('approve').textContent='Aprobar para la demo';
+  get('play').disabled=true;
+  get('play').textContent='Animar contorno';
+  get('stage').classList.remove('playing');
+}
+document.querySelector('main').addEventListener('input',update);
+get('approve').onclick=()=>{get('play').disabled=false;get('approve').textContent='Mapa aprobado';};
+get('play').onclick=()=>{const active=get('stage').classList.toggle('playing');get('play').textContent=active?'Pausar':'Animar contorno';};
+update();
+</script></html>
